@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (optional, for production)
+  postgres:
+    image: postgres:16-alpine
+    container_name: storyfactory-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: storyfactory
+      POSTGRES_PASSWORD: storyfactory_dev
+      POSTGRES_DB: storyfactory
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U storyfactory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dashboard (Next.js)
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: storyfactory-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://storyfactory:storyfactory_dev@postgres:5432/storyfactory
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Worker (Python)
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: storyfactory-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://storyfactory:storyfactory_dev@postgres:5432/storyfactory
+    volumes:
+      - worker_data:/app/data
+      - worker_output:/app/output
+      - worker_cache:/app/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Worker Scheduler (cron)
+  worker-cron:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: storyfactory-cron
+    restart: unless-stopped
+    entrypoint: ["python", "-m", "storyfactory", "scheduler"]
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://storyfactory:storyfactory_dev@postgres:5432/storyfactory
+    volumes:
+      - worker_data:/app/data
+      - worker_output:/app/output
+      - worker_cache:/app/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  worker_data:
+  worker_output:
+  worker_cache:

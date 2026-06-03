@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Storage
+storage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Next.js
+.next/
+out/
+
+# Build
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+logs/
+*.log
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Worker outputs
+apps/worker/output/
+apps/worker/tmp/
+apps/worker/cache/
+
+# YouTube tokens
+youtube_tokens.json
+token.json
+
+# Secret encryption master key (never commit)
+.storyfactory.key
+*.storyfactory.key
+
+# Generated assets
+*.mp4
+*.mp3
+*.wav
+*.ass
+!apps/worker/templates/**

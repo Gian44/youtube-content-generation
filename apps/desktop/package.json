@@ -1,0 +1,110 @@
+{
+  "name": "storyfactory-desktop",
+  "version": "1.0.0",
+  "description": "StoryFactory Desktop – Automated YouTube content generation",
+  "main": "main.js",
+  "private": true,
+  "packageManager": "npm@11.7.0",
+  "author": "Gian Myrl Renomeron",
+  "scripts": {
+    "dev": "electron .",
+    "dev:electron": "electron .",
+    "build:dashboard": "cd ../dashboard && npm run build",
+    "prepackage": "node scripts/clean-builder-optional-deps.cjs",
+    "package": "node --disable-warning=DEP0190 ../../node_modules/electron-builder/cli.js --win",
+    "prepackage:dir": "node scripts/clean-builder-optional-deps.cjs",
+    "package:dir": "node --disable-warning=DEP0190 ../../node_modules/electron-builder/cli.js --win --dir"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "electron": "35.2.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "electronVersion": "35.2.1",
+    "appId": "com.storyfactory.desktop",
+    "productName": "StoryFactory",
+    "copyright": "Copyright © 2026 StoryFactory",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "startup.html",
+      "startup-env.js",
+      "tray.js",
+      "scheduler.js",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../dashboard/.next/standalone",
+        "to": "dashboard",
+        "filter": [
+          "**/*",
+          "!apps/desktop/**",
+          "!apps/worker/**"
+        ]
+      },
+      {
+        "from": "../dashboard/.next/standalone/node_modules",
+        "to": "dashboard/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../dashboard/.next/static",
+        "to": "dashboard/apps/dashboard/.next/static",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../dashboard/public",
+        "to": "dashboard/apps/dashboard/public",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../worker",
+        "to": "worker",
+        "filter": [
+          "**/*",
+          "!__pycache__/**",
+          "!*.pyc",
+          "!.pytest_cache/**",
+          "!logs/**",
+          "!data/**"
+        ]
+      },
+      {
+        "from": "../worker/data",
+        "to": "seed-data",
+        "filter": ["storyfactory.db"]
+      },
+      {
+        "from": "../../.env",
+        "to": ".env"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "StoryFactory",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico"
+    }
+  }
+}

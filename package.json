@@ -1,0 +1,28 @@
+{
+  "name": "storyfactory-desktop",
+  "version": "1.0.0",
+  "description": "StoryFactory Desktop – Automated YouTube content generation",
+  "main": "main.js",
+  "private": true,
+  "packageManager": "npm@11.7.0",
+  "author": "Gian Myrl Renomeron",
+  "scripts": {
+    "dev": "npm --prefix apps/dashboard run dev",
+    "build": "npm --prefix apps/dashboard run build",
+    "worker:dev": "cd apps/worker && python -m storyfactory",
+    "worker:daily": "cd apps/worker && python -m storyfactory daily",
+    "worker:render": "cd apps/worker && python -m storyfactory render",
+    "worker:upload": "cd apps/worker && python -m storyfactory upload",
+    "worker:analytics": "cd apps/worker && python -m storyfactory analytics",
+    "worker:full": "cd apps/worker && python -m storyfactory full",
+    "worker:channel": "cd apps/worker && python -m storyfactory channel",
+    "db:migrate": "cd apps/worker && python -m storyfactory.db.migrate",
+    "seed": "cd apps/worker && python -m storyfactory seed",
+    "test": "npm run test:worker && npm run test:dashboard",
+    "test:worker": "cd apps/worker && python -m pytest",
+    "test:dashboard": "npm --prefix apps/dashboard test"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3"
+  }
+}
