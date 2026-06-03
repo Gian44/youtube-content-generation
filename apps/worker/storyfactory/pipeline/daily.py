@@ -102,6 +102,24 @@ def _run_for_channel(session, channel: Channel, ctx, settings):
 
     try:
         # ==========================================
+        # Resolve the channel's content shape (which outputs to produce).
+        # Each channel composes its own pipeline: Shorts, long-form, or both.
+        # ==========================================
+        enable_shorts = bool(effective_config("enable_shorts", True))
+        # long_form_per_day also acts as an off-switch (0 = no long-form video).
+        # This is the first place that value is actually read by the pipeline.
+        enable_long_form = bool(effective_config("enable_long_form", True)) and (
+            int(effective_config("long_form_per_day", 1)) >= 1
+        )
+        if not enable_shorts and not enable_long_form:
+            console.print(
+                "[bold red]Channel produces no outputs — enable Shorts or long-form "
+                "(or set long_form_per_day >= 1) in its content settings.[/bold red]"
+            )
+            log.error("no_outputs_enabled", channel=channel.slug)
+            return
+
+        # ==========================================
         # Step 1: Create daily batch (scoped to channel)
         # ==========================================
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -138,23 +156,37 @@ def _run_for_channel(session, channel: Channel, ctx, settings):
         console.print(f"[green]✓ Topic selected: {category}[/green]")
 
         # ==========================================
-        # Step 3: Generate short stories
+        # Step 3: Generate short stories (only if this channel produces Shorts)
         # ==========================================
-        shorts_count = random.randint(
-            int(effective_config("shorts_per_day_min", 3)),
-            int(effective_config("shorts_per_day_max", 5)),
-        )
-        console.print(f"[blue]Generating {shorts_count} short stories...[/blue]")
-        short_stories = generate_short_stories(batch, shorts_count)
-        console.print(f"[green]✓ Generated {len(short_stories)} short stories[/green]")
+        if enable_shorts:
+            shorts_min = int(effective_config("shorts_per_day_min", 3))
+            shorts_max = int(effective_config("shorts_per_day_max", 5))
+            # Shorts are enabled, so produce at least one (clamp guards against a
+            # persisted 0/0 quota that would otherwise silently make nothing).
+            lo = max(1, min(shorts_min, shorts_max))
+            hi = max(1, max(shorts_min, shorts_max))
+            shorts_count = random.randint(lo, hi)
+            console.print(f"[blue]Generating {shorts_count} short stories...[/blue]")
+            short_stories = generate_short_stories(batch, shorts_count)
+            console.print(f"[green]✓ Generated {len(short_stories)} short stories[/green]")
+        else:
+            short_stories = []
+            console.print("[dim]⊘ Shorts disabled for this channel[/dim]")
 
         # ==========================================
-        # Step 4: Generate long-form extra stories
+        # Step 4: Generate long-form stories (count from config, not hardcoded)
         # ==========================================
-        long_form_count = random.randint(2, 5)
-        console.print(f"[blue]Generating {long_form_count} long-form stories...[/blue]")
-        long_stories = generate_long_form_stories(batch, long_form_count)
-        console.print(f"[green]✓ Generated {len(long_stories)} long-form stories[/green]")
+        if enable_long_form:
+            seg_min = int(effective_config("long_form_segments_min", 2))
+            seg_max = int(effective_config("long_form_segments_max", 5))
+            lo, hi = max(1, min(seg_min, seg_max)), max(1, max(seg_min, seg_max))
+            long_form_count = random.randint(lo, hi)
+            console.print(f"[blue]Generating {long_form_count} long-form stories...[/blue]")
+            long_stories = generate_long_form_stories(batch, long_form_count)
+            console.print(f"[green]✓ Generated {len(long_stories)} long-form stories[/green]")
+        else:
+            long_stories = []
+            console.print("[dim]⊘ Long-form disabled for this channel[/dim]")
 
         all_stories = short_stories + long_stories
         batch.status = "stories_generated"
@@ -264,46 +296,49 @@ def _run_for_channel(session, channel: Channel, ctx, settings):
         )
 
         # ==========================================
-        # Step 9: Render Shorts
+        # Step 9: Render Shorts (skipped when the channel produces no Shorts)
         # ==========================================
-        console.print("[blue]Rendering Shorts...[/blue]")
         short_render_jobs = []
-        for story in approved_shorts:
-            tts_job = tts_jobs.get(story.id)
-            caption_job = caption_jobs.get(story.id)
-            assets = story_assets.get(story.id, [])
+        if enable_shorts:
+            console.print("[blue]Rendering Shorts...[/blue]")
+            for story in approved_shorts:
+                tts_job = tts_jobs.get(story.id)
+                caption_job = caption_jobs.get(story.id)
+                assets = story_assets.get(story.id, [])
 
-            if tts_job and tts_job.status == "completed":
-                render_job = render_short(
-                    story=story,
-                    tts_job=tts_job,
-                    caption_job=caption_job,
-                    assets=assets,
+                if tts_job and tts_job.status == "completed":
+                    render_job = render_short(
+                        story=story,
+                        tts_job=tts_job,
+                        caption_job=caption_job,
+                        assets=assets,
+                        batch_id=batch.id,
+                    )
+                    short_render_jobs.append(render_job)
+                    console.print(f"  [green]✓ Rendered Short: {story.title[:40]}[/green]")
+
+        # ==========================================
+        # Step 10: Render long-form (skipped when long-form is disabled)
+        # ==========================================
+        long_form_job = None
+        if enable_long_form:
+            console.print("[blue]Rendering long-form video...[/blue]")
+            includes_shorts = bool(effective_config("long_form_includes_shorts", True))
+            all_for_longform = (approved_shorts if includes_shorts else []) + approved_long
+            all_tts = [tts_jobs.get(s.id) for s in all_for_longform if tts_jobs.get(s.id)]
+            all_captions = [caption_jobs.get(s.id) for s in all_for_longform if caption_jobs.get(s.id)]
+
+            if all_tts:
+                long_form_job = render_long_form(
+                    stories=all_for_longform,
+                    tts_jobs=all_tts,
+                    caption_jobs=all_captions,
+                    assets_map=story_assets,
                     batch_id=batch.id,
                 )
-                short_render_jobs.append(render_job)
-                console.print(f"  [green]✓ Rendered Short: {story.title[:40]}[/green]")
-
-        # ==========================================
-        # Step 10: Render long-form
-        # ==========================================
-        console.print("[blue]Rendering long-form video...[/blue]")
-        all_for_longform = approved_shorts + approved_long
-        all_tts = [tts_jobs.get(s.id) for s in all_for_longform if tts_jobs.get(s.id)]
-        all_captions = [caption_jobs.get(s.id) for s in all_for_longform if caption_jobs.get(s.id)]
-
-        if all_tts:
-            long_form_job = render_long_form(
-                stories=all_for_longform,
-                tts_jobs=all_tts,
-                caption_jobs=all_captions,
-                assets_map=story_assets,
-                batch_id=batch.id,
-            )
-            console.print(f"[green]✓ Long-form video rendered[/green]")
-        else:
-            long_form_job = None
-            console.print("[yellow]⊘ No TTS available for long-form render[/yellow]")
+                console.print(f"[green]✓ Long-form video rendered[/green]")
+            else:
+                console.print("[yellow]⊘ No TTS available for long-form render[/yellow]")
 
         batch.status = "rendered"
         session.commit()

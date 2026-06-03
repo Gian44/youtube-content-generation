@@ -95,6 +95,28 @@ class ChannelIntegration(Base):
     )
 
 
+class AppIntegration(Base):
+    """App-level (shared) provider credentials, used by every channel.
+
+    Mirrors :class:`ChannelIntegration` minus ``channel_id``: there is exactly
+    one row per shared provider (text/tts/assets/storage). YouTube is NOT stored
+    here — it stays per-channel in ``channel_integrations``.
+    """
+
+    __tablename__ = "app_integrations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    provider_key = Column(String(50), nullable=False, unique=True, index=True)
+    enabled = Column(Boolean, default=False)
+    config = Column(JSON, default=dict)  # non-secret (model name, ratio, bucket, ...)
+    secrets_encrypted = Column(Text, nullable=True)  # Fernet ciphertext of a JSON blob
+    status = Column(String(20), nullable=False, default="unknown")  # unknown|ok|error|missing
+    status_detail = Column(Text, nullable=True)
+    last_checked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
 # ============================================
 # Daily Batches
 # ============================================

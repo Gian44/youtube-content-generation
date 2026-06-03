@@ -224,23 +224,52 @@ npm run test:dashboard
 
 ## Configuration
 
-Configuration is layered: **app-level defaults** come from environment variables
-(see [`.env.example`](.env.example)), and **per-channel overrides** (integrations,
-API keys, quotas, prompts, niche) live in the database and are managed from the
-dashboard **Channels** page or the `worker:channel` CLI. Anything a channel does
-not override inherits the app-level default.
+Configuration splits cleanly into two places:
 
-App-level keys:
-- `STORYFACTORY_SECRET_KEY` – master key that encrypts per-channel secrets at rest (generate with `npm run worker:channel -- generate-key`)
+1. **Settings → Integrations (shared, app-level).** Provider API keys used by every
+   channel — OpenAI, Gemini, Pexels, Pixabay, shared TTS, storage — are entered
+   **once** here (or seeded from `.env` on first run) and stored encrypted in the
+   database. You do not repeat them per channel.
+2. **Channels → [channel] (per-channel).** Each channel connects its own **YouTube**
+   account and configures its **content profile** (what it produces) plus niche,
+   style, quotas, and prompt overrides.
+
+Anything a channel does not override inherits the app-level default.
+
+### Content profiles (per-channel outputs)
+
+Each channel composes exactly what it generates — there is no fixed template:
+
+| Channel goal | Settings |
+|--------------|----------|
+| Shorts-only (e.g. 1/day) | Generate Shorts ✓, long-form ✗, shorts/day min=max=1 |
+| Long-form only (e.g. "sleep facts") | Shorts ✗, long-form ✓, niche/prompt override for calm facts |
+| Classic mix (default) | Shorts ✓ (3–5/day) + one long-form compilation ✓ |
+
+A channel must produce at least one output. Set these in the dashboard
+(**Channels → Content**) or via the `ENABLE_SHORTS` / `ENABLE_LONG_FORM` env
+defaults (see [`.env.example`](.env.example)).
+
+### App-level keys
+
+- `STORYFACTORY_SECRET_KEY` – master key that encrypts stored secrets at rest (generate with `npm run worker:channel -- generate-key`)
 - `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` – shared Google Cloud OAuth app (each channel connects its own account)
+- `OPENAI_API_KEY` / `GEMINI_API_KEY` / `PEXELS_API_KEY` / `PIXABAY_API_KEY` – seed the shared Integrations on first run; manage them afterward under **Settings → Integrations**
 - `DRY_RUN=true` – Test pipeline without API calls
 - `AUTO_MODE=true` – Enable fully automated mode
 - `FAIL_SAFE_ON_POLICY_FLAG=true` – Block flagged content (default; overridable per channel)
 - `UPLOAD_PRIVACY_MODE=public` – Default upload visibility (overridable per channel)
-- `ALLOW_PRIVATE_FALLBACK=true` – Fall back to private if public fails
 
-> **Security:** per-channel API keys and OAuth tokens are stored encrypted in the
+Manage shared keys without the UI:
+
+```bash
+echo '{"api_key":"sk-..."}' | npm run worker -- settings set-secret --provider text.openai --enable --secrets-stdin
+npm run worker -- settings status
+```
+
+> **Security:** shared and per-channel secrets are stored encrypted in the
 > database and are never exposed to the client, written to `.env`, or logged.
+> Dashboard secret writes are sent to the worker over stdin, never on the command line.
 
 ---
 

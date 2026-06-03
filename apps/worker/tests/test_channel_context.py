@@ -51,8 +51,8 @@ def test_integration_resolver_reads_enabled_config_and_secret(monkeypatch):
     assert resolver.secret("text.gemini", "api_key") == ""
 
 
-def test_resolve_api_key_prefers_channel_and_blocks_cross_channel_env(isolated_env, monkeypatch):
-    """Non-default channels must NOT silently inherit the global env key."""
+def test_app_scoped_keys_are_shared_across_channels(isolated_env, monkeypatch):
+    """Shared (app-scoped) providers resolve to ONE app-level value for every channel."""
     monkeypatch.setenv("OPENAI_API_KEY", "sk-global-env-key")
     from storyfactory.db.migrations import run_migrations
     from storyfactory.db.engine import get_session
@@ -63,14 +63,36 @@ def test_resolve_api_key_prefers_channel_and_blocks_cross_channel_env(isolated_e
     session = get_session()
     try:
         default = get_default_channel(session)
-        # default channel imported the env key during migration
         with use_channel(session, default):
             assert resolve_api_key("text.openai", "openai_api_key") == "sk-global-env-key"
 
-        # a fresh channel with no openai integration -> no env bleed
+        # A brand-new channel inherits the SAME shared key — no per-channel re-setup.
         other = create_channel(session, name="Other", slug="other")
         with use_channel(session, other):
-            assert resolve_api_key("text.openai", "openai_api_key") == ""
+            assert resolve_api_key("text.openai", "openai_api_key") == "sk-global-env-key"
+    finally:
+        session.close()
+
+
+def test_youtube_token_is_isolated_per_channel(isolated_env, monkeypatch):
+    """Channel-scoped providers (YouTube) must NOT bleed across channels."""
+    monkeypatch.setenv("YOUTUBE_REFRESH_TOKEN", "default-token")
+    from storyfactory.db.migrations import run_migrations
+    from storyfactory.db.engine import get_session
+    from storyfactory.channel_context import use_channel, youtube_credentials
+    from storyfactory.services.channel_service import create_channel, get_default_channel
+
+    run_migrations()
+    session = get_session()
+    try:
+        default = get_default_channel(session)
+        with use_channel(session, default):
+            assert youtube_credentials()["refresh_token"] == "default-token"
+
+        # A fresh channel has no token and must not inherit the default channel's.
+        other = create_channel(session, name="Other", slug="other")
+        with use_channel(session, other):
+            assert youtube_credentials()["refresh_token"] == ""
     finally:
         session.close()
 

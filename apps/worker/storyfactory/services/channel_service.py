@@ -7,7 +7,6 @@ migration path produce identical results.
 
 from __future__ import annotations
 
-import os
 import re
 import uuid
 
@@ -65,6 +64,25 @@ def _unique_slug(session: Session, base: str) -> str:
     return candidate
 
 
+def _validate_content_config(cfg: dict) -> None:
+    """Enforce the content-profile invariants on a (merged) channel config.
+
+    Mirrors the shared Zod ``ChannelConfigSchema`` refinements so every write
+    path (API + CLI + programmatic) rejects an un-runnable config rather than
+    relying solely on the UI and the runtime pipeline guard.
+    """
+    if cfg.get("enable_shorts") is False and cfg.get("enable_long_form") is False:
+        raise ValueError(
+            "A channel must produce at least one output (enable_shorts or enable_long_form)."
+        )
+    smin, smax = cfg.get("shorts_per_day_min"), cfg.get("shorts_per_day_max")
+    if isinstance(smin, int) and isinstance(smax, int) and smin > smax:
+        raise ValueError("shorts_per_day_min cannot exceed shorts_per_day_max.")
+    lmin, lmax = cfg.get("long_form_segments_min"), cfg.get("long_form_segments_max")
+    if isinstance(lmin, int) and isinstance(lmax, int) and lmin > lmax:
+        raise ValueError("long_form_segments_min cannot exceed long_form_segments_max.")
+
+
 def create_channel(
     session: Session,
     *,
@@ -83,6 +101,7 @@ def create_channel(
     base_config["category_weights"] = dict(DEFAULT_CATEGORY_WEIGHTS)
     if config:
         base_config.update(config)
+    _validate_content_config(base_config)
 
     channel = Channel(
         id=str(uuid.uuid4()),
@@ -151,49 +170,18 @@ def set_integration(
 
 
 def import_env_into_channel(session: Session, channel: Channel, *, commit: bool = True) -> Channel:
-    """Backfill a channel's integrations from the legacy global environment.
+    """Backfill a channel's **per-channel** integrations from the legacy env.
+
+    Only channel-scoped providers (currently YouTube) are imported here; shared
+    providers (OpenAI/Gemini/Pexels/Pixabay/TTS/storage) live at the app level
+    (see :func:`storyfactory.services.app_integration_service.import_env_into_app`).
 
     Idempotent: existing integrations are updated in place, not duplicated.
-    Only providers whose required secrets / enable conditions are satisfied in
-    the environment are enabled.
     """
-    settings = get_settings()
     crypto.ensure_key()  # guarantee a key exists before encrypting anything
 
-    for spec in registry.list_providers():
-        env_secrets = {
-            field: os.environ.get(env_var, "")
-            for field, env_var in spec.env_secret_map.items()
-        }
-        env_config = {
-            field: os.environ.get(env_var, "")
-            for field, env_var in spec.env_config_map.items()
-        }
-        env_config = {k: v for k, v in env_config.items() if v != ""}
-
-        # Decide whether to enable: an explicit enable_if_env wins, else all
-        # required secrets must be present and non-placeholder.
-        if spec.enable_if_env:
-            enable = all(
-                not registry.is_placeholder(os.environ.get(var))
-                for var in spec.enable_if_env
-            )
-        elif spec.required_secrets:
-            enable = all(
-                not registry.is_placeholder(env_secrets.get(field))
-                for field in spec.required_secrets
-            )
-        else:
-            # No-secret providers (e.g. storage.local) are enabled by default.
-            enable = spec.kind == registry.KIND_STORAGE and spec.key == "storage.local"
-
-        # Drop placeholder secrets so we never store junk.
-        clean_secrets = {
-            field: value
-            for field, value in env_secrets.items()
-            if value and not registry.is_placeholder(value)
-        }
-
+    for spec in registry.channel_providers():
+        enable, clean_secrets, env_config = registry.env_import_values(spec)
         set_integration(
             session,
             channel,
@@ -238,6 +226,7 @@ def update_channel(
     if config_updates:
         merged = dict(channel.config or {})
         merged.update(config_updates)
+        _validate_content_config(merged)
         channel.config = merged
     if commit:
         session.commit()
@@ -401,8 +390,16 @@ def ensure_default_channel(session: Session, *, commit: bool = True) -> Channel:
     This is the migration entry point that makes existing single-channel
     installs work with zero re-setup.
     """
+    # Shared providers are seeded once at app level regardless of whether the
+    # default channel already exists.
+    from storyfactory.services.app_integration_service import import_env_into_app
+
+    import_env_into_app(session, commit=False)
+
     existing = get_default_channel(session)
     if existing is not None:
+        if commit:
+            session.commit()
         return existing
 
     settings = get_settings()

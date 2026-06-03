@@ -1,25 +1,19 @@
 import { NextResponse } from 'next/server';
 import { runWorkerCommand } from '@/lib/worker-cli';
+import { APP_SCOPED_PROVIDERS, CHANNEL_SCOPED_PROVIDERS } from '@/lib/integration-scope';
 
 /**
  * Set (encrypted) secrets and/or non-secret config for a channel integration.
+ *
+ * Only channel-scoped providers may be set per channel. Shared providers
+ * (OpenAI/Gemini/Pexels/Pixabay/TTS/storage) are configured once under
+ * Settings → Integrations; writing them per channel would be silently ignored
+ * by the resolver, so we reject them here with a clear message.
  *
  * Secrets are forwarded to the worker, which owns all encryption. This handler
  * NEVER returns secret values to the client — only a success flag and the
  * provider's resulting status. Authorize/rate-limit at the edge in production.
  */
-
-const ALLOWED_PROVIDERS = new Set([
-  'text.openai',
-  'text.gemini',
-  'tts.openai',
-  'tts.gemini',
-  'assets.pexels',
-  'assets.pixabay',
-  'youtube',
-  'storage.local',
-  'storage.r2',
-]);
 
 export async function POST(
   request: Request,
@@ -43,9 +37,19 @@ export async function POST(
 
   const { provider, secrets = {}, config = {}, enabled } = body;
 
-  if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
+  if (provider && APP_SCOPED_PROVIDERS.has(provider)) {
     return NextResponse.json(
-      { success: false, error: `Unknown integration provider: ${provider}` },
+      {
+        success: false,
+        error: `${provider} is a shared provider — configure it once under Settings → Integrations, not per channel.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!provider || !CHANNEL_SCOPED_PROVIDERS.has(provider)) {
+    return NextResponse.json(
+      { success: false, error: `Unknown or non-channel integration provider: ${provider}` },
       { status: 400 }
     );
   }

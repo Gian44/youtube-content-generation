@@ -330,8 +330,9 @@ def _with_channel(channel_ref):
 @click.option("--name", default=None)
 @click.option("--description", default=None)
 @click.option("--niche", default=None)
+@click.option("--content-style", "content_style", default=None, help="Free-text content style descriptor")
 @click.option("--status", default=None, type=click.Choice(["active", "paused"]))
-def channel_update(channel_ref, name, description, niche, status):
+def channel_update(channel_ref, name, description, niche, content_style, status):
     """Update a channel's editable (non-secret) fields."""
     from storyfactory.services.channel_service import update_channel
 
@@ -340,7 +341,14 @@ def channel_update(channel_ref, name, description, niche, status):
         if ch is None:
             return
         update_channel(
-            session, ch, name=name, description=description, niche=niche, status=status, commit=True
+            session,
+            ch,
+            name=name,
+            description=description,
+            niche=niche,
+            content_style=content_style,
+            status=status,
+            commit=True,
         )
         console.print(f"[bold green]✓ Updated channel '{ch.slug}'[/bold green]")
     finally:
@@ -448,6 +456,110 @@ def channel_status(channel_ref, as_json):
             mark = "✓" if st["configured"] else "·"
             state = "enabled" if st["enabled"] else "disabled"
             console.print(f"  [{mark}] {st['label']:18} {state}")
+    finally:
+        session.close()
+
+
+# ============================================
+# App-level (shared) integrations
+# ============================================
+
+@cli.group()
+def settings():
+    """Configure shared, app-level integrations used by every channel."""
+
+
+@settings.command("status")
+@click.option("--json", "as_json", is_flag=True, help="Output JSON")
+def settings_status(as_json):
+    """Show shared app-level integration status (no secret values)."""
+    import json as _json
+
+    from storyfactory.db.engine import init_db, get_session
+    from storyfactory.services.app_integration_service import app_integration_status
+
+    init_db()
+    session = get_session()
+    try:
+        statuses = app_integration_status(session)
+        if as_json:
+            console.print(_json.dumps(statuses))
+            return
+        for st in statuses:
+            mark = "✓" if st["configured"] else "·"
+            state = "enabled" if st["enabled"] else "disabled"
+            console.print(f"  [{mark}] {st['label']:18} {state}")
+    finally:
+        session.close()
+
+
+@settings.command("set-secret")
+@click.option("--provider", required=True, help="App-scoped provider key (e.g. text.openai)")
+@click.option("--config", "configs", multiple=True, help="field=value (repeatable, non-secret)")
+@click.option("--enable/--disable", "enable", default=None, help="Toggle the integration")
+@click.option(
+    "--secrets-stdin",
+    is_flag=True,
+    help="Read a JSON object of secret fields from stdin (avoids exposing secrets in argv)",
+)
+def settings_set_secret(provider, configs, enable, secrets_stdin):
+    """Set (encrypted) secrets and/or config for a shared app-level integration.
+
+    Secrets are read from stdin as a JSON object when --secrets-stdin is passed,
+    so they never appear in the process argument list.
+    """
+    import json as _json
+    import sys as _sys
+
+    from storyfactory.db.engine import init_db, get_session
+    from storyfactory.services.app_integration_service import set_app_integration
+
+    secrets = None
+    if secrets_stdin:
+        raw = _sys.stdin.read()
+        if raw.strip():
+            try:
+                parsed = _json.loads(raw)
+            except _json.JSONDecodeError as exc:
+                console.print(f"[red]Invalid JSON on stdin: {exc}[/red]")
+                return
+            if not isinstance(parsed, dict):
+                console.print("[red]stdin must be a JSON object of secret fields[/red]")
+                return
+            secrets = {k: str(v) for k, v in parsed.items() if v not in (None, "")}
+
+    init_db()
+    session = get_session()
+    try:
+        try:
+            set_app_integration(
+                session,
+                provider,
+                enabled=enable,
+                secrets=secrets or None,
+                config=_parse_kv(configs) or None,
+                commit=True,
+            )
+        except (ValueError, KeyError) as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
+        # Never echo secret values back.
+        console.print(f"[bold green]✓ Updated app integration {provider}[/bold green]")
+    finally:
+        session.close()
+
+
+@settings.command("import-env")
+def settings_import_env():
+    """Seed shared app-level integrations from the current .env (fills gaps only)."""
+    from storyfactory.db.engine import init_db, get_session
+    from storyfactory.services.app_integration_service import import_env_into_app
+
+    init_db()
+    session = get_session()
+    try:
+        import_env_into_app(session, commit=True)
+        console.print("[bold green]✓ Imported shared integrations from .env[/bold green]")
     finally:
         session.close()
 

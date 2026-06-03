@@ -16,6 +16,8 @@
     "worker:analytics": "cd apps/worker && python -m storyfactory analytics",
     "worker:full": "cd apps/worker && python -m storyfactory full",
     "worker:channel": "cd apps/worker && python -m storyfactory channel",
+    "worker:settings": "cd apps/worker && python -m storyfactory settings",
+    "worker": "cd apps/worker && python -m storyfactory",
     "db:migrate": "cd apps/worker && python -m storyfactory.db.migrate",
     "seed": "cd apps/worker && python -m storyfactory seed",
     "test": "npm run test:worker && npm run test:dashboard",

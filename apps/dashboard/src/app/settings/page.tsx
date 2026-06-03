@@ -4,12 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { query } from "@/lib/db";
+import { getAppIntegrations } from "@/lib/app-integrations";
+import { AppIntegrationsManager } from "@/components/app-integrations-manager";
 
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
   // Query database settings (app-level defaults)
   const dbSettings = await query("SELECT key, value FROM settings");
+  const appIntegrations = await getAppIntegrations();
 
   const getSettingVal = (key: string, defaultVal: string) => {
     const match = dbSettings.find(
@@ -105,29 +108,30 @@ export default async function SettingsPage() {
           </p>
         </div>
 
-        {/* Per-channel pointer */}
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="flex items-center justify-between gap-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              Looking to add API keys or connect a YouTube account? Those are now configured
-              <strong> per channel</strong>.
-            </p>
-            <Link
-              href="/channels"
-              className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
-              Manage Channels →
-            </Link>
+        {/* Shared integrations — configured once for the whole app */}
+        <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">🔌 Integrations</CardTitle>
+            <CardDescription>
+              Shared provider credentials used by <strong>every channel</strong> (OpenAI, Gemini,
+              Pexels, Pixabay, TTS, storage). Enter each key once here. YouTube is connected
+              per channel under{" "}
+              <Link href="/channels" className="text-primary underline">Channels</Link>.
+              Keys left blank fall back to <code>.env</code>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AppIntegrationsManager integrations={appIntegrations} />
           </CardContent>
         </Card>
 
-        {/* App-level API defaults */}
+        {/* App-level env fallback status */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg">App-level API defaults</CardTitle>
+            <CardTitle className="text-lg">.env fallback status</CardTitle>
             <CardDescription>
-              Shared values loaded from <code>.env</code>. These act as fallback defaults; each channel
-              can override them with its own keys.
+              Values present in <code>.env</code>. These seed the Integrations above on first run and
+              act as a runtime fallback when an integration has no stored key.
             </CardDescription>
           </CardHeader>
           <CardContent>

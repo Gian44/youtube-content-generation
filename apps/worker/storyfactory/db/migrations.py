@@ -197,11 +197,132 @@ def _m0003_prompt_channel_overrides(session: Session) -> None:
         ))
 
 
+def _m0004_app_integrations(session: Session) -> None:
+    """Consolidate shared provider credentials from per-channel rows to app level.
+
+    Shared providers (OpenAI/Gemini/Pexels/Pixabay/TTS/storage) move from
+    ``channel_integrations`` into the single ``app_integrations`` store. YouTube
+    stays per-channel and is untouched.
+
+    Conflict policy: the **default channel's** value is canonical. If another
+    channel stored a *different* secret for the same provider, it is logged (not
+    silently lost) so the operator can reconcile it in Settings, then the
+    per-channel rows for shared providers are removed.
+    """
+    from storyfactory import crypto
+    from storyfactory.db.models import ChannelIntegration
+    from storyfactory.integrations import registry
+    from storyfactory.services.app_integration_service import (
+        get_app_integration,
+        import_env_into_app,
+        set_app_integration,
+    )
+    from storyfactory.services.channel_service import get_default_channel
+
+    crypto.ensure_key()
+    app_keys = [spec.key for spec in registry.app_providers()]
+
+    # Fresh install (no channel_integrations table yet): just seed from env.
+    if not table_exists(session, "channel_integrations"):
+        import_env_into_app(session, commit=False)
+        return
+
+    default = get_default_channel(session)
+
+    def _safe_decrypt(blob):
+        if not blob:
+            return {}
+        try:
+            return crypto.decrypt_secrets(blob)
+        except Exception as exc:  # bad/old key — surface, don't migrate this blob
+            log.warning("app_integration_decrypt_failed", error=str(exc))
+            return None
+
+    for spec in registry.app_providers():
+        if get_app_integration(session, spec.key) is not None:
+            continue  # idempotent — already consolidated
+
+        rows = (
+            session.query(ChannelIntegration)
+            .filter_by(provider_key=spec.key)
+            .all()
+        )
+        canonical = None
+        if default is not None:
+            canonical = next((r for r in rows if r.channel_id == default.id), None)
+        if canonical is None and rows:
+            canonical = rows[0]
+
+        if canonical is None:
+            continue  # no per-channel value; env seeding happens below
+
+        canon_secrets = _safe_decrypt(canonical.secrets_encrypted)
+        if canon_secrets is None:
+            continue  # could not decrypt the canonical secret; leave for manual setup
+
+        # Log any other channel whose secret differs from the canonical one.
+        for row in rows:
+            if row is canonical:
+                continue
+            other = _safe_decrypt(row.secrets_encrypted)
+            if other and other != canon_secrets:
+                log.warning(
+                    "app_integration_conflict",
+                    provider=spec.key,
+                    channel_id=row.channel_id,
+                )
+                console.print(
+                    f"  [yellow]⚠ {spec.label}: channel {row.channel_id[:8]} had a "
+                    f"different value; kept the default channel's. Re-enter it under "
+                    f"Settings → Integrations if that was intentional.[/yellow]"
+                )
+
+        set_app_integration(
+            session,
+            spec.key,
+            enabled=bool(canonical.enabled),
+            config=dict(canonical.config or {}) or None,
+            secrets=canon_secrets or None,
+            commit=False,
+        )
+
+    # Seed any still-missing app providers from the environment.
+    import_env_into_app(session, commit=False)
+
+    # The session uses autoflush=False, so flush the pending app_integrations
+    # inserts before querying them below.
+    session.flush()
+
+    # Remove per-channel rows ONLY for shared providers that were successfully
+    # consolidated to app level. A provider whose secret could not be decrypted
+    # (wrong/rotated/lost master key) and had no env value to seed from has no
+    # app_integrations row — KEEP its per-channel row so the encrypted secret is
+    # not destroyed. The operator can restore the key and re-enter it; a bulk
+    # delete here would permanently lose an unrecoverable credential.
+    migrated_keys = [k for k in app_keys if get_app_integration(session, k) is not None]
+    if migrated_keys:
+        deleted = (
+            session.query(ChannelIntegration)
+            .filter(ChannelIntegration.provider_key.in_(migrated_keys))
+            .delete(synchronize_session=False)
+        )
+        kept = [k for k in app_keys if k not in migrated_keys]
+        if kept:
+            log.warning("app_integration_unmigrated_kept", providers=kept)
+            console.print(
+                f"  [yellow]⚠ Kept per-channel rows for {kept} — could not consolidate "
+                f"(decrypt failed and no .env value). Fix the master key and re-enter under "
+                f"Settings → Integrations.[/yellow]"
+            )
+        log.info("app_integrations_consolidated", deleted_channel_rows=deleted)
+
+
 # Ordered registry. Append new migrations; never reorder or mutate shipped ones.
 MIGRATIONS: list[tuple[str, callable]] = [
     ("0001_default_channel", _m0001_default_channel),
     ("0002_channel_id_columns", _m0002_channel_id_columns),
     ("0003_prompt_channel_overrides", _m0003_prompt_channel_overrides),
+    ("0004_app_integrations", _m0004_app_integrations),
 ]
 
 

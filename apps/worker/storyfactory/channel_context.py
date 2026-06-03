@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import contextvars
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ from storyfactory.content_defaults import (
     DEFAULT_VOICE_PERSONAS,
 )
 from storyfactory.db.models import Channel, ChannelIntegration
+from storyfactory.integrations import registry
 
 
 class IntegrationResolver:
@@ -72,6 +73,8 @@ class ChannelContext:
     is_default: bool
     config: dict
     integrations: IntegrationResolver
+    # Shared, app-level providers (OpenAI/Gemini/Pexels/Pixabay/TTS/storage).
+    app_integrations: IntegrationResolver = field(default_factory=lambda: IntegrationResolver({}))
 
     def cfg(self, key: str, default=None):
         return self.config.get(key, default)
@@ -109,6 +112,24 @@ def resolve_channel_config(channel: Channel) -> dict:
     return base
 
 
+def _build_app_resolver(session: Session) -> IntegrationResolver:
+    """Resolver over app-level (shared) integrations.
+
+    Defensive: if the ``app_integrations`` table does not exist yet (e.g. a
+    context built before migrations on a legacy DB), fall back to an empty
+    resolver so the env-fallback path still works.
+    """
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    from storyfactory.services.app_integration_service import build_app_resolver
+
+    try:
+        return build_app_resolver(session)
+    except (OperationalError, ProgrammingError):
+        session.rollback()
+        return IntegrationResolver({})
+
+
 def build_context(session: Session, channel: Channel) -> ChannelContext:
     settings = get_settings()
     integrations = (
@@ -129,6 +150,7 @@ def build_context(session: Session, channel: Channel) -> ChannelContext:
         is_default=(channel.slug == settings.default_channel_slug),
         config=resolve_channel_config(channel),
         integrations=IntegrationResolver(data),
+        app_integrations=_build_app_resolver(session),
     )
 
 
@@ -163,23 +185,50 @@ def _env_fallback_allowed(ctx: ChannelContext | None) -> bool:
     return ctx is None or ctx.is_default
 
 
+def _is_app_scoped(provider_key: str) -> bool:
+    spec = registry.PROVIDERS.get(provider_key)
+    return spec is not None and spec.scope == registry.SCOPE_APP
+
+
 def resolve_api_key(provider_key: str, fallback_attr: str) -> str:
-    """Resolve a provider API key from the channel, falling back to env."""
+    """Resolve a provider API key.
+
+    - **App-scoped** (shared) providers resolve from the app-level integration
+      store, then fall back to the global env value (always allowed — these are
+      one set of tools for the whole app).
+    - **Channel-scoped** providers (YouTube) resolve from the active channel,
+      with an env fallback only for the default channel (no cross-channel bleed).
+    """
     ctx = _current.get()
     settings = get_settings()
-    fallback = (getattr(settings, fallback_attr, "") or "") if _env_fallback_allowed(ctx) else ""
+    env_value = getattr(settings, fallback_attr, "") or ""
+
+    if _is_app_scoped(provider_key):
+        if ctx is not None:
+            app_secret = ctx.app_integrations.secret(provider_key, "api_key")
+            if app_secret:
+                return app_secret
+        return env_value
+
+    # Channel-scoped (e.g. youtube): keep per-channel isolation.
+    fallback = env_value if _env_fallback_allowed(ctx) else ""
     if ctx is None:
         return fallback
     return ctx.integrations.secret(provider_key, "api_key") or fallback
 
 
 def resolve_model(provider_key: str, fallback_attr: str, explicit: str | None = None) -> str | None:
-    """Resolve a model name: explicit > channel integration config > env."""
+    """Resolve a model name: explicit > integration config > env.
+
+    App-scoped providers read their config from the app-level store; channel-
+    scoped providers read it from the active channel integration.
+    """
     if explicit:
         return explicit
     ctx = _current.get()
     if ctx is not None:
-        model = ctx.integrations.config(provider_key).get("model")
+        resolver = ctx.app_integrations if _is_app_scoped(provider_key) else ctx.integrations
+        model = resolver.config(provider_key).get("model")
         if model:
             return model
     return getattr(get_settings(), fallback_attr, None)

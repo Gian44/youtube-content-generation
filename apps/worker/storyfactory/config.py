@@ -57,6 +57,17 @@ class Settings(BaseSettings):
     long_form_per_day: int = Field(default=1, alias="LONG_FORM_PER_DAY")
     long_form_target_minutes: int = Field(default=10, alias="LONG_FORM_TARGET_MINUTES")
 
+    # Content outputs (per-channel composable shape; app-level defaults here).
+    # A channel toggles which outputs it produces. At least one must be enabled.
+    enable_shorts: bool = Field(default=True, alias="ENABLE_SHORTS")
+    enable_long_form: bool = Field(default=True, alias="ENABLE_LONG_FORM")
+    # Number of long-form stories composed into one long-form video (replaces the
+    # old hardcoded random.randint(2, 5)).
+    long_form_segments_min: int = Field(default=2, alias="LONG_FORM_SEGMENTS_MIN")
+    long_form_segments_max: int = Field(default=5, alias="LONG_FORM_SEGMENTS_MAX")
+    # Whether approved Shorts are also folded into the long-form compilation.
+    long_form_includes_shorts: bool = Field(default=True, alias="LONG_FORM_INCLUDES_SHORTS")
+
     # Topic Selection
     daily_topic_mode: Literal["weighted_random", "round_robin", "manual"] = Field(
         default="weighted_random", alias="DAILY_TOPIC_MODE"
@@ -144,6 +155,11 @@ class Settings(BaseSettings):
             "shorts_per_day_max": self.shorts_per_day_max,
             "long_form_per_day": self.long_form_per_day,
             "long_form_target_minutes": self.long_form_target_minutes,
+            "enable_shorts": self.enable_shorts,
+            "enable_long_form": self.enable_long_form,
+            "long_form_segments_min": self.long_form_segments_min,
+            "long_form_segments_max": self.long_form_segments_max,
+            "long_form_includes_shorts": self.long_form_includes_shorts,
             "daily_topic_mode": self.daily_topic_mode,
             "topic_cooldown_days": self.topic_cooldown_days,
             "max_same_hook_per_week": self.max_same_hook_per_week,

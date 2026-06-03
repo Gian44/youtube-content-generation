@@ -39,8 +39,11 @@ function getWorkerDir(): string {
  * Run `python -m storyfactory <args>` in the worker directory.
  * The worker resolves the same SQLite DB and master key as the dashboard via
  * the inherited environment (SQLITE_PATH / STORYFACTORY_SECRET_KEY) and cwd.
+ *
+ * `input` (optional) is written to the child's stdin. Use this to pass secrets
+ * as a JSON payload so they never appear in the process argument list.
  */
-export function runWorkerCommand(args: string[]): Promise<WorkerResult> {
+export function runWorkerCommand(args: string[], input?: string): Promise<WorkerResult> {
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   const workerDir = getWorkerDir();
 
@@ -69,5 +72,10 @@ export function runWorkerCommand(args: string[]): Promise<WorkerResult> {
     child.on('close', (code) => {
       resolve({ ok: code === 0, code, stdout: stdout.trim(), stderr: stderr.trim() });
     });
+
+    if (input !== undefined) {
+      child.stdin?.write(input);
+    }
+    child.stdin?.end();
   });
 }

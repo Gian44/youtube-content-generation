@@ -24,6 +24,8 @@ export default async function ChannelsPage({ searchParams }: PageProps) {
       description: c.description,
       status: c.status,
       niche: c.niche,
+      contentStyle: c.contentStyle,
+      config: c.config,
       integrations: await getChannelIntegrations(c.id),
     }))
   );

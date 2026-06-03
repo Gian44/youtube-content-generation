@@ -21,6 +21,8 @@ interface Channel {
   description: string | null;
   status: string;
   niche: string | null;
+  contentStyle: string | null;
+  config: Record<string, unknown>;
   integrations: IntegrationStatus[];
 }
 
@@ -39,18 +41,16 @@ interface ProviderMeta {
   isYouTube?: boolean;
 }
 
-// Mirrors the worker integration registry (non-secret descriptors only).
-const PROVIDER_META: ProviderMeta[] = [
-  { key: "text.openai", label: "OpenAI (text)", kind: "text", secretFields: [{ name: "api_key", label: "API key", placeholder: "sk-..." }], configFields: [{ name: "model", label: "Model" }] },
-  { key: "text.gemini", label: "Gemini (text)", kind: "text", secretFields: [{ name: "api_key", label: "API key" }], configFields: [{ name: "model", label: "Model" }] },
-  { key: "tts.openai", label: "OpenAI (TTS)", kind: "tts", secretFields: [{ name: "api_key", label: "API key", placeholder: "sk-..." }], configFields: [] },
-  { key: "tts.gemini", label: "Gemini (TTS)", kind: "tts", secretFields: [{ name: "api_key", label: "API key" }], configFields: [] },
-  { key: "assets.pexels", label: "Pexels", kind: "assets", secretFields: [{ name: "api_key", label: "API key" }], configFields: [] },
-  { key: "assets.pixabay", label: "Pixabay", kind: "assets", secretFields: [{ name: "api_key", label: "API key" }], configFields: [] },
-  { key: "youtube", label: "YouTube", kind: "youtube", secretFields: [], configFields: [], isYouTube: true },
-  { key: "storage.local", label: "Local storage", kind: "storage", secretFields: [], configFields: [{ name: "path", label: "Path" }] },
-  { key: "storage.r2", label: "Cloudflare R2", kind: "storage", secretFields: [{ name: "access_key_id", label: "Access key id" }, { name: "secret_access_key", label: "Secret access key" }], configFields: [{ name: "account_id", label: "Account id" }, { name: "bucket", label: "Bucket" }] },
-];
+// Per-channel providers only. Shared providers (OpenAI, Gemini, Pexels,
+// Pixabay, TTS, storage) are configured once under Settings → Integrations.
+const YOUTUBE_META: ProviderMeta = {
+  key: "youtube",
+  label: "YouTube",
+  kind: "youtube",
+  secretFields: [],
+  configFields: [],
+  isYouTube: true,
+};
 
 const YOUTUBE_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
@@ -236,25 +236,163 @@ function ChannelCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <ContentSettings channel={channel} busy={busy} onUpdate={onUpdate} />
         <div className="grid gap-3 md:grid-cols-2">
-          {PROVIDER_META.map((meta) => {
-            const status = byKey.get(meta.key);
-            return (
-              <IntegrationRow
-                key={meta.key}
-                meta={meta}
-                status={status}
-                busy={busy}
-                connectUrl={connectUrl}
-                onSave={(secrets, config, enabled) =>
-                  onSetSecret({ provider: meta.key, secrets, config, enabled })}
-              />
-            );
-          })}
+          <IntegrationRow
+            meta={YOUTUBE_META}
+            status={byKey.get("youtube")}
+            busy={busy}
+            connectUrl={connectUrl}
+            onSave={(secrets, config, enabled) =>
+              onSetSecret({ provider: "youtube", secrets, config, enabled })}
+          />
+          <div className="rounded-lg border border-border/30 bg-background/40 p-3 text-xs text-muted-foreground">
+            Shared API keys (OpenAI, Gemini, Pexels, Pixabay, TTS, storage) are configured once under{" "}
+            <a href="/settings" className="text-primary underline">Settings → Integrations</a>.
+          </div>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ContentSettings({
+  channel,
+  busy,
+  onUpdate,
+}: {
+  channel: Channel;
+  busy: boolean;
+  onUpdate: (patch: unknown) => Promise<boolean>;
+}) {
+  const cfg = channel.config || {};
+  const num = (key: string, fallback: number): string => {
+    const v = cfg[key];
+    return typeof v === "number" ? String(v) : String(fallback);
+  };
+
+  const [enableShorts, setEnableShorts] = useState(cfg.enable_shorts !== false);
+  const [enableLong, setEnableLong] = useState(cfg.enable_long_form !== false);
+  const [shortsMin, setShortsMin] = useState(num("shorts_per_day_min", 3));
+  const [shortsMax, setShortsMax] = useState(num("shorts_per_day_max", 5));
+  const [segMin, setSegMin] = useState(num("long_form_segments_min", 2));
+  const [segMax, setSegMax] = useState(num("long_form_segments_max", 5));
+  const [targetMin, setTargetMin] = useState(num("long_form_target_minutes", 10));
+  const [includesShorts, setIncludesShorts] = useState(cfg.long_form_includes_shorts !== false);
+  const [niche, setNiche] = useState(channel.niche ?? "");
+  const [contentStyle, setContentStyle] = useState(channel.contentStyle ?? "");
+  const [localErr, setLocalErr] = useState<string | null>(null);
+
+  const atLeastOne = enableShorts || enableLong;
+
+  async function save() {
+    setLocalErr(null);
+    if (!atLeastOne) {
+      setLocalErr("Enable Shorts or long-form — a channel must produce at least one output.");
+      return;
+    }
+    const config: Record<string, unknown> = {
+      enable_shorts: enableShorts,
+      enable_long_form: enableLong,
+    };
+    if (enableShorts) {
+      const mn = Number(shortsMin);
+      const mx = Number(shortsMax);
+      if (mn > mx) {
+        setLocalErr("Shorts per day: min cannot exceed max.");
+        return;
+      }
+      config.shorts_per_day_min = mn;
+      config.shorts_per_day_max = mx;
+    }
+    if (enableLong) {
+      const mn = Number(segMin);
+      const mx = Number(segMax);
+      if (mn > mx) {
+        setLocalErr("Long-form segments: min cannot exceed max.");
+        return;
+      }
+      config.long_form_segments_min = mn;
+      config.long_form_segments_max = mx;
+      config.long_form_target_minutes = Number(targetMin);
+      config.long_form_includes_shorts = includesShorts;
+      config.long_form_per_day = 1; // capped at one long-form video per day for now
+    }
+    await onUpdate({ niche, contentStyle, config });
+  }
+
+  return (
+    <div className="rounded-lg border border-border/30 bg-background/40 p-3">
+      <div className="mb-3 text-sm font-medium">Content</div>
+
+      <div className="mb-3 flex flex-wrap gap-4">
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={enableShorts} onChange={(e) => setEnableShorts(e.target.checked)} />
+          Generate Shorts
+        </label>
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={enableLong} onChange={(e) => setEnableLong(e.target.checked)} />
+          Generate long-form video
+        </label>
+      </div>
+
+      {enableShorts && (
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <div className="w-28">
+            <label className="mb-1 block text-[10px] text-muted-foreground">Shorts/day min</label>
+            <Input type="number" min={1} max={10} value={shortsMin}
+              onChange={(e) => setShortsMin(e.target.value)} className="text-xs" />
+          </div>
+          <div className="w-28">
+            <label className="mb-1 block text-[10px] text-muted-foreground">Shorts/day max</label>
+            <Input type="number" min={1} max={10} value={shortsMax}
+              onChange={(e) => setShortsMax(e.target.value)} className="text-xs" />
+          </div>
+        </div>
+      )}
+
+      {enableLong && (
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <div className="w-28">
+            <label className="mb-1 block text-[10px] text-muted-foreground">Segments min</label>
+            <Input type="number" min={1} max={20} value={segMin}
+              onChange={(e) => setSegMin(e.target.value)} className="text-xs" />
+          </div>
+          <div className="w-28">
+            <label className="mb-1 block text-[10px] text-muted-foreground">Segments max</label>
+            <Input type="number" min={1} max={20} value={segMax}
+              onChange={(e) => setSegMax(e.target.value)} className="text-xs" />
+          </div>
+          <div className="w-32">
+            <label className="mb-1 block text-[10px] text-muted-foreground">Target minutes</label>
+            <Input type="number" min={1} max={60} value={targetMin}
+              onChange={(e) => setTargetMin(e.target.value)} className="text-xs" />
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={includesShorts} onChange={(e) => setIncludesShorts(e.target.checked)} />
+            Include Shorts in long-form
+          </label>
+        </div>
+      )}
+
+      <div className="mb-3 grid gap-3 md:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-[10px] text-muted-foreground">Niche</label>
+          <Input value={niche} onChange={(e) => setNiche(e.target.value)}
+            placeholder="e.g. relationship drama" className="text-xs" />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] text-muted-foreground">Content style</label>
+          <Input value={contentStyle} onChange={(e) => setContentStyle(e.target.value)}
+            placeholder="e.g. 100+ random facts, calm narration for sleep" className="text-xs" />
+        </div>
+      </div>
+
+      {localErr && <p className="mb-2 text-xs text-red-400">{localErr}</p>}
+
+      <Button size="sm" disabled={busy} onClick={save}>Save content settings</Button>
+    </div>
   );
 }
 

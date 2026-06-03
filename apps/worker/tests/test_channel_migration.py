@@ -53,29 +53,39 @@ def test_migration_is_idempotent(isolated_env, monkeypatch):
         session.close()
 
 
-def test_integrations_enabled_by_env_presence(isolated_env, monkeypatch):
+def test_shared_integrations_live_at_app_level_youtube_per_channel(isolated_env, monkeypatch):
+    """Shared providers are stored once at app level; only YouTube is per-channel."""
     _set_env(monkeypatch)
     from storyfactory.db.migrations import run_migrations
     from storyfactory.db.engine import get_session
     from storyfactory.db.models import ChannelIntegration
+    from storyfactory.services.app_integration_service import (
+        app_integration_status,
+        get_app_integration,
+    )
     from storyfactory import crypto
 
     run_migrations()
     session = get_session()
     try:
-        by_key = {i.provider_key: i for i in session.query(ChannelIntegration).all()}
-        # Present, real keys -> enabled
-        assert by_key["text.openai"].enabled is True
-        assert by_key["assets.pexels"].enabled is True
-        assert by_key["youtube"].enabled is True
-        assert by_key["storage.local"].enabled is True
-        # Placeholder keys -> disabled
-        assert by_key["text.gemini"].enabled is False
-        assert by_key["assets.pixabay"].enabled is False
-        # Secrets are stored encrypted and decrypt back to the real value
-        secrets = crypto.decrypt_secrets(by_key["text.openai"].secrets_encrypted)
-        assert secrets["api_key"] == "sk-test-real-openai"
-        # Placeholder secret was NOT stored
-        assert crypto.decrypt_secrets(by_key["text.gemini"].secrets_encrypted) == {}
+        status = {s["provider_key"]: s for s in app_integration_status(session)}
+        # Present, real keys -> enabled at app level
+        assert status["text.openai"]["enabled"] is True
+        assert status["assets.pexels"]["enabled"] is True
+        assert status["storage.local"]["enabled"] is True
+        # Placeholder keys -> disabled (and never persisted as junk rows)
+        assert status["text.gemini"]["enabled"] is False
+        assert status["assets.pixabay"]["enabled"] is False
+        assert get_app_integration(session, "text.gemini") is None
+
+        # The configured secret is stored encrypted and decrypts to the real value.
+        row = get_app_integration(session, "text.openai")
+        assert crypto.decrypt_secrets(row.secrets_encrypted)["api_key"] == "sk-test-real-openai"
+
+        # YouTube stays per-channel; shared providers are NOT in channel_integrations.
+        ch_keys = {i.provider_key for i in session.query(ChannelIntegration).all()}
+        assert "youtube" in ch_keys
+        assert "text.openai" not in ch_keys
+        assert "assets.pexels" not in ch_keys
     finally:
         session.close()

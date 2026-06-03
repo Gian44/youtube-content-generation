@@ -403,6 +403,26 @@ export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 export const INTEGRATION_STATUSES = ['unknown', 'ok', 'error', 'missing'] as const;
 export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
 
+// Where a provider's credentials live: 'app' = shared across all channels
+// (OpenAI/Gemini/Pexels/Pixabay/TTS/storage); 'channel' = per-channel (YouTube).
+export const INTEGRATION_SCOPES = ['app', 'channel'] as const;
+export type IntegrationScope = (typeof INTEGRATION_SCOPES)[number];
+
+/** Providers whose credentials are configured once, app-wide. */
+export const APP_SCOPED_PROVIDERS: readonly IntegrationProvider[] = [
+  'text.openai',
+  'text.gemini',
+  'tts.openai',
+  'tts.gemini',
+  'assets.pexels',
+  'assets.pixabay',
+  'storage.local',
+  'storage.r2',
+] as const;
+
+/** Providers configured per-channel (a different account/token per channel). */
+export const CHANNEL_SCOPED_PROVIDERS: readonly IntegrationProvider[] = ['youtube'] as const;
+
 /**
  * Per-channel content config overrides. Keys mirror the worker's canonical
  * snake_case representation (stored as a JSON blob); any field omitted inherits
@@ -411,10 +431,21 @@ export type IntegrationStatus = (typeof INTEGRATION_STATUSES)[number];
  */
 export const ChannelConfigSchema = z
   .object({
+    // Content outputs (composable per-channel shape). A channel produces Shorts,
+    // a long-form video, or both. At least one must stay enabled.
+    enable_shorts: z.boolean(),
+    enable_long_form: z.boolean(),
+    // Shorts are turned off via enable_shorts=false, so when present the count
+    // is at least 1 (a 0 quota with shorts enabled would silently make nothing).
     shorts_per_day_min: z.number().int().min(1).max(10),
     shorts_per_day_max: z.number().int().min(1).max(10),
     long_form_per_day: z.number().int().min(0).max(5),
-    long_form_target_minutes: z.number().min(5).max(30),
+    long_form_target_minutes: z.number().min(1).max(60),
+    // Number of long-form stories composed into one long-form video.
+    long_form_segments_min: z.number().int().min(1).max(20),
+    long_form_segments_max: z.number().int().min(1).max(20),
+    // Whether approved Shorts are also folded into the long-form compilation.
+    long_form_includes_shorts: z.boolean(),
     daily_topic_mode: z.enum(['weighted_random', 'round_robin', 'manual']),
     topic_cooldown_days: z.number().int().min(0),
     max_same_hook_per_week: z.number().int().min(1),
@@ -430,7 +461,38 @@ export const ChannelConfigSchema = z
     category_hints: z.record(z.enum(STORY_CATEGORIES), z.string()),
     voice_personas: z.array(z.enum(VOICE_PERSONAS)),
   })
-  .partial();
+  .partial()
+  .superRefine((cfg, ctx) => {
+    if (cfg.enable_shorts === false && cfg.enable_long_form === false) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A channel must produce at least one output (Shorts or long-form).',
+        path: ['enable_shorts'],
+      });
+    }
+    if (
+      cfg.shorts_per_day_min != null &&
+      cfg.shorts_per_day_max != null &&
+      cfg.shorts_per_day_min > cfg.shorts_per_day_max
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'shorts_per_day_min cannot exceed shorts_per_day_max.',
+        path: ['shorts_per_day_min'],
+      });
+    }
+    if (
+      cfg.long_form_segments_min != null &&
+      cfg.long_form_segments_max != null &&
+      cfg.long_form_segments_min > cfg.long_form_segments_max
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'long_form_segments_min cannot exceed long_form_segments_max.',
+        path: ['long_form_segments_min'],
+      });
+    }
+  });
 
 export type ChannelConfig = z.infer<typeof ChannelConfigSchema>;
 
@@ -465,11 +527,28 @@ export const ChannelIntegrationSchema = z.object({
 
 export type ChannelIntegration = z.infer<typeof ChannelIntegrationSchema>;
 
+/** App-level (shared) integration. Mirrors ChannelIntegration without channelId. */
+export const AppIntegrationSchema = z.object({
+  id: z.string().uuid(),
+  providerKey: z.enum(INTEGRATION_PROVIDERS),
+  enabled: z.boolean(),
+  // Non-secret config only. Secrets are never sent to the client — only a
+  // masked/"configured" status is exposed.
+  config: z.record(z.string(), z.unknown()).default({}),
+  status: z.enum(INTEGRATION_STATUSES),
+  statusDetail: z.string().optional(),
+  lastCheckedAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime(),
+});
+
+export type AppIntegration = z.infer<typeof AppIntegrationSchema>;
+
 /** Declarative description of a provider, mirrored from the worker registry. */
 export interface IntegrationProviderSpec {
   key: IntegrationProvider;
   kind: IntegrationKind;
   label: string;
+  scope: IntegrationScope;
   requiredSecrets: string[];
   optionalSecrets: string[];
   configFields: string[];

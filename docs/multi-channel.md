@@ -13,22 +13,54 @@ pipeline (story → TTS → captions → assets → render → upload → analyt
   identity (name, slug, status), a niche/content style, a per-channel `config`
   (quotas, category weights, TTS ratios, privacy, disclosure, caption style…),
   and a set of enabled **integrations**.
-- **Integration** — a provider a channel uses: `text.openai`, `text.gemini`,
-  `tts.openai`, `tts.gemini`, `assets.pexels`, `assets.pixabay`, `youtube`,
-  `storage.local`, `storage.r2`. Each channel enables only what it needs and
-  supplies its own credentials.
+- **Integration** — a provider used by the pipeline. Integrations have a **scope**:
+  - **Shared (app-level):** `text.openai`, `text.gemini`, `tts.openai`,
+    `tts.gemini`, `assets.pexels`, `assets.pixabay`, `storage.local`, `storage.r2`.
+    Configured **once** for the whole app (Settings → Integrations); every channel
+    uses the same credentials.
+  - **Per-channel:** `youtube` — each channel connects its own account and stores
+    its own encrypted refresh token.
+- **Content profile** — each channel composes which outputs it produces (Shorts,
+  long-form, or both) and how many, plus niche/style and prompt overrides. See
+  [Content profiles](#content-profiles) below.
 - **Inheritance** — anything a channel does not override falls back to the
   app-level defaults from `.env`. Prompts are global by default; a channel may
   override any prompt by name.
 
 ## App-level vs per-channel
 
-| App-level (`.env`) | Per-channel (database) |
+| App-level | Per-channel (database) |
 |---|---|
-| `DATABASE_URL` / `SQLITE_PATH`, storage infra | Which integrations are enabled |
-| `STORYFACTORY_SECRET_KEY` (master key) | API keys for each provider (encrypted) |
-| Shared Google Cloud OAuth `YOUTUBE_CLIENT_ID` / `_SECRET` | YouTube refresh token per channel |
-| Default values for quotas/ratios/privacy/etc. | Overrides for quotas, category weights, prompts, niche |
+| `DATABASE_URL` / `SQLITE_PATH`, storage infra | YouTube account (encrypted refresh token) |
+| `STORYFACTORY_SECRET_KEY` (master key) | Content profile (Shorts / long-form / counts) |
+| **Shared provider keys** (OpenAI/Gemini/Pexels/Pixabay/TTS/storage) — Settings → Integrations, encrypted | Overrides for quotas, category weights, prompts, niche, content style |
+| Shared Google Cloud OAuth `YOUTUBE_CLIENT_ID` / `_SECRET` | — |
+| Default values for quotas/ratios/privacy/etc. | — |
+
+## Content profiles
+
+Every channel decides what it generates — there is no fixed template:
+
+| Goal | Configuration |
+|------|---------------|
+| **Shorts-only** drama (e.g. 1/day) | Shorts ✓, long-form ✗, shorts/day min=max=1 |
+| **Long-form only** (e.g. "100+ facts to sleep to") | Shorts ✗, long-form ✓, niche + a per-channel long-form prompt override, calm voice |
+| **Classic mix** (default) | Shorts ✓ (3–5/day) + one long-form compilation ✓ |
+
+Set these under the dashboard **Channels → Content** section, or via the
+`config` JSON on the channel. The relevant keys (all optional; absent inherits
+the app-level default):
+
+- `enable_shorts` / `enable_long_form` (booleans; at least one must be true)
+- `shorts_per_day_min` / `shorts_per_day_max`
+- `long_form_per_day` (also acts as an off-switch when `0`; currently capped at one long-form video/day)
+- `long_form_segments_min` / `long_form_segments_max` (stories composed into the long-form video)
+- `long_form_target_minutes`, `long_form_includes_shorts`
+
+The pipeline skips story generation, TTS, rendering, and upload for any disabled
+output, so a shorts-only channel never renders or uploads a long-form video (and
+vice-versa). The *kind* of content (drama vs facts vs calm narration) comes from
+`niche` / `content_style` and per-channel prompt overrides.
 
 ## Secrets & encryption
 
@@ -60,36 +92,48 @@ it — no re-setup required:
 npm run db:migrate
 ```
 
-This creates a channel (slug `default`, name from `CHANNEL_NAME`), imports the
-keys present in `.env` as that channel's integrations (encrypted), and adds
-`channel_id` to all operational tables.
+This creates a channel (slug `default`, name from `CHANNEL_NAME`), seeds the
+**shared app-level integrations** from the keys present in `.env` (encrypted),
+imports the default channel's YouTube token, and adds `channel_id` to all
+operational tables.
+
+If you are upgrading an install that previously stored shared provider keys
+per channel, the `0004_app_integrations` migration consolidates them to the app
+level: the **default channel's** value for each shared provider is kept as the
+canonical one, and any *differing* value on another channel is logged (not
+silently lost) so you can re-enter it under Settings → Integrations if it was
+intentional. YouTube tokens stay per channel.
 
 ## Managing channels
+
+Shared provider keys (OpenAI, Gemini, Pexels, Pixabay, TTS, storage) are entered
+once under the dashboard **Settings → Integrations** page — not per channel.
 
 From the dashboard **Channels** page you can:
 
 - Create / duplicate / pause / delete channels
-- Set each channel's niche and content config
-- Enable integrations and enter per-channel API keys (stored encrypted)
+- Set each channel's **content profile** (Shorts / long-form / counts), niche, and style
 - **Connect a YouTube account per channel** (the OAuth `state` carries the
   channel id; the token is stored encrypted for that channel only)
 
 The same operations are available from the CLI:
 
 ```bash
-# Create a channel and import keys from the current .env
-npm run worker:channel -- create --name "Horror Nights" --slug horror --niche "scary stories" --import-env
+# Create a channel (shared keys come from app-level Integrations, not per channel)
+npm run worker:channel -- create --name "Horror Nights" --slug horror --niche "scary stories"
 
 # List channels
 npm run worker:channel -- list
 
-# Set a per-channel API key (encrypted)
-npm run worker:channel -- set-secret --channel horror --provider text.openai --secret api_key=sk-... --enable
+# Configure SHARED provider keys once at app level (used by every channel).
+# Secrets are read from stdin as JSON so they never appear in the process args.
+echo '{"api_key":"sk-..."}' | npm run worker:settings -- set-secret --provider text.openai --enable --secrets-stdin
+npm run worker:settings -- status            # shared integration status (no secret values)
 
 # Per-channel prompt override (falls back to the global prompt otherwise)
 npm run worker:channel -- set-prompt --channel horror --name short_story_generation --template-file ./horror_prompt.txt
 
-# Show per-channel integration status (no secret values)
+# Show per-channel integration status (just YouTube; no secret values)
 npm run worker:channel -- status --channel horror
 
 # Pause / activate / duplicate / delete
