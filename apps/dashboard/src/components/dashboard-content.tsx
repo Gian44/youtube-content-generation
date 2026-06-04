@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { QuickActions } from "@/components/quick-actions";
+import { PipelineStatus } from "@/components/pipeline-status";
 
 const ALL_DASHBOARD_SLICES = ["metrics", "recentBatches", "pipelineStatus", "analytics"] as const;
 type DashboardSlice = (typeof ALL_DASHBOARD_SLICES)[number];
@@ -180,41 +181,6 @@ export function DashboardContent({ initialData }: DashboardContentProps) {
     },
   ];
 
-  const getStepStatus = (stepName: string, index: number) => {
-    const statusPriority: Record<string, number> = {
-      "pending": 0,
-      "topic_selected": 1,
-      "stories_generated": 2,
-      "policy_checked": 3,
-      "tts_complete": 4,
-      "captions_complete": 5,
-      "assets_collected": 6,
-      "rendering": 7,
-      "rendered": 8,
-      "uploading": 9,
-      "uploaded": 10,
-      "completed": 11,
-      "failed": -1,
-      "cancelled": -1,
-    };
-
-    const currentPriority = statusPriority[latestStatus] || 0;
-    const stepThresholds = [1, 2, 3, 4, 5, 6, 8, 10, 11];
-    const threshold = stepThresholds[index];
-
-    if (latestStatus === "failed" || latestStatus === "cancelled") {
-      return "pending";
-    }
-
-    if (currentPriority >= threshold) {
-      return "done";
-    } else if (currentPriority === threshold - 1 || (index === 6 && latestStatus === "rendering") || (index === 7 && latestStatus === "uploading")) {
-      return "active";
-    } else {
-      return "pending";
-    }
-  };
-
   const maxViews = topPerformers.length > 0 ? Math.max(...topPerformers.map(p => p.views)) : 1;
 
   return (
@@ -335,45 +301,7 @@ export function DashboardContent({ initialData }: DashboardContentProps) {
       </div>
 
       {/* Pipeline Status */}
-      <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-lg">Pipeline Status</CardTitle>
-          <CardDescription>Current daily pipeline progress (Latest batch status: <span className="font-mono text-primary">{latestStatus}</span>)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-center gap-4">
-            {[
-              { step: "Topic", status: getStepStatus("Topic", 0) },
-              { step: "Stories", status: getStepStatus("Stories", 1) },
-              { step: "Policy", status: getStepStatus("Policy", 2) },
-              { step: "TTS", status: getStepStatus("TTS", 3) },
-              { step: "Captions", status: getStepStatus("Captions", 4) },
-              { step: "Assets", status: getStepStatus("Assets", 5) },
-              { step: "Render", status: getStepStatus("Render", 6) },
-              { step: "Upload", status: getStepStatus("Upload", 7) },
-              { step: "Analytics", status: getStepStatus("Analytics", 8) },
-            ].map((step, i) => (
-              <div key={step.step} className="flex items-center gap-2">
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                  step.status === "done"
-                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                    : step.status === "active"
-                      ? "bg-primary/20 text-primary border border-primary/30 animate-pulse"
-                      : "bg-muted text-muted-foreground border border-border"
-                }`}>
-                  {step.status === "done" ? "✓" : i + 1}
-                </div>
-                <span className={`text-xs hidden lg:block ${step.status === "active" ? "text-primary font-medium" : "text-muted-foreground"}`}>
-                  {step.step}
-                </span>
-                {i < 8 && (
-                  <div className={`h-px w-6 ${step.status === "done" ? "bg-emerald-500/50" : "bg-border"}`} />
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <PipelineStatus status={latestStatus} latestBatch={recentBatches[0] ?? null} />
 
       {/* Quick Actions */}
       <QuickActions />

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
-interface ChannelOption {
+export interface ChannelSwitcherOption {
   id: string;
   slug: string;
   name: string;
@@ -16,33 +16,66 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+function resolveActiveId(
+  channels: ChannelSwitcherOption[],
+  preferredId?: string
+): string {
+  if (channels.length === 0) return "";
+
+  if (preferredId) {
+    const match = channels.find((c) => c.id === preferredId);
+    if (match) return match.id;
+  }
+
+  const cookie = readCookie("sf_channel");
+  const fromCookie = channels.find((c) => c.id === cookie || c.slug === cookie);
+  if (fromCookie) return fromCookie.id;
+
+  const def = channels.find((c) => c.slug === "default");
+  return (def || channels[0]).id;
+}
+
+function formatChannelLabel(channel: ChannelSwitcherOption): string {
+  return channel.status !== "active" ? `${channel.name} (paused)` : channel.name;
+}
+
+interface ChannelSwitcherProps {
+  channels: ChannelSwitcherOption[];
+  activeChannelId: string;
+}
+
 /**
  * Global active-channel selector. Persists the choice in the `sf_channel`
  * cookie and refreshes server components so all data views re-scope.
  */
-export function ChannelSwitcher() {
+export function ChannelSwitcher({ channels, activeChannelId }: ChannelSwitcherProps) {
   const router = useRouter();
-  const [channels, setChannels] = useState<ChannelOption[]>([]);
-  const [active, setActive] = useState<string>("");
+  const pathname = usePathname();
+  const [channelList, setChannelList] = useState(channels);
+  const [active, setActive] = useState(() => resolveActiveId(channels, activeChannelId));
+
+  useEffect(() => {
+    setChannelList(channels);
+    setActive(resolveActiveId(channels, activeChannelId));
+  }, [channels, activeChannelId]);
 
   useEffect(() => {
     let cancelled = false;
+
     fetch("/api/channels")
       .then((r) => r.json())
       .then((d) => {
         if (cancelled || !d.success) return;
-        const chs: ChannelOption[] = d.channels || [];
-        setChannels(chs);
-        const cookie = readCookie("sf_channel");
-        const match = chs.find((c) => c.id === cookie || c.slug === cookie);
-        const def = chs.find((c) => c.slug === "default");
-        setActive((match || def || chs[0])?.id ?? "");
+        const chs: ChannelSwitcherOption[] = d.channels || [];
+        setChannelList(chs);
+        setActive(resolveActiveId(chs, readCookie("sf_channel") || activeChannelId || undefined));
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname, activeChannelId]);
 
   const handleChange = (id: string) => {
     setActive(id);
@@ -50,7 +83,11 @@ export function ChannelSwitcher() {
     router.refresh();
   };
 
-  if (channels.length <= 0) return null;
+  if (channelList.length <= 0) return null;
+
+  const activeChannel =
+    channelList.find((c) => c.id === active) ||
+    channelList.find((c) => c.id === activeChannelId);
 
   return (
     <div className="border-b border-border px-4 py-3">
@@ -58,15 +95,14 @@ export function ChannelSwitcher() {
         Active Channel
       </label>
       <select
-        value={active}
+        value={activeChannel?.id ?? ""}
         onChange={(e) => handleChange(e.target.value)}
         className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-        aria-label="Select active channel"
+        aria-label={`Select active channel. Current channel: ${activeChannel?.name ?? "none"}`}
       >
-        {channels.map((c) => (
+        {channelList.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.name}
-            {c.status !== "active" ? " (paused)" : ""}
+            {formatChannelLabel(c)}
           </option>
         ))}
       </select>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
-import { ChannelSwitcher } from "@/components/channel-switcher";
+import { ChannelSwitcher, type ChannelSwitcherOption } from "@/components/channel-switcher";
 
 const navigation = [
   {
@@ -84,7 +84,12 @@ function useSchedulerStatus() {
   return status;
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  channels: ChannelSwitcherOption[];
+  activeChannelId: string;
+}
+
+export function Sidebar({ channels, activeChannelId }: SidebarProps) {
   const pathname = usePathname();
   const scheduler = useSchedulerStatus();
   const [mounted, setMounted] = useState(false);
@@ -111,7 +116,7 @@ export function Sidebar() {
       </div>
 
       {/* Active channel switcher */}
-      <ChannelSwitcher />
+      <ChannelSwitcher channels={channels} activeChannelId={activeChannelId} />
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">

@@ -1,17 +1,20 @@
-"use client";
+import { DashboardFrame } from "@/components/dashboard-frame";
+import { getActiveChannelId, getChannels } from "@/lib/channels";
 
-import { Sidebar } from "@/components/sidebar";
-import { TooltipProvider } from "@/components/ui/tooltip";
+export async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const channels = await getChannels();
+  const activeChannelId = (await getActiveChannelId()) ?? "";
 
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const channelOptions = channels.map((c) => ({
+    id: c.id,
+    slug: c.slug,
+    name: c.name,
+    status: c.status,
+  }));
+
   return (
-    <TooltipProvider>
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <main className="flex-1 pl-64">
-          <div className="p-6 lg:p-8">{children}</div>
-        </main>
-      </div>
-    </TooltipProvider>
+    <DashboardFrame channels={channelOptions} activeChannelId={activeChannelId}>
+      {children}
+    </DashboardFrame>
   );
 }
