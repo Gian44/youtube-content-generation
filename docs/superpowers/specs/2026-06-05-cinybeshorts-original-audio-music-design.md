@@ -23,8 +23,9 @@ on-screen subtitles of the spoken dialogue, and a subtle music bed
 
 | Question | Decision |
 |---|---|
-| Captions | **Burned-in subtitles transcribed from the clip's real dialogue** (Whisper). |
+| Captions | **Burned-in subtitles transcribed from the clip's real dialogue** via OpenAI **`whisper-1`** (the only OpenAI model that returns word-level timestamps; `gpt-4o-transcribe` does not). |
 | Music source | **Jamendo API** (free `client_id`, instrumental Creative Commons tracks). Pixabay was considered but has **no music API** — images/videos only. |
+| Music mood | **Derived from the scene** — inferred from the transcribed dialogue, then mapped to Jamendo search tags. Falls back to a config default mood. |
 | Music level | **Subtle (~10%)** under the original audio. |
 | Scope | **CinybeShorts only**, via a new `audio_mode` config flag. Other recap channels keep the existing AI-narration behavior. |
 | Subtitle fallback | If transcription is unavailable/fails, **render the Short without subtitles** — never block it. |
@@ -77,7 +78,7 @@ Add to `RECAP_DEFAULTS` (`content_defaults.py`):
 "audio_mode": "tts_narration",        # "tts_narration" | "original_audio"
 "music_enabled": True,
 "music_volume": 0.10,                 # ~10% — subtle bed under original audio
-"music_query": "cinematic ambient",   # mood seed for the Jamendo search
+"music_mood_fallback": "cinematic ambient",  # used when scene mood can't be inferred
 "music_provider": "jamendo",
 "music_allow_noncommercial": False,   # exclude CC-NC/ND tracks (safe to monetize)
 "subtitles_from_dialogue": True,      # transcribe real audio → burned subtitles
@@ -115,24 +116,35 @@ When `audio_mode == "original_audio"`:
 2. **Skip `generate_tts`** entirely.
 3. **Cut clip** with `keep_audio=True`.
 4. **Subtitles:** if `subtitles_from_dialogue` and a transcription key exists,
-   transcribe the cut clip's audio and build the word-highlight ASS (see §5).
-   On any failure → no captions, continue.
-5. **Music:** fetch one track (see §4). On any failure → original audio only.
-6. **Render** via `render_recap_short` (see §6).
-7. **Ledger** the segment `rendered` exactly as today.
+   transcribe the cut clip's audio (`whisper-1`, word timestamps) and build the
+   word-highlight ASS (see §5). On any failure → no captions, continue. Keep the
+   transcript text in memory for the next step.
+5. **Scene mood:** infer a short music-search mood from the transcript text via a
+   lightweight LLM call (`infer_music_mood`). No transcript / no key / error →
+   fall back to `music_mood_fallback`. Not persisted (no schema change).
+6. **Music:** fetch one track for that mood (see §4). On any failure → original
+   audio only.
+7. **Render** via `render_recap_short` (see §6).
+8. **Ledger** the segment `rendered` exactly as today.
 
 A small helper (e.g. `_produce_short_original_audio`) keeps the branch readable;
 shared steps (story, policy, ledger) are reused, not duplicated.
 
 ### 4. Music service (Jamendo) — `services/music_service.py` (new)
 
-`fetch_music_track(query: str, min_duration: float) -> Asset | None`:
+`fetch_music_track(mood: str, min_duration: float) -> Asset | None`
+(`mood` is the scene-derived search phrase from §3.5):
 
 - `GET https://api.jamendo.com/v3.0/tracks/` with:
   `client_id`, `format=json`, `limit` (small pool), `vocalinstrumental=instrumental`,
-  `audioformat=mp32`, `include=licenses+musicinfo`, `fuzzytags=<query terms>`,
+  `audioformat=mp32`, `include=licenses+musicinfo`, `fuzzytags=<mood terms>`,
   `order=popularity_total`, plus a randomized pick from the returned pool for
   variety across Shorts.
+- `infer_music_mood(transcript: str, fallback: str) -> str` lives alongside it:
+  a small LLM call returning 2–4 mood/genre words (e.g. "tense suspenseful",
+  "melancholic piano", "triumphant orchestral"); returns `fallback` on no
+  text / no key / error.
+- `resolve_api_key("assets.jamendo", "jamendo_client_id")` for the key.
 - **License handling (important):** Jamendo tracks carry *different* CC licenses
   (CC-BY, CC-BY-SA, CC-BY-NC, CC-BY-ND). NC ("non-commercial") and ND
   ("no-derivatives") are unsafe for a channel that may monetize. Use
@@ -160,8 +172,10 @@ Add a transcription-from-audio entry point that reuses the existing machinery:
 
 - New `generate_captions_from_audio(story, audio_path, style="word_highlight")`
   (or refactor `generate_captions` to accept an audio path + optional TTS job).
-- Reuse `_openai_transcription(audio_path)` — it already returns Whisper
-  word-level timings — pointed at the **clip audio** instead of TTS output.
+- Reuse `_openai_transcription(audio_path)` — it already calls **`whisper-1`**
+  with `verbose_json` + `timestamp_granularities=["word"]` and returns word-level
+  timings — pointed at the **clip audio** instead of TTS output. (`whisper-1` is
+  required here: `gpt-4o-transcribe`/`-mini` do not return word timestamps.)
 - Reuse `_generate_word_highlight_ass` unchanged.
 - No transcription key (`resolve_api_key("text.openai", ...)` empty) or any
   error → return no caption job; the render proceeds without burned subtitles.
@@ -229,9 +243,10 @@ unchanged.
 |---|---|
 | `content_defaults.py` | New `RECAP_DEFAULTS` keys (§1). |
 | `config.py` | `jamendo_client_id` setting; include in `validate_api_keys`. |
+| `integrations/registry.py` | Register `assets.jamendo` (app-scoped, `api_key`←`JAMENDO_CLIENT_ID`). |
 | `.env.example` | `JAMENDO_CLIENT_ID=` + comment. |
 | `services/recap_service.py` | `cut_clip(keep_audio=...)`. |
-| `services/music_service.py` | **New** — Jamendo fetch/download/cache. |
+| `services/music_service.py` | **New** — `infer_music_mood` + Jamendo fetch/download/cache. |
 | `services/asset_collector.py` | `download_asset` audio extension; `validate_asset_license` accepts `jamendo`. |
 | `services/caption_service.py` | Transcription-from-audio caption entry point. |
 | `services/renderer.py` | **New** `render_recap_short` (clip-native A/V + music). |
