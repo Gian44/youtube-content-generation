@@ -1,6 +1,11 @@
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { ChannelsManager } from "@/components/channels-manager";
-import { getChannels, getChannelIntegrations } from "@/lib/channels";
+import {
+  getChannels,
+  getChannelIntegrations,
+  getRecapStatus,
+  getSleepCursor,
+} from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 
@@ -17,17 +22,27 @@ export default async function ChannelsPage({ searchParams }: PageProps) {
 
   const channels = await getChannels();
   const withIntegrations = await Promise.all(
-    channels.map(async (c) => ({
-      id: c.id,
-      slug: c.slug,
-      name: c.name,
-      description: c.description,
-      status: c.status,
-      niche: c.niche,
-      contentStyle: c.contentStyle,
-      config: c.config,
-      integrations: await getChannelIntegrations(c.id),
-    }))
+    channels.map(async (c) => {
+      const mode = (c.config?.pipeline_mode as string) || "fiction";
+      const [integrations, recapStatus, sleepCursor] = await Promise.all([
+        getChannelIntegrations(c.id),
+        mode === "recap_shorts" ? getRecapStatus(c.id) : Promise.resolve(null),
+        mode === "sleep_facts" ? getSleepCursor(c.id) : Promise.resolve(null),
+      ]);
+      return {
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        description: c.description,
+        status: c.status,
+        niche: c.niche,
+        contentStyle: c.contentStyle,
+        config: c.config,
+        integrations,
+        recapStatus,
+        sleepCursor,
+      };
+    })
   );
 
   const youtubeClientId = process.env.YOUTUBE_CLIENT_ID || "";

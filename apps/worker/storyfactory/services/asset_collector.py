@@ -7,6 +7,7 @@ that are contextually relevant to its content and category.
 import hashlib
 import os
 import random
+import time
 import uuid
 from pathlib import Path
 
@@ -114,6 +115,14 @@ FALLBACK_QUERIES = [
     "space nebula stars", "underwater coral reef", "clouds sky timelapse",
     "geometric patterns motion", "particle effects dark", "rain on glass",
 ]
+
+# Pagination / backoff for large image pulls (sleep slideshows want 100+ images).
+_PEXELS_PER_PAGE = 80          # Pexels hard max per page
+_PIXABAY_PER_PAGE = 100        # Pixabay allows 3..200
+_PIXABAY_MIN_PER_PAGE = 3      # Pixabay rejects per_page < 3
+_MAX_PAGES = 25                # safety bound so a query can't loop forever
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+_BACKOFF_SECONDS = (1.0, 3.0)  # waits before each retry of a rate-limited request
 
 # Blocked query terms - avoid copyrighted/branded content
 BLOCKED_TERMS = [
@@ -293,6 +302,60 @@ def _get_story_search_queries(story, count: int = 3) -> list[str]:
     )
 
 
+def collect_topic_assets(
+    queries: list[str],
+    count: int = 8,
+    asset_type: str = "video",
+) -> list[Asset]:
+    """Collect background assets that match an explicit list of topic queries.
+
+    Used by topic-driven pipelines (e.g. Sleep On Facts) where the on-screen
+    visuals must match the script's subject rather than a drama category. Each
+    query is sanitized against ``BLOCKED_TERMS`` by ``collect_background_assets``.
+    Falls back to generic atmospheric footage if nothing matches.
+    """
+    clean_queries = [str(q).strip() for q in (queries or []) if str(q).strip()]
+    if not clean_queries:
+        clean_queries = [random.choice(FALLBACK_QUERIES)]
+
+    # Spread the target across the queries (ceil), so ~150 images come from a
+    # diverse set of on-topic searches rather than one over-fetched query.
+    per_query = max(3, -(-count // len(clean_queries)))
+
+    all_assets: list[Asset] = []
+    seen_urls: set[str] = set()
+    for query in clean_queries:
+        if len(all_assets) >= count:
+            break
+        remaining = count - len(all_assets)
+        batch = collect_background_assets(
+            query=query, count=min(per_query, remaining), asset_type=asset_type
+        )
+        for asset in batch:
+            url = getattr(asset, "original_url", None)
+            if url and url in seen_urls:
+                continue  # de-duplicate across queries
+            if url:
+                seen_urls.add(url)
+            all_assets.append(asset)
+            if len(all_assets) >= count:
+                break
+
+    if len(all_assets) < 1:
+        fallback = random.choice(FALLBACK_QUERIES)
+        all_assets.extend(
+            collect_background_assets(query=fallback, count=count, asset_type=asset_type)
+        )
+
+    log.info(
+        "topic_assets_collected",
+        queries=clean_queries[:5],
+        requested=count,
+        count=len(all_assets),
+    )
+    return all_assets
+
+
 def _get_category_queries(category: str, count: int = 3) -> list[str]:
     """Get search queries based on the story category."""
     queries = CATEGORY_SEARCH_QUERIES.get(category, FALLBACK_QUERIES)
@@ -368,92 +431,127 @@ def collect_background_assets(
     return assets
 
 
+def _get_with_backoff(client, url: str, *, params: dict, headers: dict | None = None):
+    """GET with a small retry on rate-limit/transient errors. Returns the response
+    (possibly non-200) or ``None`` on a transport error."""
+    for attempt in range(len(_BACKOFF_SECONDS) + 1):
+        try:
+            response = client.get(url, params=params, headers=headers, timeout=30)
+        except Exception as e:  # noqa: BLE001 — transport error → caller treats as no data
+            log.warning("asset_http_error", url=url, error=str(e))
+            return None
+        if response.status_code in _RETRYABLE_STATUS and attempt < len(_BACKOFF_SECONDS):
+            time.sleep(_BACKOFF_SECONDS[attempt])
+            continue
+        return response
+    return response
+
+
 def _collect_from_pexels(query: str, count: int, asset_type: str, api_key: str) -> list[Asset]:
-    """Collect assets from Pexels API.
+    """Collect assets from Pexels API, paginating until ``count`` is reached.
 
     Pexels Video Search API: GET https://api.pexels.com/videos/search
     Pexels Photo Search API: GET https://api.pexels.com/v1/search
     """
     channel_id = get_current_channel_id()
     session = get_session()
-    assets = []
+    assets: list[Asset] = []
+    seen_urls: set[str] = set()
+    is_video = asset_type == "video"
+    url = "https://api.pexels.com/videos/search" if is_video else "https://api.pexels.com/v1/search"
+    key_field = "videos" if is_video else "photos"
+    endpoint = "videos/search" if is_video else "v1/search"
 
     try:
-        if asset_type == "video":
-            url = "https://api.pexels.com/videos/search"
-        else:
-            url = "https://api.pexels.com/v1/search"
-
+        page = 1
         with httpx.Client() as client:
-            response = client.get(
-                url,
-                params={
-                    "query": query,
-                    "per_page": min(count, 15),
-                    "orientation": "landscape",
-                },
-                headers={"Authorization": api_key},
-                timeout=30,
-            )
+            while len(assets) < count and page <= _MAX_PAGES:
+                per_page = max(1, min(_PEXELS_PER_PAGE, count - len(assets)))
+                response = _get_with_backoff(
+                    client,
+                    url,
+                    params={
+                        "query": query,
+                        "per_page": per_page,
+                        "page": page,
+                        "orientation": "landscape",
+                    },
+                    headers={"Authorization": api_key},
+                )
+                track_api_call(
+                    provider="pexels",
+                    endpoint=endpoint,
+                    status_code=(response.status_code if response else None),
+                )
+                if response is None or response.status_code != 200:
+                    if response is not None:
+                        log.warning(
+                            "pexels_api_error", status=response.status_code, body=response.text[:200]
+                        )
+                    break
 
-        track_api_call(
-            provider="pexels",
-            endpoint="videos/search" if asset_type == "video" else "v1/search",
-            status_code=response.status_code,
-        )
+                items = response.json().get(key_field, [])
+                if not items:
+                    break
 
-        if response.status_code != 200:
-            log.warning("pexels_api_error", status=response.status_code, body=response.text[:200])
-            return []
-
-        data = response.json()
-        items = data.get("videos" if asset_type == "video" else "photos", [])
-
-        for item in items[:count]:
-            if asset_type == "video":
-                video_files = item.get("video_files", [])
-                # Prefer HD quality
-                best_file = None
-                for vf in video_files:
-                    if vf.get("quality") == "hd" or vf.get("height", 0) >= 720:
-                        best_file = vf
+                before = len(assets)
+                for item in items:
+                    if len(assets) >= count:
                         break
-                if not best_file and video_files:
-                    best_file = video_files[0]
+                    if is_video:
+                        video_files = item.get("video_files", [])
+                        best_file = next(
+                            (
+                                vf for vf in video_files
+                                if vf.get("quality") == "hd" or vf.get("height", 0) >= 720
+                            ),
+                            video_files[0] if video_files else None,
+                        )
+                        if not best_file:
+                            continue
+                        original_url = best_file.get("link", "")
+                        width = best_file.get("width", 0)
+                        height = best_file.get("height", 0)
+                        duration = item.get("duration", 0)
+                        kind = "Video"
+                    else:
+                        original_url = item.get("src", {}).get("original", "")
+                        width = item.get("width", 0)
+                        height = item.get("height", 0)
+                        duration = None
+                        kind = "Photo"
 
-                if not best_file:
-                    continue
+                    if not original_url or original_url in seen_urls:
+                        continue
+                    seen_urls.add(original_url)
 
-                original_url = best_file.get("link", "")
-                width = best_file.get("width", 0)
-                height = best_file.get("height", 0)
-                duration = item.get("duration", 0)
-            else:
-                original_url = item.get("src", {}).get("original", "")
-                width = item.get("width", 0)
-                height = item.get("height", 0)
-                duration = None
+                    creator = item.get("user", {}).get("name", "Unknown")
+                    asset = Asset(
+                        id=str(uuid.uuid4()),
+                        channel_id=channel_id,
+                        provider="pexels",
+                        type=asset_type,
+                        original_url=original_url,
+                        creator=creator,
+                        license="Pexels License (Free)",
+                        attribution=f"{kind} by {creator} from Pexels",
+                        source_query=query,
+                        checksum="",
+                        duration_seconds=duration,
+                        width=width,
+                        height=height,
+                        local_path="",
+                        usage_count=0,
+                        policy_status="verified",
+                    )
+                    session.add(asset)
+                    assets.append(asset)
 
-            asset = Asset(
-                id=str(uuid.uuid4()),
-                channel_id=channel_id,
-                provider="pexels",
-                type=asset_type,
-                original_url=original_url,
-                creator=item.get("user", {}).get("name", "Unknown"),
-                license="Pexels License (Free)",
-                attribution=f"Video by {item.get('user', {}).get('name', 'Unknown')} from Pexels",
-                source_query=query,
-                checksum="",
-                duration_seconds=duration,
-                width=width,
-                height=height,
-                local_path="",
-                usage_count=0,
-                policy_status="verified",
-            )
-            session.add(asset)
-            assets.append(asset)
+                # No new (non-duplicate) items this page → the result set is
+                # exhausted; stop paging to avoid burning API quota on repeats.
+                if len(assets) == before:
+                    break
+                page += 1
 
         session.commit()
 
@@ -474,82 +572,97 @@ def _collect_from_pixabay(query: str, count: int, asset_type: str, api_key: str)
     """
     channel_id = get_current_channel_id()
     session = get_session()
-    assets = []
+    assets: list[Asset] = []
+    seen_urls: set[str] = set()
+    is_video = asset_type == "video"
+    url = "https://pixabay.com/api/videos/" if is_video else "https://pixabay.com/api/"
+    endpoint = f"api/{'videos/' if is_video else ''}"
 
     try:
-        if asset_type == "video":
-            url = "https://pixabay.com/api/videos/"
-        else:
-            url = "https://pixabay.com/api/"
-
+        page = 1
         with httpx.Client() as client:
-            response = client.get(
-                url,
-                params={
-                    "key": api_key,
-                    "q": query,
-                    "per_page": min(count, 15),
-                    "safesearch": "true",
-                },
-                timeout=30,
-            )
+            while len(assets) < count and page <= _MAX_PAGES:
+                # Pixabay rejects per_page < 3, so floor it and slice locally.
+                per_page = max(_PIXABAY_MIN_PER_PAGE, min(_PIXABAY_PER_PAGE, count - len(assets)))
+                response = _get_with_backoff(
+                    client,
+                    url,
+                    params={
+                        "key": api_key,
+                        "q": query,
+                        "per_page": per_page,
+                        "page": page,
+                        "safesearch": "true",
+                    },
+                )
+                track_api_call(
+                    provider="pixabay",
+                    endpoint=endpoint,
+                    status_code=(response.status_code if response else None),
+                )
+                if response is None or response.status_code != 200:
+                    if response is not None:
+                        log.warning(
+                            "pixabay_api_error", status=response.status_code, body=response.text[:200]
+                        )
+                    break
 
-        track_api_call(
-            provider="pixabay",
-            endpoint=f"api/{'videos/' if asset_type == 'video' else ''}",
-            status_code=response.status_code,
-        )
+                items = response.json().get("hits", [])
+                if not items:
+                    break
 
-        if response.status_code != 200:
-            log.warning("pixabay_api_error", status=response.status_code, body=response.text[:200])
-            return []
+                before = len(assets)
+                for item in items:
+                    if len(assets) >= count:
+                        break
+                    if is_video:
+                        videos = item.get("videos", {})
+                        best = videos.get("large", {})
+                        if not best.get("url"):
+                            best = videos.get("medium", {})
+                        if not best.get("url"):
+                            best = videos.get("small", {})
+                        original_url = best.get("url", "")
+                        width = best.get("width", 0)
+                        height = best.get("height", 0)
+                        duration = item.get("duration", 0)
+                    else:
+                        original_url = item.get("largeImageURL", "")
+                        width = item.get("imageWidth", 0)
+                        height = item.get("imageHeight", 0)
+                        duration = None
 
-        data = response.json()
-        items = data.get("hits", [])
+                    if not original_url or original_url in seen_urls:
+                        continue
+                    seen_urls.add(original_url)
 
-        for item in items[:count]:
-            if asset_type == "video":
-                videos = item.get("videos", {})
-                # Prefer large, then medium, then small
-                best = videos.get("large", {})
-                if not best.get("url"):
-                    best = videos.get("medium", {})
-                if not best.get("url"):
-                    best = videos.get("small", {})
+                    creator = item.get("user", "Unknown")
+                    asset = Asset(
+                        id=str(uuid.uuid4()),
+                        channel_id=channel_id,
+                        provider="pixabay",
+                        type=asset_type,
+                        original_url=original_url,
+                        creator=creator,
+                        license="Pixabay License (Free)",
+                        attribution=f"By {creator} from Pixabay",
+                        source_query=query,
+                        checksum="",
+                        duration_seconds=duration,
+                        width=width,
+                        height=height,
+                        local_path="",
+                        usage_count=0,
+                        policy_status="verified",
+                    )
+                    session.add(asset)
+                    assets.append(asset)
 
-                original_url = best.get("url", "")
-                width = best.get("width", 0)
-                height = best.get("height", 0)
-                duration = item.get("duration", 0)
-            else:
-                original_url = item.get("largeImageURL", "")
-                width = item.get("imageWidth", 0)
-                height = item.get("imageHeight", 0)
-                duration = None
-
-            if not original_url:
-                continue
-
-            asset = Asset(
-                id=str(uuid.uuid4()),
-                channel_id=channel_id,
-                provider="pixabay",
-                type=asset_type,
-                original_url=original_url,
-                creator=item.get("user", "Unknown"),
-                license="Pixabay License (Free)",
-                attribution=f"By {item.get('user', 'Unknown')} from Pixabay",
-                source_query=query,
-                checksum="",
-                duration_seconds=duration,
-                width=width,
-                height=height,
-                local_path="",
-                usage_count=0,
-                policy_status="verified",
-            )
-            session.add(asset)
-            assets.append(asset)
+                # No new (non-duplicate) items this page → the result set is
+                # exhausted; stop paging to avoid burning API quota on repeats.
+                if len(assets) == before:
+                    break
+                page += 1
 
         session.commit()
 
@@ -669,6 +782,11 @@ def download_assets(assets: list[Asset], output_dir: str = "./data/assets") -> l
     return assets
 
 
+def _download_extension(asset_type: str) -> str:
+    """File extension to save a downloaded asset under, by asset type."""
+    return {"video": ".mp4", "audio": ".mp3", "image": ".jpg"}.get(asset_type, ".jpg")
+
+
 def download_asset(asset: Asset, output_dir: str = "./data/assets") -> str:
     """Download an asset file to local storage.
 
@@ -682,7 +800,7 @@ def download_asset(asset: Asset, output_dir: str = "./data/assets") -> str:
         return asset.local_path or ""
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    ext = ".mp4" if asset.type == "video" else ".jpg"
+    ext = _download_extension(asset.type)
     filename = f"{asset.id[:8]}_{asset.provider}{ext}"
     output_path = os.path.join(output_dir, filename)
 
@@ -723,8 +841,8 @@ def validate_asset_license(asset: Asset) -> bool:
     if asset.policy_status == "rejected":
         return False
 
-    if asset.provider in ("pexels", "pixabay"):
-        # These providers have free licenses
+    if asset.provider in ("pexels", "pixabay", "jamendo"):
+        # These providers serve free / Creative Commons licensed media.
         return True
 
     if asset.provider == "local":

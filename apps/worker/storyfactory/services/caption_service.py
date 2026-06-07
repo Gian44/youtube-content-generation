@@ -122,6 +122,115 @@ def generate_captions(
     return caption_job
 
 
+def transcribe_dialogue(audio_path: str) -> list[dict]:
+    """Transcribe a clip's spoken dialogue to word timings (whisper-1).
+
+    Returns ``[]`` — never raises — when the audio is missing, there is no
+    OpenAI key, or transcription fails. The result feeds BOTH dialogue subtitles
+    and scene-mood music inference, so it is fetched once and shared.
+    """
+    if not audio_path or not os.path.exists(audio_path):
+        return []
+    try:
+        return _openai_transcription(audio_path) or []
+    except Exception as e:  # noqa: BLE001 — transcription is best-effort, never fatal
+        log.warning("dialogue_transcription_failed", error=str(e))
+        return []
+
+
+def build_dialogue_captions(
+    story: Story,
+    words: list[dict],
+    style: str = "word_highlight",
+    output_dir: str = "./data/captions",
+) -> CaptionJob | None:
+    """Build burned-in captions from pre-fetched dialogue word timings.
+
+    Returns ``None`` — meaning "render without captions" — when there are no
+    words or the ASS build fails, so a Short is never blocked by subtitles.
+    """
+    if not words:
+        return None
+
+    session = get_session()
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_path = os.path.join(output_dir, f"captions_{story.id[:8]}_{style}.ass")
+
+    caption_job = CaptionJob(
+        id=str(uuid.uuid4()),
+        story_id=story.id,
+        tts_job_id=None,  # no TTS in original_audio mode
+        style=style,
+        status="processing",
+        output_path=output_path,
+        font_size=DEFAULT_CAPTION_CONFIG["font_size"],
+        stroke_width=DEFAULT_CAPTION_CONFIG["stroke_width"],
+        shadow_depth=DEFAULT_CAPTION_CONFIG["shadow_depth"],
+        max_words_per_line=DEFAULT_CAPTION_CONFIG["max_words_per_line"],
+        alignment_method="transcription",
+    )
+
+    try:
+        for i, word_data in enumerate(words):
+            session.add(
+                CaptionWord(
+                    id=str(uuid.uuid4()),
+                    caption_job_id=caption_job.id,
+                    word=word_data["word"],
+                    start_time=word_data["start"],
+                    end_time=word_data["end"],
+                    confidence=word_data.get("confidence"),
+                    order_index=i,
+                )
+            )
+
+        if style == "word_highlight":
+            _generate_word_highlight_ass(words, output_path)
+        else:
+            _generate_sentence_ass(words, output_path)
+
+        caption_job.status = "completed"
+        caption_job.word_count = len(words)
+        log.info(
+            "dialogue_captions_generated", story_id=story.id, style=style, word_count=len(words)
+        )
+    except Exception as e:
+        caption_job.status = "failed"
+        caption_job.error = str(e)
+        log.error("dialogue_caption_generation_failed", story_id=story.id, error=str(e))
+
+    session.add(caption_job)
+    try:
+        session.commit()
+    finally:
+        session.close()  # never leak the session, even if commit raises
+
+    # A failed ASS build should not block the Short — treat as no captions.
+    if caption_job.status != "completed":
+        return None
+    return caption_job
+
+
+def generate_captions_from_audio(
+    story: Story,
+    audio_path: str,
+    style: str = "word_highlight",
+    output_dir: str = "./data/captions",
+) -> CaptionJob | None:
+    """Transcribe a clip's dialogue and build burned-in captions in one call.
+
+    Convenience wrapper over :func:`transcribe_dialogue` +
+    :func:`build_dialogue_captions`. Returns ``None`` when transcription yields
+    nothing. The recap pipeline transcribes once (for captions AND music mood)
+    and calls :func:`build_dialogue_captions` directly instead.
+    """
+    words = transcribe_dialogue(audio_path)
+    if not words:
+        log.info("dialogue_captions_skipped_empty", story_id=story.id)
+        return None
+    return build_dialogue_captions(story, words, style=style, output_dir=output_dir)
+
+
 def _get_word_timings(story: Story, tts_job: TTSJob) -> list[dict]:
     """Get word-level timings using OpenAI transcription or local alignment."""
     settings = get_settings()

@@ -100,6 +100,13 @@ PROVIDERS: dict[str, ProviderSpec] = {
         required_secrets=("api_key",),
         env_secret_map={"api_key": "PIXABAY_API_KEY"},
     ),
+    "assets.jamendo": ProviderSpec(
+        key="assets.jamendo",
+        kind=KIND_ASSETS,
+        label="Jamendo (music)",
+        required_secrets=("api_key",),  # Jamendo's client_id is the API key here
+        env_secret_map={"api_key": "JAMENDO_CLIENT_ID"},
+    ),
     "youtube": ProviderSpec(
         key="youtube",
         kind=KIND_YOUTUBE,

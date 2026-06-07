@@ -317,12 +317,66 @@ def _m0004_app_integrations(session: Session) -> None:
         log.info("app_integrations_consolidated", deleted_channel_rows=deleted)
 
 
+def _m0005_recap_media(session: Session) -> None:
+    """Create the recap media tables (series / episode / segment ledger).
+
+    These are brand-new tables with no data backfill. ``init_db()`` (create_all)
+    at the start of the runner already creates them on fresh installs; this
+    migration explicitly (and idempotently) creates them on existing databases
+    so the upgrade path does not depend on create_all ordering.
+    """
+    from storyfactory.db.models import (
+        Base,
+        MediaSeries,
+        MediaEpisode,
+        RecapSegment,
+    )
+
+    Base.metadata.create_all(
+        bind=session.bind,
+        tables=[
+            MediaSeries.__table__,
+            MediaEpisode.__table__,
+            RecapSegment.__table__,
+        ],
+    )
+
+
+def _m0006_media_scenes(session: Session) -> None:
+    """Create the ``media_scenes`` table (frozen scene plan for scene mode).
+
+    Brand-new table, no backfill. Idempotent: ``create_all`` skips it if present.
+    """
+    from storyfactory.db.models import Base, MediaScene
+
+    Base.metadata.create_all(bind=session.bind, tables=[MediaScene.__table__])
+
+
+def _m0007_media_scene_unique(session: Session) -> None:
+    """Make ``(episode_id, scene_index)`` unique on ``media_scenes``.
+
+    The scene plan is computed once and frozen; a unique key lets the DB reject a
+    duplicate concurrent insert instead of silently corrupting the plan. The
+    table is new (created in 0006) so the index rebuild is safe. Idempotent.
+    """
+    if not table_exists(session, "media_scenes"):
+        return
+    session.execute(text("DROP INDEX IF EXISTS ix_media_scenes_episode_idx"))
+    session.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_media_scenes_episode_idx "
+        "ON media_scenes (episode_id, scene_index)"
+    ))
+
+
 # Ordered registry. Append new migrations; never reorder or mutate shipped ones.
 MIGRATIONS: list[tuple[str, callable]] = [
     ("0001_default_channel", _m0001_default_channel),
     ("0002_channel_id_columns", _m0002_channel_id_columns),
     ("0003_prompt_channel_overrides", _m0003_prompt_channel_overrides),
     ("0004_app_integrations", _m0004_app_integrations),
+    ("0005_recap_media", _m0005_recap_media),
+    ("0006_media_scenes", _m0006_media_scenes),
+    ("0007_media_scene_unique", _m0007_media_scene_unique),
 ]
 
 

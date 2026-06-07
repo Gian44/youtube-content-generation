@@ -79,6 +79,88 @@ export async function getActiveChannel(): Promise<ChannelRow | null> {
  * UI is approximated as enabled && (hasSecret || storage.local). The worker
  * performs authoritative validation at run time.
  */
+export interface RecapSeriesStatus {
+  slug: string;
+  title: string;
+  type: string;
+  isActive: boolean;
+  episodesTotal: number;
+  episodesCompleted: number;
+  episodesPending: number;
+}
+
+export interface RecapStatus {
+  series: RecapSeriesStatus[];
+  segmentsRendered: number;
+}
+
+/**
+ * Recap pipeline status for a channel (series + episode progress + ledger size).
+ * Reads the recap media tables directly; returns empty status when the tables
+ * are absent (the db helper resolves a failed SELECT to []).
+ */
+export async function getRecapStatus(channelId: string): Promise<RecapStatus> {
+  const seriesRows = await query<{
+    id: string;
+    slug: string;
+    title: string;
+    type: string;
+    isActive: number | boolean;
+  }>(
+    `SELECT id, slug, title, type, is_active
+     FROM media_series WHERE channel_id = $1 ORDER BY created_at ASC`,
+    [channelId]
+  );
+
+  const series: RecapSeriesStatus[] = [];
+  if (seriesRows.length > 0) {
+    // Single grouped query across all series (avoids an N+1 round-trip per series).
+    const ids = seriesRows.map((s) => s.id);
+    const placeholders = ids.map((_, i) => `$${i + 1}`).join(', ');
+    const epRows = await query<{ seriesId: string; status: string; n: number }>(
+      `SELECT series_id, status, COUNT(*) AS n
+       FROM media_episodes WHERE series_id IN (${placeholders})
+       GROUP BY series_id, status`,
+      ids
+    );
+    const bySeries = new Map<string, Map<string, number>>();
+    for (const r of epRows) {
+      const m = bySeries.get(r.seriesId) ?? new Map<string, number>();
+      m.set(r.status, Number(r.n));
+      bySeries.set(r.seriesId, m);
+    }
+    for (const s of seriesRows) {
+      const byStatus = bySeries.get(s.id) ?? new Map<string, number>();
+      const total = [...byStatus.values()].reduce((a, b) => a + b, 0);
+      series.push({
+        slug: s.slug,
+        title: s.title,
+        type: s.type,
+        isActive: Boolean(s.isActive),
+        episodesTotal: total,
+        episodesCompleted: byStatus.get('completed') || 0,
+        episodesPending: (byStatus.get('pending') || 0) + (byStatus.get('in_progress') || 0),
+      });
+    }
+  }
+
+  const segRows = await query<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM recap_segments WHERE channel_id = $1 AND status = 'rendered'`,
+    [channelId]
+  );
+  return { series, segmentsRendered: Number(segRows[0]?.n || 0) };
+}
+
+/** Next-topic cursor index for a Sleep On Facts channel (0 when unset). */
+export async function getSleepCursor(channelId: string): Promise<number> {
+  const rows = await query<{ value: string }>(
+    `SELECT value FROM settings WHERE key = $1 LIMIT 1`,
+    [`sleep_facts_cursor:${channelId}`]
+  );
+  const parsed = rows[0]?.value ? parseInt(rows[0].value, 10) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export async function getChannelIntegrations(
   channelId: string
 ): Promise<ChannelIntegrationRow[]> {

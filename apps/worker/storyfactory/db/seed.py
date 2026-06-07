@@ -114,6 +114,150 @@ Output as JSON:
         "variables": ["category", "persona", "topic_hints"],
     },
     {
+        "name": "recap_short_script",
+        "description": "Write a transformative recap narration for one Short cut from a TV/movie segment",
+        "category": "story",
+        "template": """You are writing a punchy, ORIGINAL recap narration for a YouTube Short.
+
+The Short is one segment of "{{show_title}}" ({{episode_label}}), covering the
+part of the episode from {{start_time}} to {{end_time}} (segment {{segment_index}} of {{total_segments}}).
+
+Context about this moment (may be empty):
+{{context}}
+
+Write a TRANSFORMATIVE, commentary-style recap — your own words describing and
+reacting to what happens. This is NOT a transcript or subtitle dump.
+
+Requirements:
+- Voice persona: {{persona}}
+- Target 45-59 seconds when read aloud (about 110-150 words)
+- Structure: (1) a 3-second HOOK that creates a curiosity gap, (2) a 1-2 sentence
+  recap of what happens in this segment, (3) a CTA inviting viewers to watch/subscribe
+- Do NOT quote dialogue verbatim; paraphrase and add insight/commentary
+- Do NOT include spoilers beyond this segment
+- Keep it spoiler-light, energetic, and original
+
+Output as JSON:
+{
+  "title": "...",         // Short title (<= 90 chars), include the show name
+  "hook": "...",          // the opening line
+  "body": "...",          // the full narration to be spoken
+  "comment_bait": "...",  // a question/CTA to drive comments
+  "word_count": <number>
+}""",
+        "variables": [
+            "show_title", "episode_label", "start_time", "end_time",
+            "segment_index", "total_segments", "context", "persona",
+        ],
+    },
+    {
+        "name": "sleep_facts_long_form",
+        "description": "Write a calm, single-topic 'facts to fall asleep to' long-form narration",
+        "category": "story",
+        "template": """You are the writer for a calm "facts to fall asleep to" channel.
+
+Write a long, soothing, single-topic narration about ONE subject only:
+
+TOPIC: {{topic}}
+
+Reference notes (factual grounding — may be empty):
+{{topic_hints}}
+
+HARD RULES:
+- The ENTIRE script must stay on the single topic "{{topic}}". Never drift into
+  unrelated domains (e.g. if the topic is Ancient Egypt, do NOT talk about space
+  or animals unless directly about Ancient Egypt).
+- Calm, slow, gentle tone suitable for falling asleep. No loud hooks, no hype.
+- Accurate, interesting facts. Vary sentence length; keep it flowing and serene.
+- Aim for roughly {{target_minutes}} minutes of narration when read slowly
+  (about {{target_words}} words). Write the full body, not an outline.
+
+Output as JSON:
+{
+  "title": "...",                  // a calm, topic-specific title
+  "hook": "...",                   // a gentle 1-sentence opening
+  "body": "...",                   // the FULL calm narration (one continuous script)
+  "asset_keywords": ["..."],       // 5-10 short visual keywords on-topic for stock footage
+  "image_search_queries": ["..."], // 3-6 short stock-footage search queries on-topic
+  "word_count": <number>
+}""",
+        "variables": ["topic", "topic_hints", "target_minutes", "target_words"],
+    },
+    {
+        "name": "sleep_facts_outline",
+        "description": "Plan a long (~3h) calm sleep video as an ordered list of on-topic 'movements'",
+        "category": "story",
+        "template": """You are the head writer for a calm "facts to fall asleep to" channel.
+Plan a LONG, soothing, single-topic video (about {{target_minutes}} minutes when
+narrated slowly) as an ordered outline of "movements".
+
+TOPIC (the entire video stays on this ONE subject): {{topic}}
+
+Reference notes (factual grounding — may be empty):
+{{topic_hints}}
+
+A "movement" is a distinct sub-area of the topic explored for several minutes.
+Plan exactly {{num_movements}} movements that flow naturally from one to the next,
+together covering the topic broadly and gently (history, how it works, notable
+facts, places, creatures, mysteries, etc. — whatever fits THIS topic). Order them
+so the journey feels calm and continuous, easing the listener toward sleep.
+
+HARD RULES:
+- Every movement must stay on "{{topic}}". Never drift to unrelated domains.
+- Each movement has 6-12 short factual "beats" (single calm facts/ideas to expand).
+- No hype, no loud hooks, no second-person calls to action.
+
+Output as JSON:
+{
+  "title": "...",                  // calm, sleep-style title (e.g. mentions hours / falling asleep)
+  "hook": "...",                   // one gentle opening sentence (no "welcome back", no hype)
+  "movements": [                   // exactly {{num_movements}} items, in order
+    {"heading": "...", "beats": ["...", "..."]}
+  ],
+  "asset_keywords": ["..."],       // 8-15 short on-topic visual keywords for stock images
+  "image_search_queries": ["..."] // 8-15 short stock-image search queries on-topic
+}""",
+        "variables": ["topic", "topic_hints", "target_minutes", "num_movements"],
+    },
+    {
+        "name": "sleep_facts_segment",
+        "description": "Expand one outline movement into flowing calm bedtime narration",
+        "category": "story",
+        "template": """You are narrating a calm "facts to fall asleep to" video about ONE topic.
+Write the narration for the CURRENT movement only — flowing, serene prose meant to
+be read slowly aloud to help someone fall asleep.
+
+TOPIC (never drift off it): {{topic}}
+
+CURRENT MOVEMENT: {{movement_heading}}
+Facts to weave in (cover these, in any order, adding gentle connective prose):
+{{movement_beats}}
+
+What has been narrated so far (for continuity — do NOT repeat it):
+{{running_summary}}
+
+The previous movement ended like this (continue smoothly from it; do not repeat it):
+{{previous_tail}}
+
+HARD RULES:
+- Aim for about {{target_words}} words for THIS movement.
+- Calm, slow, gentle, monotone-leaning tone. Vary sentence length; keep it flowing.
+- Continuous PROSE only. No headings, no bullet points, no lists, no numbers like
+  "1." — lists break the rhythm and wake the listener.
+- No second person hype ("you won't believe"), no CTAs, no "welcome back".
+- Accurate, interesting, low-stakes facts. Stay entirely on "{{topic}}".
+- Begin mid-flow as a natural continuation; do not re-introduce the whole topic.
+
+Output as JSON:
+{
+  "body": "..."   // the narration prose for this movement only
+}""",
+        "variables": [
+            "topic", "movement_heading", "movement_beats",
+            "running_summary", "previous_tail", "target_words",
+        ],
+    },
+    {
         "name": "hook_generation",
         "description": "Generate attention-grabbing hooks for stories",
         "category": "hook",
@@ -295,9 +439,12 @@ def run_seed(sample: bool = False):
         # Seed prompt templates
         console.print("[blue]Seeding prompt templates...[/blue]")
         for prompt_data in DEFAULT_PROMPTS:
+            # Only check for the GLOBAL default (channel_id=NULL). A per-channel
+            # override shares the name but must not mask a missing global row
+            # (the unique index is on (channel_id, name)).
             existing = (
                 session.query(PromptTemplate)
-                .filter_by(name=prompt_data["name"])
+                .filter_by(name=prompt_data["name"], channel_id=None)
                 .first()
             )
             if not existing:

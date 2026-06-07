@@ -429,8 +429,76 @@ export const CHANNEL_SCOPED_PROVIDERS: readonly IntegrationProvider[] = ['youtub
  * the app-level default. All fields are optional because a channel only stores
  * the values it overrides.
  */
+// Pipeline mode = the channel's content engine. "fiction" is the default
+// Reddit-style drama; "recap_shorts" cuts many Shorts from user-supplied video
+// files; "sleep_facts" produces one calm, single-topic long-form video.
+export const PIPELINE_MODES = ['fiction', 'recap_shorts', 'sleep_facts'] as const;
+export type PipelineMode = (typeof PIPELINE_MODES)[number];
+
+export const RECAP_FOOTAGE_MODES = ['with_source_video', 'stock_metaphor'] as const;
+export type RecapFootageMode = (typeof RECAP_FOOTAGE_MODES)[number];
+
+/** CinybeShorts (recap_shorts) per-channel config (channel.config.recap). */
+export const RecapConfigSchema = z
+  .object({
+    source_mode: z.literal('user_supplied'),
+    inbox_path: z.string(),
+    active_series_slug: z.string().nullable(),
+    target_short_seconds: z.number().min(10).max(180),
+    min_short_seconds: z.number().min(5).max(180),
+    overlap_seconds: z.number().min(0).max(60),
+    min_shorts_per_episode: z.number().int().min(1).max(200),
+    max_shorts_per_episode: z.number().int().min(1).max(500),
+    max_shorts_per_run: z.number().int().min(1).max(50),
+    footage_mode: z.enum(RECAP_FOOTAGE_MODES),
+    voice_persona: z.enum(VOICE_PERSONAS),
+  })
+  .partial();
+
+export type RecapConfig = z.infer<typeof RecapConfigSchema>;
+
+/** Sleep On Facts (sleep_facts) per-channel config (channel.config.sleep_facts).
+ *  v2: ~3-hour themed fact-compilation videos — one calm voice (onyx) over a
+ *  slideshow of 100+ stock images. See
+ *  docs/superpowers/specs/2026-06-07-sleep-facts-3hour-slideshow-design.md */
+export const SleepFactsConfigSchema = z
+  .object({
+    topic_rotation: z.array(z.string()),
+    long_form_target_minutes: z.number().min(1).max(240), // up to ~4h of narration
+    narration_wpm: z.number().int().min(60).max(220),
+    voice_persona: z.enum(VOICE_PERSONAS),
+    enable_wikipedia_grounding: z.boolean(),
+    // Segmented generation (avoids the single-call token ceiling).
+    gen_num_movements: z.number().int().min(1).max(60),
+    gen_segment_max_tokens: z.number().int().min(256).max(8000),
+    // Single narration voice.
+    tts_voice: z.string(),
+    tts_model: z.string(),
+    tts_speed: z.number().min(0.25).max(4),
+    tts_instructions: z.string().nullable(),
+    // Image slideshow.
+    asset_type: z.enum(['image', 'video']),
+    images_target: z.number().int().min(1).max(400),
+    slideshow_dwell_seconds: z.number().min(2).max(120),
+    crossfade_seconds: z.number().min(0).max(10),
+    slideshow_fps: z.number().int().min(10).max(60),
+    ken_burns: z.boolean(),
+    captions_enabled: z.boolean(),
+    music_enabled: z.boolean(),
+    // Legacy alias retained for back-compat.
+    assets_per_video: z.number().int().min(1).max(400),
+  })
+  .partial();
+
+export type SleepFactsConfig = z.infer<typeof SleepFactsConfigSchema>;
+
 export const ChannelConfigSchema = z
   .object({
+    // The content engine for this channel (see PIPELINE_MODES).
+    pipeline_mode: z.enum(PIPELINE_MODES),
+    // Nested, mode-specific config blocks (only meaningful for their mode).
+    recap: RecapConfigSchema,
+    sleep_facts: SleepFactsConfigSchema,
     // Content outputs (composable per-channel shape). A channel produces Shorts,
     // a long-form video, or both. At least one must stay enabled.
     enable_shorts: z.boolean(),
@@ -440,7 +508,7 @@ export const ChannelConfigSchema = z
     shorts_per_day_min: z.number().int().min(1).max(10),
     shorts_per_day_max: z.number().int().min(1).max(10),
     long_form_per_day: z.number().int().min(0).max(5),
-    long_form_target_minutes: z.number().min(1).max(60),
+    long_form_target_minutes: z.number().min(1).max(240),
     // Number of long-form stories composed into one long-form video.
     long_form_segments_min: z.number().int().min(1).max(20),
     long_form_segments_max: z.number().int().min(1).max(20),
@@ -490,6 +558,27 @@ export const ChannelConfigSchema = z
         code: z.ZodIssueCode.custom,
         message: 'long_form_segments_min cannot exceed long_form_segments_max.',
         path: ['long_form_segments_min'],
+      });
+    }
+    // The content engine must match the enabled outputs.
+    if (
+      cfg.pipeline_mode === 'recap_shorts' &&
+      (cfg.enable_shorts === false || cfg.enable_long_form === true)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'recap_shorts channels produce Shorts only (enable_shorts true, enable_long_form false).',
+        path: ['pipeline_mode'],
+      });
+    }
+    if (
+      cfg.pipeline_mode === 'sleep_facts' &&
+      (cfg.enable_long_form === false || cfg.enable_shorts === true)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'sleep_facts channels produce long-form only (enable_long_form true, enable_shorts false).',
+        path: ['pipeline_mode'],
       });
     }
   });

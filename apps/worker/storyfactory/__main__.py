@@ -199,18 +199,52 @@ def channel_list(as_json: bool):
 @click.option("--slug", default=None, help="Optional slug (derived from name if omitted)")
 @click.option("--niche", default=None, help="What this channel publishes")
 @click.option("--description", default=None)
+@click.option("--content-style", "content_style", default=None, help="Free-text content style descriptor")
 @click.option("--import-env", "do_import_env", is_flag=True, help="Backfill integrations from current env")
-def channel_create(name, slug, niche, description, do_import_env):
-    """Create a new channel."""
+@click.option(
+    "--config-stdin",
+    is_flag=True,
+    help="Read a JSON object of content-config overrides (e.g. pipeline_mode, enable_shorts) from stdin",
+)
+def channel_create(name, slug, niche, description, content_style, do_import_env, config_stdin):
+    """Create a new channel (optionally with a content-config preset via stdin)."""
+    import json as _json
+    import sys as _sys
+
     from storyfactory.db.engine import init_db, get_session
     from storyfactory.services.channel_service import create_channel, import_env_into_channel
+
+    config = None
+    if config_stdin:
+        raw = _sys.stdin.read()
+        if raw.strip():
+            try:
+                parsed = _json.loads(raw)
+            except _json.JSONDecodeError as exc:
+                console.print(f"[red]Invalid JSON on stdin: {exc}[/red]")
+                return
+            if not isinstance(parsed, dict):
+                console.print("[red]stdin must be a JSON object of config overrides[/red]")
+                return
+            config = parsed
 
     init_db()
     session = get_session()
     try:
-        ch = create_channel(
-            session, name=name, slug=slug, niche=niche, description=description, commit=False
-        )
+        try:
+            ch = create_channel(
+                session,
+                name=name,
+                slug=slug,
+                niche=niche,
+                description=description,
+                content_style=content_style,
+                config=config,
+                commit=False,
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
         if do_import_env:
             import_env_into_channel(session, ch, commit=False)
         session.commit()
@@ -308,6 +342,158 @@ def channel_set_youtube_token(channel_ref, token):
             session, ch, "youtube", enabled=True, secrets={"refresh_token": token}, commit=True
         )
         console.print(f"[bold green]✓ Stored YouTube token for '{ch.slug}'[/bold green]")
+    finally:
+        session.close()
+
+
+def _load_oauth_client(client_file: str) -> tuple[str | None, str | None, str | None]:
+    """Read client_id/client_secret/project_id from a Google client_secret JSON."""
+    import json as _json
+
+    with open(client_file, "r", encoding="utf-8") as f:
+        data = _json.load(f)
+    block = data.get("installed") or data.get("web") or {}
+    return block.get("client_id"), block.get("client_secret"), block.get("project_id")
+
+
+@channel.command("set-youtube-client")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--client-file", required=True, type=click.Path(exists=True), help="Google client_secret JSON")
+def channel_set_youtube_client(channel_ref, client_file):
+    """Store a per-channel YouTube OAuth client (separate Google Cloud project per channel).
+
+    Wires the channel to its own OAuth app without connecting an account yet.
+    Run ``connect-youtube`` afterwards to authorize and capture the refresh token.
+    """
+    from storyfactory.db.engine import init_db, get_session
+    from storyfactory.services.channel_service import get_channel, set_integration
+
+    client_id, client_secret, project_id = _load_oauth_client(client_file)
+    if not client_id or not client_secret:
+        console.print("[red]client_secret JSON is missing client_id/client_secret[/red]")
+        return
+
+    init_db()
+    session = get_session()
+    try:
+        ch = get_channel(session, channel_ref)
+        if ch is None:
+            console.print(f"[red]Channel not found: {channel_ref}[/red]")
+            return
+        set_integration(
+            session,
+            ch,
+            "youtube",
+            secrets={"client_id": client_id, "client_secret": client_secret},
+            commit=True,
+        )
+        console.print(
+            f"[bold green]✓ Stored YouTube OAuth client for '{ch.slug}'[/bold green] "
+            f"(project: {project_id or 'unknown'})"
+        )
+    finally:
+        session.close()
+
+
+@channel.command("connect-youtube")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option(
+    "--client-file",
+    default=None,
+    type=click.Path(exists=True),
+    help="Google client_secret JSON (stored for the channel; uses the channel's stored client if omitted)",
+)
+@click.option("--port", type=int, default=0, help="Local loopback port (0 = auto-pick a free port)")
+@click.option("--no-browser", is_flag=True, help="Print the URL instead of opening a browser")
+def channel_connect_youtube(channel_ref, client_file, port, no_browser):
+    """Connect a YouTube account via the loopback OAuth flow (opens your browser).
+
+    Correct flow for Desktop ("installed") OAuth clients: a temporary local server
+    catches Google's redirect on http://localhost:<port>. Approve access for the
+    account this channel should publish to; the refresh token is stored encrypted.
+    """
+    from storyfactory import crypto
+    from storyfactory.db.engine import init_db, get_session
+    from storyfactory.services.channel_service import get_channel, set_integration
+
+    scopes = [
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/youtube",
+        "https://www.googleapis.com/auth/youtube.readonly",
+    ]
+
+    init_db()
+    session = get_session()
+    try:
+        ch = get_channel(session, channel_ref)
+        if ch is None:
+            console.print(f"[red]Channel not found: {channel_ref}[/red]")
+            return
+
+        # Resolve the OAuth client: --client-file wins, else the channel's stored client.
+        if client_file:
+            client_id, client_secret, _project = _load_oauth_client(client_file)
+        else:
+            existing = next((i for i in ch.integrations if i.provider_key == "youtube"), None)
+            stored = (
+                crypto.decrypt_secrets(existing.secrets_encrypted)
+                if existing and existing.secrets_encrypted
+                else {}
+            )
+            client_id, client_secret = stored.get("client_id"), stored.get("client_secret")
+
+        if not client_id or not client_secret:
+            console.print(
+                "[red]No OAuth client for this channel. Pass --client-file or run "
+                "`channel set-youtube-client` first.[/red]"
+            )
+            return
+
+        client_config = {
+            "installed": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": ["http://localhost"],
+            }
+        }
+
+        from google_auth_oauthlib.flow import InstalledAppFlow
+
+        flow = InstalledAppFlow.from_client_config(client_config, scopes=scopes)
+        console.print(
+            f"[blue]Authorizing '{ch.slug}'. Approve access for the correct YouTube "
+            f"account in the browser window that opens.[/blue]"
+        )
+        creds = flow.run_local_server(
+            port=port,
+            open_browser=not no_browser,
+            access_type="offline",   # request a refresh token
+            prompt="consent",         # force a fresh refresh token even if previously granted
+        )
+
+        if not creds.refresh_token:
+            console.print(
+                "[red]Google did not return a refresh token. Revoke prior access at "
+                "https://myaccount.google.com/permissions and retry.[/red]"
+            )
+            return
+
+        set_integration(
+            session,
+            ch,
+            "youtube",
+            enabled=True,
+            secrets={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": creds.refresh_token,
+            },
+            commit=True,
+        )
+        # Never echo the token.
+        console.print(f"[bold green]✓ Connected YouTube for '{ch.slug}'. Refresh token stored (encrypted).[/bold green]")
     finally:
         session.close()
 
@@ -560,6 +746,284 @@ def settings_import_env():
     try:
         import_env_into_app(session, commit=True)
         console.print("[bold green]✓ Imported shared integrations from .env[/bold green]")
+    finally:
+        session.close()
+
+
+# ============================================
+# Recap media (CinybeShorts) — series / episode / inbox
+# ============================================
+
+@cli.group()
+def recap():
+    """Manage recap series, episodes, and the inbox (pipeline_mode=recap_shorts)."""
+
+
+@recap.command("config")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option(
+    "--segmentation-mode",
+    type=click.Choice(["time", "scene"]),
+    default=None,
+    help="scene: content-aware montage Shorts (one per plot-integral scene, dynamic count); "
+         "time: fixed back-to-back windows",
+)
+@click.option(
+    "--audio-mode",
+    type=click.Choice(["tts_narration", "original_audio"]),
+    default=None,
+    help="original_audio: keep the clip's own audio + quiet music + dialogue subtitles",
+)
+@click.option("--music-volume", type=float, default=None, help="Music bed volume, e.g. 0.10")
+@click.option("--music-mood-fallback", default=None, help="Mood used when scene mood can't be inferred")
+@click.option(
+    "--allow-noncommercial/--no-allow-noncommercial",
+    "music_allow_noncommercial",
+    default=None,
+    help="Allow CC-NC music tracks (unsafe to monetize)",
+)
+@click.option(
+    "--subtitles/--no-subtitles",
+    "subtitles_from_dialogue",
+    default=None,
+    help="Burn dialogue subtitles in original_audio mode",
+)
+def recap_config(
+    channel_ref, segmentation_mode, audio_mode, music_volume, music_mood_fallback,
+    music_allow_noncommercial, subtitles_from_dialogue,
+):
+    """Set recap options (segmentation, audio mode, music, subtitles) for a channel.
+
+    Example — smart montage recaps with original audio + subtle music:
+        npm run worker -- recap config --channel cinybe-shorts \\
+            --segmentation-mode scene --audio-mode original_audio
+    """
+    from storyfactory.services.channel_service import set_recap_options
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        set_recap_options(
+            session, ch,
+            segmentation_mode=segmentation_mode,
+            audio_mode=audio_mode,
+            music_volume=music_volume,
+            music_mood_fallback=music_mood_fallback,
+            music_allow_noncommercial=music_allow_noncommercial,
+            subtitles_from_dialogue=subtitles_from_dialogue,
+        )
+        recap_cfg = (ch.config or {}).get("recap", {})
+        console.print(f"[bold green]✓ Recap config for '{ch.slug}':[/bold green]")
+        for key in (
+            "segmentation_mode", "audio_mode", "music_enabled", "music_volume",
+            "music_mood_fallback", "music_allow_noncommercial", "subtitles_from_dialogue",
+        ):
+            if key in recap_cfg:
+                console.print(f"   {key} = {recap_cfg[key]}")
+    finally:
+        session.close()
+
+
+@recap.group("series")
+def recap_series():
+    """Create, list, and activate recap series."""
+
+
+@recap_series.command("create")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--title", required=True, help="Series/movie title")
+@click.option("--slug", default=None, help="Optional slug (derived from title)")
+@click.option("--type", "series_type", type=click.Choice(["series", "movie"]), default="series")
+@click.option("--active", is_flag=True, help="Mark this series active for processing")
+def recap_series_create(channel_ref, title, slug, series_type, active):
+    """Create a recap series (or movie)."""
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        series = recap_service.ensure_series(
+            session, ch, title=title, slug=slug, type=series_type, commit=True
+        )
+        if active:
+            recap_service.set_active_series(session, ch, series.slug, commit=True)
+        console.print(
+            f"[bold green]✓ Series '{series.slug}' ({series.type})"
+            f"{' [active]' if active else ''}[/bold green]"
+        )
+    finally:
+        session.close()
+
+
+@recap_series.command("list")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+def recap_series_list(channel_ref):
+    """List a channel's recap series and episode progress."""
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        series_list = recap_service.list_series(session, ch)
+        if not series_list:
+            console.print("[yellow]No series yet. Scan the inbox or run `recap series create`.[/yellow]")
+            return
+        for s in series_list:
+            episodes = recap_service.list_episodes(session, s)
+            done = sum(1 for e in episodes if e.status == "completed")
+            mark = "★" if s.is_active else " "
+            console.print(
+                f"[{mark}] [green]{s.slug}[/green] — {s.title} ({s.type}) · "
+                f"{done}/{len(episodes)} episodes completed"
+            )
+    finally:
+        session.close()
+
+
+@recap_series.command("set-active")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--slug", required=True, help="Series slug to activate")
+def recap_series_set_active(channel_ref, slug):
+    """Mark one series active (the pipeline processes the active series)."""
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        try:
+            recap_service.set_active_series(session, ch, slug, commit=True)
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
+        console.print(f"[bold green]✓ Active series for '{ch.slug}' is now '{slug}'[/bold green]")
+    finally:
+        session.close()
+
+
+@recap.group("episode")
+def recap_episode():
+    """List, register, and complete recap episodes."""
+
+
+@recap_episode.command("list")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--series", "series_slug", default=None, help="Limit to one series slug")
+def recap_episode_list(channel_ref, series_slug):
+    """List episodes (optionally for one series) with status and duration."""
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        series_list = recap_service.list_series(session, ch)
+        if series_slug:
+            series_list = [s for s in series_list if s.slug == series_slug]
+        for s in series_list:
+            console.print(f"[bold]{s.slug}[/bold] — {s.title}")
+            for e in recap_service.list_episodes(session, s):
+                dur = f"{e.duration_seconds:.0f}s" if e.duration_seconds else "unknown"
+                label = (
+                    f"S{e.season_number:02d}E{e.episode_number:02d}"
+                    if e.season_number and e.episode_number
+                    else (f"Part {e.part_index}" if e.part_index else (e.title or "feature"))
+                )
+                console.print(f"   [{e.status}] {label} · {dur} · {e.file_path}")
+    finally:
+        session.close()
+
+
+@recap_episode.command("register")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--series", "series_slug", required=True, help="Series slug (created if missing)")
+@click.option("--file", "file_path", required=True, type=click.Path(), help="Path to the source video file")
+@click.option("--title", default=None, help="Series/episode title (used when creating the series)")
+@click.option("--season", type=int, default=None)
+@click.option("--episode", type=int, default=None)
+@click.option("--part", "part_index", type=int, default=None)
+@click.option("--duration", "duration", type=float, default=None, help="Duration in seconds (probed via ffprobe if omitted)")
+def recap_episode_register(channel_ref, series_slug, file_path, title, season, episode, part_index, duration):
+    """Register a single source file as an episode (idempotent)."""
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        series = recap_service.get_series(session, ch, series_slug)
+        if series is None:
+            series = recap_service.ensure_series(
+                session, ch, title=title or series_slug, slug=series_slug,
+                type="movie" if part_index is not None or (season is None and episode is None) else "series",
+                commit=False,
+            )
+            session.flush()
+        if duration is None:
+            duration = recap_service.probe_duration(file_path)
+        _ep, created = recap_service.register_episode(
+            session, series, file_path=file_path, season=season, episode=episode,
+            part_index=part_index, title=title, duration_seconds=duration, commit=True,
+        )
+        verb = "Registered" if created else "Already registered (updated)"
+        console.print(f"[bold green]✓ {verb}: {file_path}[/bold green]")
+    finally:
+        session.close()
+
+
+@recap_episode.command("mark-complete")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--episode-id", "episode_id", required=True, help="Episode id (from `recap episode list`)")
+def recap_episode_mark_complete(channel_ref, episode_id):
+    """Mark an episode completed so the pipeline advances to the next one."""
+    from storyfactory.db.models import MediaEpisode
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        ep = session.query(MediaEpisode).filter_by(id=episode_id, channel_id=ch.id).first()
+        if ep is None:
+            console.print(f"[red]Episode not found for this channel: {episode_id}[/red]")
+            return
+        recap_service.mark_episode(session, ep, "completed", commit=True)
+        console.print(f"[bold green]✓ Episode {episode_id[:8]} marked completed[/bold green]")
+    finally:
+        session.close()
+
+
+@recap.command("inbox")
+@click.argument("action", type=click.Choice(["scan"]))
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--inbox", "inbox_path", default=None, help="Inbox folder (defaults to the channel's recap.inbox_path)")
+def recap_inbox(action, channel_ref, inbox_path):
+    """Scan the inbox folder and register new episodes."""
+    from storyfactory.channel_context import use_channel
+    from storyfactory.content_defaults import RECAP_DEFAULTS
+    from storyfactory.services import recap_service
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        # Resolve the inbox via the active channel context (config override aware).
+        with use_channel(session, ch):
+            from storyfactory.channel_context import effective_config
+
+            recap_cfg = effective_config("recap", {}) or {}
+        path = inbox_path or recap_cfg.get("inbox_path") or RECAP_DEFAULTS["inbox_path"]
+        summary = recap_service.scan_inbox(session, ch, path, commit=True)
+        if summary.get("error"):
+            console.print(f"[yellow]⚠ {summary['error']}[/yellow]")
+        else:
+            console.print(
+                f"[bold green]✓ Scanned {summary['scanned']} file(s): "
+                f"{summary['new_series']} new series, {summary['new_episodes']} new episode(s).[/bold green]"
+            )
     finally:
         session.close()
 

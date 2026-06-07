@@ -23,6 +23,30 @@ function validateContentConfig(cfg: Record<string, unknown>): string | null {
   if (typeof lmin === 'number' && typeof lmax === 'number' && lmin > lmax) {
     return 'long_form_segments_min cannot exceed long_form_segments_max.';
   }
+  const mode = cfg.pipeline_mode;
+  if (mode === 'recap_shorts' && (cfg.enable_shorts === false || cfg.enable_long_form === true)) {
+    return 'recap_shorts channels produce Shorts only (enable_shorts true, enable_long_form false).';
+  }
+  if (mode === 'sleep_facts' && (cfg.enable_long_form === false || cfg.enable_shorts === true)) {
+    return 'sleep_facts channels produce long-form only (enable_long_form true, enable_shorts false).';
+  }
+  // Numeric range guards (mirror the shared Zod caps) so a runaway value can't be
+  // persisted directly via the API and blow up generation cost downstream.
+  const tlt = cfg.long_form_target_minutes;
+  if (typeof tlt === 'number' && (tlt < 1 || tlt > 240)) {
+    return 'long_form_target_minutes must be between 1 and 240.';
+  }
+  const sf = cfg.sleep_facts as Record<string, unknown> | undefined;
+  if (sf && typeof sf === 'object') {
+    const sfMin = sf.long_form_target_minutes;
+    if (typeof sfMin === 'number' && (sfMin < 1 || sfMin > 240)) {
+      return 'sleep_facts.long_form_target_minutes must be between 1 and 240.';
+    }
+    const imgs = sf.images_target;
+    if (typeof imgs === 'number' && (imgs < 1 || imgs > 400)) {
+      return 'sleep_facts.images_target must be between 1 and 400.';
+    }
+  }
   return null;
 }
 
@@ -91,15 +115,14 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ id: str
   }
 
   const result = await runWorkerCommand(['channel', 'delete', '--channel', channel.id]);
-  if (!result.ok) {
+  // The worker exits 0 even when it refuses (e.g. channel has history), so detect
+  // success by the affirmative marker rather than the absence of a refusal string.
+  if (!result.ok || !/Deleted channel/.test(result.stdout)) {
+    const status = /has \d+ batch/.test(result.stdout) ? 409 : 500;
     return NextResponse.json(
-      { success: false, error: result.stderr || 'Delete failed' },
-      { status: 500 }
+      { success: false, error: result.stdout || result.stderr || 'Delete failed' },
+      { status }
     );
-  }
-  // The worker prints a friendly message (and refuses if the channel has history).
-  if (/has \d+ batch/.test(result.stdout)) {
-    return NextResponse.json({ success: false, error: result.stdout }, { status: 409 });
   }
   return NextResponse.json({ success: true });
 }

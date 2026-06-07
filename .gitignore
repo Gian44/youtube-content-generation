@@ -60,6 +60,14 @@ apps/worker/cache/
 youtube_tokens.json
 token.json
 
+# Google OAuth client secret downloads (never commit)
+client_secret*.json
+client_secret*.apps.googleusercontent.com.json
+
+# CinybeShorts source inbox — user-supplied videos (never commit); keep the README
+/cinybe-shorts-inbox/*
+!/cinybe-shorts-inbox/README.md
+
 # Secret encryption master key (never commit)
 .storyfactory.key
 *.storyfactory.key

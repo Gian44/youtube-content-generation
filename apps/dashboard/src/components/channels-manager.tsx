@@ -1,17 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface IntegrationStatus {
   providerKey: string;
   enabled: boolean;
   hasSecret: boolean;
   config: Record<string, unknown>;
+}
+
+interface RecapSeriesStatus {
+  slug: string;
+  title: string;
+  type: string;
+  isActive: boolean;
+  episodesTotal: number;
+  episodesCompleted: number;
+  episodesPending: number;
+}
+
+interface RecapStatus {
+  series: RecapSeriesStatus[];
+  segmentsRendered: number;
 }
 
 interface Channel {
@@ -24,7 +40,73 @@ interface Channel {
   contentStyle: string | null;
   config: Record<string, unknown>;
   integrations: IntegrationStatus[];
+  recapStatus?: RecapStatus | null;
+  sleepCursor?: number | null;
 }
+
+// ---- One-click channel presets (client-side sugar; stored config is explicit
+// flags, never a "preset name"). The user only connects YouTube afterwards. ----
+const PIPELINE_LABELS: Record<string, string> = {
+  fiction: "Fiction / Reddit",
+  recap_shorts: "Recap Shorts",
+  sleep_facts: "Sleep Facts",
+};
+
+const CINYBE_PRESET = {
+  name: "CinybeShorts",
+  slug: "cinybe-shorts",
+  niche: "TV & movie recaps",
+  contentStyle: "Fast, punchy recap Shorts cut from episodes and movies",
+  config: {
+    pipeline_mode: "recap_shorts",
+    enable_shorts: true,
+    enable_long_form: false,
+    disclosure_line:
+      "Recap/commentary for entertainment. All footage belongs to its respective owners.",
+    recap: {
+      source_mode: "user_supplied",
+      inbox_path: "./data/sources/inbox/cinybe-shorts",
+      target_short_seconds: 52,
+      max_shorts_per_run: 5,
+      footage_mode: "with_source_video",
+    },
+  },
+} as const;
+
+const SLEEP_PRESET = {
+  name: "Sleep On Facts",
+  slug: "sleep-on-facts",
+  niche: "Calm facts to fall asleep to",
+  contentStyle: "Calm, single-topic narration for sleep",
+  config: {
+    pipeline_mode: "sleep_facts",
+    enable_shorts: false,
+    enable_long_form: true,
+    long_form_per_day: 1,
+    long_form_target_minutes: 180,
+    voice_personas: ["calm"],
+    disclosure_line: "Educational facts narrated for relaxation.",
+    sleep_facts: {
+      topic_rotation: [
+        "Ancient Egypt",
+        "The Deep Sea",
+        "Outer Space",
+        "The Roman Empire",
+        "Volcanoes",
+        "The Human Brain",
+        "Whales",
+        "Antarctica",
+        "The Solar System",
+        "Dinosaurs",
+      ],
+      voice_persona: "calm",
+      enable_wikipedia_grounding: true,
+      // ~3-hour image-slideshow sleep videos (one calm onyx voice, 150 images).
+      asset_type: "image",
+      images_target: 150,
+    },
+  },
+} as const;
 
 interface ProviderField {
   name: string;
@@ -143,6 +225,35 @@ function CreateChannelForm({ busy, onCreate }: { busy: boolean; onCreate: (body:
         <CardTitle className="text-lg">➕ Create channel</CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 rounded-lg border border-border/30 bg-background/40 p-3">
+          <div className="mb-2 text-xs font-medium text-muted-foreground">
+            Quick start — one-click presets (connect YouTube afterwards)
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => onCreate({ ...CINYBE_PRESET })}
+            >
+              🎬 CinybeShorts (recap shorts)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => onCreate({ ...SLEEP_PRESET })}
+            >
+              🌙 Sleep On Facts (sleep facts)
+            </Button>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            CinybeShorts: shorts-only recap pipeline (drop episode files into its inbox).
+            Sleep On Facts: long-form-only calm facts. Both are pre-named with their
+            content profile filled in.
+          </p>
+        </div>
+
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[180px]">
             <label className="mb-1 block text-xs text-muted-foreground">Name</label>
@@ -196,6 +307,7 @@ function ChannelCard({
 }) {
   const byKey = new Map(channel.integrations.map((i) => [i.providerKey, i]));
   const isActive = channel.status === "active";
+  const pipelineMode = (channel.config?.pipeline_mode as string) || "fiction";
 
   const connectUrl =
     `https://accounts.google.com/o/oauth2/auth?client_id=${encodeURIComponent(youtubeClientId)}` +
@@ -217,6 +329,9 @@ function ChannelCard({
           >
             {channel.status}
           </Badge>
+          <Badge variant="outline" className="bg-primary/15 text-primary border-primary/30 text-[10px]">
+            {PIPELINE_LABELS[pipelineMode] || pipelineMode}
+          </Badge>
           {channel.niche && <span className="text-xs text-muted-foreground">{channel.niche}</span>}
           <div className="ml-auto flex gap-2">
             <Button variant="outline" size="sm" disabled={busy}
@@ -237,6 +352,7 @@ function ChannelCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <PipelinePanel channel={channel} busy={busy} onUpdate={onUpdate} />
         <ContentSettings channel={channel} busy={busy} onUpdate={onUpdate} />
         <div className="grid gap-3 md:grid-cols-2">
           <IntegrationRow
@@ -254,6 +370,150 @@ function ChannelCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function PipelinePanel({
+  channel,
+  busy,
+  onUpdate,
+}: {
+  channel: Channel;
+  busy: boolean;
+  onUpdate: (patch: unknown) => Promise<boolean>;
+}) {
+  const mode = (channel.config?.pipeline_mode as string) || "fiction";
+  if (mode === "recap_shorts") return <RecapPanel channel={channel} />;
+  if (mode === "sleep_facts") return <SleepPanel channel={channel} busy={busy} onUpdate={onUpdate} />;
+  return null;
+}
+
+function RecapPanel({ channel }: { channel: Channel }) {
+  const recap = (channel.config?.recap as Record<string, unknown>) || {};
+  const status = channel.recapStatus;
+  const inbox = (recap.inbox_path as string) || "./data/sources/inbox";
+  const footage = (recap.footage_mode as string) || "with_source_video";
+  const target = (recap.target_short_seconds as number) ?? 52;
+  const perRun = (recap.max_shorts_per_run as number) ?? 5;
+
+  return (
+    <div className="rounded-lg border border-border/30 bg-background/40 p-3 text-xs">
+      <div className="mb-2 text-sm font-medium">🎬 Recap pipeline</div>
+      <div className="text-muted-foreground">
+        Inbox: <code className="font-mono">{inbox}</code> · footage:{" "}
+        <span className="text-foreground">{footage}</span> · ~{target}s · {perRun}/run
+      </div>
+      <div className="mt-2 space-y-1">
+        {status && status.series.length > 0 ? (
+          status.series.map((s) => (
+            <div key={s.slug} className="flex items-center gap-2">
+              <span className={s.isActive ? "text-emerald-400" : "text-muted-foreground"}>
+                {s.isActive ? "★" : "·"}
+              </span>
+              <span className="text-foreground">{s.title}</span>
+              <span className="text-muted-foreground">
+                ({s.episodesCompleted}/{s.episodesTotal} episodes done)
+              </span>
+            </div>
+          ))
+        ) : (
+          <div className="text-muted-foreground">
+            No series yet — drop episode files (e.g. <code>Show Name S01E03.mkv</code>) into the inbox.
+          </div>
+        )}
+      </div>
+      <div className="mt-2 text-muted-foreground">
+        {status?.segmentsRendered ?? 0} Shorts rendered so far. Manage series/episodes with{" "}
+        <code className="font-mono">npm run worker -- recap …</code> (see docs/multi-channel.md).
+      </div>
+    </div>
+  );
+}
+
+function SleepPanel({
+  channel,
+  busy,
+  onUpdate,
+}: {
+  channel: Channel;
+  busy: boolean;
+  onUpdate: (patch: unknown) => Promise<boolean>;
+}) {
+  const sleep = (channel.config?.sleep_facts as Record<string, unknown>) || {};
+  const rotation = Array.isArray(sleep.topic_rotation) ? (sleep.topic_rotation as string[]) : [];
+  // Target minutes is the top-level config value (what the Content Settings
+  // control edits and the worker reads); fall back to the nested value, then 20.
+  // Sleep length lives in the nested sleep_facts config (what the worker reads);
+  // fall back to a legacy top-level value, then the ~3h default.
+  const topLevelTarget = channel.config?.long_form_target_minutes;
+  const initialTarget =
+    typeof sleep.long_form_target_minutes === "number"
+      ? sleep.long_form_target_minutes
+      : typeof topLevelTarget === "number"
+        ? topLevelTarget
+        : 180;
+  const cursor = channel.sleepCursor ?? 0;
+  const nextTopic = rotation.length > 0 ? rotation[cursor % rotation.length] : "(add topics below)";
+
+  const rotationKey = rotation.join("\n");
+  const [topics, setTopics] = useState(rotationKey);
+  const [targetMin, setTargetMin] = useState(String(initialTarget));
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  // Re-sync the textarea when the channel's rotation changes server-side (a worker
+  // run or another tab's save), so a later save can't overwrite the newer value
+  // with stale first-mount state.
+  useEffect(() => {
+    setTopics(rotationKey);
+  }, [channel.id, rotationKey]);
+
+  async function save() {
+    setSavedMsg(null);
+    const list = topics
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const minutes = Math.max(1, Math.min(240, Number(targetMin) || 180));
+    const merged = { ...sleep, topic_rotation: list, long_form_target_minutes: minutes };
+    const ok = await onUpdate({ config: { sleep_facts: merged } });
+    if (ok) setSavedMsg(`Saved ${list.length} topic(s) · ~${minutes} min/video.`);
+  }
+
+  return (
+    <div className="rounded-lg border border-border/30 bg-background/40 p-3 text-xs">
+      <div className="mb-2 text-sm font-medium">🌙 Sleep pipeline</div>
+      <div className="text-muted-foreground">
+        Calm voice locked · image slideshow · ~{targetMin} min/video · next topic:{" "}
+        <span className="text-foreground">{nextTopic}</span>
+      </div>
+      <label className="mt-2 mb-1 block text-[10px] text-muted-foreground">
+        Target minutes per video (~180 = 3 hours)
+      </label>
+      <Input
+        type="number"
+        min={1}
+        max={240}
+        value={targetMin}
+        onChange={(e) => setTargetMin(e.target.value)}
+        className="w-28 text-xs"
+      />
+      <label className="mt-2 mb-1 block text-[10px] text-muted-foreground">
+        Topic rotation (one per line — never mix domains in a video)
+      </label>
+      <Textarea
+        value={topics}
+        onChange={(e) => setTopics(e.target.value)}
+        rows={6}
+        className="font-mono text-xs"
+        placeholder={"Ancient Egypt\nThe Deep Sea\nOuter Space"}
+      />
+      <div className="mt-2 flex items-center gap-3">
+        <Button size="sm" disabled={busy} onClick={save}>
+          Save sleep settings
+        </Button>
+        {savedMsg && <span className="text-[11px] text-emerald-400">{savedMsg}</span>}
+      </div>
+    </div>
   );
 }
 
@@ -366,7 +626,9 @@ function ContentSettings({
           </div>
           <div className="w-32">
             <label className="mb-1 block text-[10px] text-muted-foreground">Target minutes</label>
-            <Input type="number" min={1} max={60} value={targetMin}
+            {/* Up to 240 so Sleep On Facts can target ~3h (180) without the
+                spinner silently clamping a long-form value down to 60. */}
+            <Input type="number" min={1} max={240} value={targetMin}
               onChange={(e) => setTargetMin(e.target.value)} className="text-xs" />
           </div>
           <label className="flex items-center gap-2 text-xs">

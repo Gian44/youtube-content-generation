@@ -490,3 +490,141 @@ class PromptTemplate(Base):
         Index("ix_prompt_templates_category", "category"),
         Index("ix_prompt_templates_channel_name", "channel_id", "name", unique=True),
     )
+
+
+# ============================================
+# Recap media (CinybeShorts) — series / episode / segment ledger
+# ============================================
+
+class MediaSeries(Base):
+    """A show or movie a recap channel produces Shorts from.
+
+    A ``movie`` is modelled as a series with a single (or few) episode "parts" so
+    the same segmentation logic applies. Scoped to a channel: each recap channel
+    tracks its own catalogue.
+    """
+
+    __tablename__ = "media_series"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    channel_id = Column(String(36), ForeignKey("channels.id"), nullable=False, index=True)
+    slug = Column(String(120), nullable=False)
+    title = Column(String(200), nullable=False)
+    type = Column(String(10), nullable=False, default="series")  # series | movie
+    is_active = Column(Boolean, default=False)  # the series currently being processed
+    series_metadata = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    episodes = relationship(
+        "MediaEpisode", back_populates="series", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_media_series_channel_slug", "channel_id", "slug", unique=True),
+    )
+
+
+class MediaEpisode(Base):
+    """One source file belonging to a series (an episode, or a movie part).
+
+    The pipeline processes one episode at a time per active series; when every
+    planned window has a :class:`RecapSegment`, the episode is ``completed`` and
+    the next ``pending`` episode is advanced.
+    """
+
+    __tablename__ = "media_episodes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    series_id = Column(String(36), ForeignKey("media_series.id"), nullable=False, index=True)
+    channel_id = Column(String(36), ForeignKey("channels.id"), nullable=True, index=True)
+    season_number = Column(Integer, nullable=True)
+    episode_number = Column(Integer, nullable=True)
+    part_index = Column(Integer, nullable=True)  # for multi-part movies
+    title = Column(String(200), nullable=True)
+    file_path = Column(Text, nullable=False)
+    duration_seconds = Column(Float, nullable=True)
+    status = Column(String(20), nullable=False, default="pending")  # pending|in_progress|completed
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    series = relationship("MediaSeries", back_populates="episodes")
+    segments = relationship(
+        "RecapSegment", back_populates="episode", cascade="all, delete-orphan"
+    )
+    scenes = relationship(
+        "MediaScene", back_populates="episode", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_media_episodes_series_file", "series_id", "file_path", unique=True),
+        Index("ix_media_episodes_status", "status"),
+    )
+
+
+class RecapSegment(Base):
+    """Dedupe ledger: one row per [start, end] window already turned into a Short.
+
+    Presence of a row for a window means "already made a Short from this range",
+    so a re-run never produces a duplicate Short for the same span.
+    """
+
+    __tablename__ = "recap_segments"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    episode_id = Column(String(36), ForeignKey("media_episodes.id"), nullable=False, index=True)
+    channel_id = Column(String(36), ForeignKey("channels.id"), nullable=True, index=True)
+    start_seconds = Column(Float, nullable=False)
+    end_seconds = Column(Float, nullable=False)
+    story_id = Column(String(36), ForeignKey("stories.id"), nullable=True)
+    render_job_id = Column(String(36), ForeignKey("render_jobs.id"), nullable=True)
+    status = Column(String(20), nullable=False, default="rendered")  # rendered|blocked|failed
+    created_at = Column(DateTime, default=utcnow)
+
+    episode = relationship("MediaEpisode", back_populates="segments")
+
+    __table_args__ = (
+        Index("ix_recap_segments_episode_start", "episode_id", "start_seconds"),
+    )
+
+
+class MediaScene(Base):
+    """A frozen, content-aware scene plan for an episode (``scene`` segmentation).
+
+    Computed once (transcribe → detect candidate scenes → LLM-score for
+    plot-importance), then FROZEN: re-runs read these rows so both the Short
+    COUNT and the windows are deterministic. Each row with ``keep=True`` becomes
+    one edited montage Short; ``cut_list`` is the ordered list of sub-spans
+    ``[[start, end], ...]`` to stitch (filler/dead-air removed), hook-first. The
+    :class:`RecapSegment` ledger still dedupes actually-produced windows by start.
+    """
+
+    __tablename__ = "media_scenes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    episode_id = Column(String(36), ForeignKey("media_episodes.id"), nullable=False, index=True)
+    channel_id = Column(String(36), ForeignKey("channels.id"), nullable=True, index=True)
+    scene_index = Column(Integer, nullable=False)
+    start_seconds = Column(Float, nullable=False)
+    end_seconds = Column(Float, nullable=False)
+    importance = Column(Float, nullable=False, default=0.0)
+    keep = Column(Boolean, default=False)
+    cut_list = Column(JSON, default=list)        # [[start, end], ...] montage sub-spans
+    title = Column(String(200), nullable=True)
+    hook = Column(Text, nullable=True)
+    comment_bait = Column(Text, nullable=True)
+    tags = Column(JSON, default=list)            # post-specific SEO tags (planner)
+    mood = Column(String(80), nullable=True)     # music-bed mood
+    reason = Column(Text, nullable=True)         # why integral (audit trail)
+    created_at = Column(DateTime, default=utcnow)
+
+    episode = relationship("MediaEpisode", back_populates="scenes")
+
+    __table_args__ = (
+        # Unique: the plan is frozen once per episode. A unique key lets the DB
+        # reject a duplicate concurrent insert instead of silently corrupting the
+        # plan (two parallel runs both seeing an empty plan).
+        Index("ix_media_scenes_episode_idx", "episode_id", "scene_index", unique=True),
+        Index("ix_media_scenes_episode_start", "episode_id", "start_seconds"),
+    )

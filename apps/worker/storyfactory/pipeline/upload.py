@@ -1,8 +1,10 @@
 """Upload pipeline - uploads rendered videos to YouTube (per channel)."""
 
+from datetime import datetime, timezone
+
 from rich.console import Console
 
-from storyfactory.channel_context import use_channel
+from storyfactory.channel_context import effective_config, use_channel
 from storyfactory.config import get_settings
 from storyfactory.db.engine import init_db, get_session
 from storyfactory.db.models import RenderJob, DailyBatch, Story, YouTubeUpload
@@ -85,6 +87,17 @@ def _upload_for_channel(session, channel):
         console.print(f"[yellow]No videos ready for upload on '{channel.slug}'.[/yellow]")
         return
 
+    # Optimizer cadence: at most N Short uploads per channel per UTC day (default
+    # 1; 0 = unlimited). Long-form is never throttled by this. Excess Shorts stay
+    # queued and drain oldest-first on subsequent days.
+    render_jobs = _apply_short_upload_throttle(session, channel, render_jobs)
+    if not render_jobs:
+        console.print(
+            f"[yellow]Daily Short upload limit already reached for '{channel.slug}'. "
+            f"Remaining Shorts will upload on the next day's run.[/yellow]"
+        )
+        return
+
     console.print(f"[blue]Found {len(render_jobs)} videos to upload[/blue]")
 
     for render_job in render_jobs:
@@ -123,3 +136,42 @@ def _upload_for_channel(session, channel):
     session.commit()
 
     console.print(f"[bold green]Upload pipeline complete for '{channel.slug}'.[/bold green]")
+
+
+def _apply_short_upload_throttle(session, channel, render_jobs: list[RenderJob]) -> list[RenderJob]:
+    """Cap Short uploads to ``max_short_uploads_per_day`` per channel per UTC day.
+
+    Returns the subset of ``render_jobs`` to upload now: every non-Short, plus up
+    to ``limit - (Shorts already uploaded today)`` Shorts (oldest first). A limit
+    of 0 means unlimited (legacy behavior). Long-form is never held back.
+    """
+    limit = int(effective_config("max_short_uploads_per_day", 0) or 0)
+    shorts = [rj for rj in render_jobs if rj.type == "short"]
+    others = [rj for rj in render_jobs if rj.type != "short"]
+    if limit <= 0 or not shorts:
+        return render_jobs
+
+    start_of_day = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    uploaded_today = (
+        session.query(YouTubeUpload)
+        .join(RenderJob, YouTubeUpload.render_job_id == RenderJob.id)
+        .filter(
+            RenderJob.channel_id == channel.id,
+            RenderJob.type == "short",
+            YouTubeUpload.status == "completed",
+            YouTubeUpload.uploaded_at.isnot(None),
+            YouTubeUpload.uploaded_at >= start_of_day,
+        )
+        .count()
+    )
+    allowed = max(0, limit - uploaded_today)
+    shorts.sort(key=lambda r: r.created_at or start_of_day)  # FIFO drain
+    held = len(shorts) - allowed
+    if held > 0:
+        console.print(
+            f"[yellow]⏳ Holding {held} Short(s) for later — optimizer cap is "
+            f"{limit}/day ({uploaded_today} already uploaded today).[/yellow]"
+        )
+    return others + shorts[:allowed]

@@ -15,6 +15,7 @@ from storyfactory.config import get_settings
 from storyfactory.db.engine import get_session
 from storyfactory.db.models import YouTubeUpload, RenderJob, Story
 from storyfactory.logger import get_logger
+from storyfactory.services import shorts_seo
 from storyfactory.services.api_tracker import track_api_call, check_youtube_quota
 
 log = get_logger("youtube_uploader")
@@ -57,7 +58,13 @@ def upload_video(render_job: RenderJob, metadata: dict) -> YouTubeUpload:
         category_id=metadata.get("category_id", "24"),
         requested_privacy=effective_config("upload_privacy_mode", settings.upload_privacy_mode),
         made_for_kids=False,
-        contains_synthetic_media=metadata.get("contains_synthetic_media", True),
+        # Self-declaring synthetic media is what produced the "Made with AI" /
+        # "altered or synthetic content" label. Resolve from per-channel config
+        # (default OFF) unless a metadata builder explicitly overrides it.
+        contains_synthetic_media=metadata.get(
+            "contains_synthetic_media",
+            bool(effective_config("declare_synthetic_media", settings.declare_synthetic_media)),
+        ),
         status="queued",
     )
 
@@ -487,6 +494,74 @@ def _update_youtube_video_title(settings, youtube_video_id: str, title: str):
     log.info("youtube_title_updated", video_id=youtube_video_id, title=safe_title)
 
 
+def _planner_tags(story) -> list[str]:
+    """Post-specific tags the scene planner wrote into ``story.raw_output`` (if any)."""
+    raw = getattr(story, "raw_output", None)
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    tags = data.get("tags") if isinstance(data, dict) else None
+    return [str(t) for t in tags] if isinstance(tags, list) else []
+
+
+def _recap_metadata(first_story, category: str, render_job=None) -> dict:
+    """Upload metadata for a CinybeShorts recap Short (transformative commentary).
+
+    Shaped by the Shorts optimizer playbook (curiosity title, no title hashtags,
+    ~3 description hashtags, 3-tier tags). In original_audio mode the music
+    track's attribution (recorded on the render job's ``render_config``) is
+    appended below the hashtags so the CC credit appears in the description.
+    """
+    title = getattr(first_story, "title", None) or "Recap Short"
+    hook = getattr(first_story, "hook", "") or ""
+    label = _category_label(category)
+
+    post_specific = _planner_tags(first_story) or (
+        [label, f"{label} recap", f"{label} explained"]
+        + shorts_seo.keyword_tags_from_title(title)
+    )
+    niche = ["recap", "tv recap", "movie recap", "explained"]
+    hashtags = ["#shorts", "#recap", "#" + label.replace(" ", "")]
+
+    music_attribution = ""
+    if render_job is not None:
+        music_attribution = (getattr(render_job, "render_config", None) or {}).get(
+            "music_attribution"
+        ) or ""
+
+    return shorts_seo.build_short_metadata(
+        title=title,
+        hook=hook,
+        post_specific_tags=post_specific,
+        niche_tags=niche,
+        hashtags=hashtags,
+        extra_description=music_attribution or None,
+    )
+
+
+def _sleep_facts_metadata(first_story, category: str) -> dict:
+    """Upload metadata for a Sleep On Facts long-form video (calm, single topic)."""
+    title = getattr(first_story, "title", None) or "Calm Facts to Fall Asleep To"
+    topic = _category_label(category)
+    description = (
+        f"Relax and drift off with calm, soothing facts about {topic}.\n\n"
+        f"Put this on, dim the lights, and let the gentle narration carry you to sleep.\n\n"
+        f"Like and subscribe for more calming facts to fall asleep to."
+    )
+    tags = [
+        "sleep", "facts", "calm", "relaxation", "fall asleep", "bedtime",
+        "sleep facts", "calming narration", topic,
+    ]
+    return {
+        "title": title[:YOUTUBE_TITLE_LIMIT],
+        "description": description,
+        "tags": tags,
+    }
+
+
 def build_upload_metadata(
     render_job: RenderJob,
     stories: list,
@@ -494,7 +569,10 @@ def build_upload_metadata(
 ) -> dict:
     """Build metadata dict for YouTube upload.
 
-    This generates title, description, tags using AI or templates.
+    This generates title, description, tags using AI or templates. The shape is
+    chosen by the active channel's ``pipeline_mode`` so recap Shorts and sleep
+    videos get topic-appropriate titles/descriptions instead of the fiction
+    "Reddit" framing.
     """
     settings = get_settings()
 
@@ -508,16 +586,27 @@ def build_upload_metadata(
     first_story = stories[0]
     category = first_story.category if hasattr(first_story, "category") else "stories"
 
+    mode = effective_config("pipeline_mode", "fiction")
+    if mode == "recap_shorts":
+        return _recap_metadata(first_story, category, render_job)
+    if mode == "sleep_facts":
+        return _sleep_facts_metadata(first_story, category)
+
     if video_type == "short":
-        title = first_story.title if hasattr(first_story, "title") else "Story Time"
-        description = (
-            f"{first_story.hook if hasattr(first_story, 'hook') else ''}\n\n"
-            f"#shorts #storytime #redditstories"
+        # Optimizer-shaped metadata for fiction Shorts (curiosity title, no title
+        # hashtags, ~3 description hashtags, 3-tier tags).
+        cat_label = category.replace("_", " ")
+        return shorts_seo.build_short_metadata(
+            title=getattr(first_story, "title", None) or "Story Time",
+            hook=getattr(first_story, "hook", "") or "",
+            post_specific_tags=(
+                _planner_tags(first_story)
+                or [cat_label, f"{cat_label} stories"]
+                + shorts_seo.keyword_tags_from_title(getattr(first_story, "title", "") or "")
+            ),
+            niche_tags=["storytime", "reddit stories", "drama"],
+            hashtags=["#shorts", "#storytime", "#redditstories"],
         )
-        tags = [
-            "shorts", "storytime", "reddit stories", "drama",
-            category.replace("_", " "), "original stories",
-        ]
     else:
         title = build_long_form_title(stories, category)
         story_teasers = "\n".join(
@@ -538,5 +627,4 @@ def build_upload_metadata(
         "title": title,
         "description": description,
         "tags": tags,
-        "contains_synthetic_media": True,
     }

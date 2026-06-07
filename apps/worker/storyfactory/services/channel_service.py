@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 
 from storyfactory import crypto
 from storyfactory.config import get_settings
-from storyfactory.content_defaults import DEFAULT_CATEGORY_WEIGHTS
+from storyfactory.content_defaults import (
+    DEFAULT_CATEGORY_WEIGHTS,
+    RECAP_DISCLOSURE_LINE,
+    SLEEP_FACTS_DISCLOSURE_LINE,
+)
 from storyfactory.db.models import Channel, ChannelIntegration
 from storyfactory.integrations import registry
 from storyfactory.logger import get_logger
@@ -82,6 +86,24 @@ def _validate_content_config(cfg: dict) -> None:
     if isinstance(lmin, int) and isinstance(lmax, int) and lmin > lmax:
         raise ValueError("long_form_segments_min cannot exceed long_form_segments_max.")
 
+    # The content engine (pipeline_mode) must match the enabled outputs:
+    #   recap_shorts → Shorts only;  sleep_facts → long-form only.
+    mode = cfg.get("pipeline_mode")
+    if mode == "recap_shorts" and (
+        cfg.get("enable_shorts") is False or cfg.get("enable_long_form") is True
+    ):
+        raise ValueError(
+            "recap_shorts channels produce Shorts only "
+            "(enable_shorts must be true and enable_long_form must be false)."
+        )
+    if mode == "sleep_facts" and (
+        cfg.get("enable_long_form") is False or cfg.get("enable_shorts") is True
+    ):
+        raise ValueError(
+            "sleep_facts channels produce long-form only "
+            "(enable_long_form must be true and enable_shorts must be false)."
+        )
+
 
 def create_channel(
     session: Session,
@@ -101,6 +123,14 @@ def create_channel(
     base_config["category_weights"] = dict(DEFAULT_CATEGORY_WEIGHTS)
     if config:
         base_config.update(config)
+    # content_config_defaults() always seeds the fiction disclosure; pick a
+    # mode-appropriate one when the caller didn't set disclosure_line explicitly.
+    if not (config and config.get("disclosure_line")):
+        mode = base_config.get("pipeline_mode", "fiction")
+        if mode == "recap_shorts":
+            base_config["disclosure_line"] = RECAP_DISCLOSURE_LINE
+        elif mode == "sleep_facts":
+            base_config["disclosure_line"] = SLEEP_FACTS_DISCLOSURE_LINE
     _validate_content_config(base_config)
 
     channel = Channel(
@@ -232,6 +262,25 @@ def update_channel(
         session.commit()
     log.info("channel_updated", slug=channel.slug)
     return channel
+
+
+def set_recap_options(
+    session: Session,
+    channel: Channel,
+    *,
+    commit: bool = True,
+    **options,
+) -> Channel:
+    """Deep-merge recap settings into ``channel.config["recap"]``.
+
+    The recap engine reads its config from the nested ``recap`` dict, so this
+    merges the given options into it (preserving the rest) rather than replacing
+    it. ``None`` values are ignored so callers can pass all options and only set
+    the ones provided (e.g. flipping ``audio_mode`` without touching the inbox).
+    """
+    recap_cfg = dict((channel.config or {}).get("recap") or {})
+    recap_cfg.update({k: v for k, v in options.items() if v is not None})
+    return update_channel(session, channel, config_updates={"recap": recap_cfg}, commit=commit)
 
 
 def duplicate_channel(

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Asset Providers
     pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
     pixabay_api_key: str = Field(default="", alias="PIXABAY_API_KEY")
+    # Music provider (Jamendo) — free Creative Commons tracks for recap Shorts.
+    jamendo_client_id: str = Field(default="", alias="JAMENDO_CLIENT_ID")
 
     # Storage
     storage_mode: Literal["local", "r2"] = Field(default="local", alias="STORAGE_MODE")
@@ -50,12 +52,31 @@ class Settings(BaseSettings):
         default="public", alias="UPLOAD_PRIVACY_MODE"
     )
     allow_private_fallback: bool = Field(default=True, alias="ALLOW_PRIVATE_FALLBACK")
+    # Whether to self-declare "altered or synthetic content" on the YouTube upload
+    # (status.containsSyntheticMedia). Default OFF: the previous hardcoded True is
+    # what produced the "Made with AI" label. Owners decide per channel; they
+    # remain responsible for actual YouTube disclosure-policy compliance.
+    declare_synthetic_media: bool = Field(default=False, alias="DECLARE_SYNTHETIC_MEDIA")
+    # Optimizer playbook: under ~100K subs / pre-monetization, exactly ONE Short
+    # upload per channel per day grows fastest (2-3/day starves each video of the
+    # data it needs). 0 = unlimited (legacy). Shorts pile into a backlog and the
+    # uploader drips one per day. Long-form uploads are NOT throttled by this.
+    max_short_uploads_per_day: int = Field(default=1, alias="MAX_SHORT_UPLOADS_PER_DAY")
 
     # Content Quotas
     shorts_per_day_min: int = Field(default=3, alias="SHORTS_PER_DAY_MIN")
     shorts_per_day_max: int = Field(default=5, alias="SHORTS_PER_DAY_MAX")
     long_form_per_day: int = Field(default=1, alias="LONG_FORM_PER_DAY")
     long_form_target_minutes: int = Field(default=10, alias="LONG_FORM_TARGET_MINUTES")
+
+    # Pipeline mode selects HOW a channel produces content (its content engine):
+    #   fiction      — original Reddit-style drama (the default, unchanged)
+    #   recap_shorts — many Shorts recapped from user-supplied local video files
+    #   sleep_facts  — one long-form, single-topic "facts to fall asleep to" video
+    # A channel overrides this in its config; the env value is only a default.
+    pipeline_mode: Literal["fiction", "recap_shorts", "sleep_facts"] = Field(
+        default="fiction", alias="PIPELINE_MODE"
+    )
 
     # Content outputs (per-channel composable shape; app-level defaults here).
     # A channel toggles which outputs it produces. At least one must be enabled.
@@ -126,6 +147,9 @@ class Settings(BaseSettings):
             "youtube": bool(self.youtube_client_id and self.youtube_client_secret),
             "pexels": bool(self.pexels_api_key and self.pexels_api_key != "your-pexels-api-key"),
             "pixabay": bool(self.pixabay_api_key and self.pixabay_api_key != "your-pixabay-api-key"),
+            "jamendo": bool(
+                self.jamendo_client_id and self.jamendo_client_id != "your-jamendo-client-id"
+            ),
         }
 
     def get_missing_keys(self) -> list[str]:
@@ -151,6 +175,7 @@ class Settings(BaseSettings):
         from the worker's canonical defaults to avoid an import cycle.
         """
         return {
+            "pipeline_mode": self.pipeline_mode,
             "shorts_per_day_min": self.shorts_per_day_min,
             "shorts_per_day_max": self.shorts_per_day_max,
             "long_form_per_day": self.long_form_per_day,
@@ -167,6 +192,8 @@ class Settings(BaseSettings):
             "tts_gemini_ratio": self.tts_gemini_ratio,
             "upload_privacy_mode": self.upload_privacy_mode,
             "allow_private_fallback": self.allow_private_fallback,
+            "declare_synthetic_media": self.declare_synthetic_media,
+            "max_short_uploads_per_day": self.max_short_uploads_per_day,
             "fail_safe_on_policy_flag": self.fail_safe_on_policy_flag,
             "fail_safe_on_license_unknown": self.fail_safe_on_license_unknown,
             "caption_style": self.caption_style,

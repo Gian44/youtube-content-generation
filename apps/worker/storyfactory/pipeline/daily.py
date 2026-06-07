@@ -100,6 +100,23 @@ def _run_for_channel(session, channel: Channel, ctx, settings):
         console.print("Run with --dry-run to test without API keys, or configure them in .env")
         return
 
+    # ==========================================
+    # Pipeline mode: each channel chooses its content engine. The default
+    # "fiction" path below is unchanged; recap_shorts / sleep_facts delegate to
+    # their own modules (which run within this same active channel context).
+    # ==========================================
+    pipeline_mode = str(effective_config("pipeline_mode", "fiction"))
+    if pipeline_mode == "recap_shorts":
+        from storyfactory.pipeline.recap_shorts import run_recap_shorts_for_channel
+
+        run_recap_shorts_for_channel(session, channel, ctx, settings)
+        return
+    if pipeline_mode == "sleep_facts":
+        from storyfactory.pipeline.sleep_facts import run_sleep_facts_for_channel
+
+        run_sleep_facts_for_channel(session, channel, ctx, settings)
+        return
+
     try:
         # ==========================================
         # Resolve the channel's content shape (which outputs to produce).

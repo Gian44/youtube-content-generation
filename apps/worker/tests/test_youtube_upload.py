@@ -153,7 +153,11 @@ class TestUploadRequestBuilder:
 
         assert "Test Disclosure Line" in desc
 
-    def test_contains_synthetic_media_flag(self):
+    def test_metadata_no_longer_hardcodes_synthetic_media(self):
+        # The synthetic-media declaration moved from a hardcoded True in the
+        # metadata builders to per-channel config (default OFF), which is what
+        # had been producing the "Made with AI" label. The builder must NOT inject
+        # the flag anymore so config governs it.
         from storyfactory.services.youtube_uploader import build_upload_metadata
 
         render_job = MagicMock()
@@ -161,7 +165,7 @@ class TestUploadRequestBuilder:
         story = MagicMock(title="Test", hook="Test", category="aita")
 
         metadata = build_upload_metadata(render_job, [story], "short")
-        assert metadata.get("contains_synthetic_media") is True
+        assert "contains_synthetic_media" not in metadata
 
 
 class TestQuotaGuard:

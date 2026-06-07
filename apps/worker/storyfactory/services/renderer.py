@@ -115,6 +115,102 @@ def render_short(
     return render_job
 
 
+def render_recap_short(
+    story: Story,
+    clip_path: str,
+    batch_id: str,
+    *,
+    music_path: str | None = None,
+    caption_path: str | None = None,
+    music_volume: float = 0.10,
+    music_attribution: str | None = None,
+    asset_ids: list[str] | None = None,
+    output_dir: str = "./data/renders",
+) -> RenderJob:
+    """Render a recap Short that keeps the clip's ORIGINAL audio.
+
+    Unlike :func:`render_short` (TTS narration is the master clock), here the cut
+    clip — with its own audio — is the master clock. A quiet, looped music bed is
+    mixed under the dialogue and optional dialogue subtitles are burned in. Used
+    by the recap ``original_audio`` mode (CinybeShorts).
+    """
+    settings = get_settings()
+    session = get_session()
+
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    output_path = os.path.join(output_dir, f"short_{story.id[:8]}.mp4")
+    thumbnail_path = os.path.join(output_dir, f"thumb_{story.id[:8]}.jpg")
+    fmt = VIDEO_FORMATS["short"]
+
+    render_job = RenderJob(
+        id=str(uuid.uuid4()),
+        batch_id=batch_id,
+        channel_id=get_current_channel_id(),
+        type="short",
+        status="processing",
+        story_ids=[story.id],
+        asset_ids=list(asset_ids or []),
+        width=fmt["width"],
+        height=fmt["height"],
+        fps=fmt["fps"],
+        render_started_at=datetime.now(timezone.utc),
+        render_config={
+            "audio_mode": "original_audio",
+            "music": bool(music_path),
+            "music_volume": music_volume,
+            "music_attribution": music_attribution,
+            "captions": bool(caption_path),
+        },
+    )
+
+    try:
+        if settings.dry_run:
+            _create_dry_run_render(output_path, fmt)
+            render_job.output_path = output_path
+            render_job.thumbnail_path = thumbnail_path
+            render_job.duration_seconds = story.estimated_duration_seconds or 52.0
+            render_job.status = "completed"
+            render_job.render_completed_at = datetime.now(timezone.utc)
+            log.info("dry_run_render_recap_short", story_id=story.id)
+        else:
+            has_audio = _has_audio_stream(clip_path)
+            duration = _get_video_duration(clip_path)
+            cmd = _build_recap_short_cmd(
+                clip_path=clip_path,
+                music_path=music_path,
+                caption_path=caption_path,
+                output_path=output_path,
+                width=fmt["width"],
+                height=fmt["height"],
+                fps=fmt["fps"],
+                music_volume=music_volume,
+                has_audio=has_audio,
+                duration=duration,
+            )
+            import subprocess
+
+            log.info("ffmpeg_render_recap_short", cmd=" ".join(cmd[:30]))
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            if result.returncode != 0:
+                raise RuntimeError(f"FFmpeg recap render failed: {result.stderr[-500:]}")
+            _extract_thumbnail(output_path, thumbnail_path, time="00:00:01")
+            render_job.output_path = output_path
+            render_job.thumbnail_path = thumbnail_path
+            render_job.duration_seconds = _get_video_duration(output_path)
+            render_job.status = "completed"
+            render_job.render_completed_at = datetime.now(timezone.utc)
+
+    except Exception as e:
+        render_job.status = "failed"
+        render_job.error = str(e)
+        log.error("render_recap_short_failed", story_id=story.id, error=str(e))
+
+    session.add(render_job)
+    session.commit()
+    session.close()
+    return render_job
+
+
 def render_long_form(
     stories: list[Story],
     tts_jobs: list[TTSJob],
@@ -266,7 +362,7 @@ def _ffmpeg_render_short(
 
     # Step 2: Apply captions via ASS subtitles
     if caption_path and os.path.exists(caption_path):
-        safe_caption_path = caption_path.replace("\\", "/").replace(":", "\\:")
+        safe_caption_path = _escape_ass_path(caption_path)
         filter_complex_parts.append(f"[bg_video]ass={safe_caption_path}[bg]")
     else:
         filter_complex_parts.append("[bg_video]null[bg]")
@@ -307,6 +403,7 @@ def _ffmpeg_render_short(
         "-ac", "2",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
+        "-map_metadata", "-1",  # strip provenance/tool tags
         output_path,
     ])
 
@@ -401,6 +498,7 @@ def _ffmpeg_render_long_form(
         "-b:a", "192k",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
+        "-map_metadata", "-1",  # strip provenance/tool tags
         output_path,
     ]
 
@@ -463,7 +561,7 @@ def _render_story_segment(
 
     # Captions inside filter_complex
     if caption_path and os.path.exists(caption_path):
-        safe_caption_path = caption_path.replace("\\", "/").replace(":", "\\:")
+        safe_caption_path = _escape_ass_path(caption_path)
         filter_parts.append(f"[bg_video]ass={safe_caption_path}[bg]")
     else:
         filter_parts.append("[bg_video]null[bg]")
@@ -485,6 +583,7 @@ def _render_story_segment(
         "-ar", "44100",
         "-ac", "2",
         "-pix_fmt", "yuv420p",
+        "-map_metadata", "-1",  # strip provenance/tool tags
         output_path,
     ])
 
@@ -497,6 +596,114 @@ def _render_story_segment(
 # ============================================================
 # Helper functions
 # ============================================================
+
+
+def _build_recap_short_cmd(
+    clip_path: str,
+    music_path: str | None,
+    caption_path: str | None,
+    output_path: str,
+    width: int,
+    height: int,
+    fps: int,
+    music_volume: float,
+    has_audio: bool,
+    duration: float | None,
+) -> list[str]:
+    """Build the FFmpeg command for an original-audio recap Short.
+
+    The clip (input 0) provides both video and audio. When ``music_path`` is
+    given it is input 1, looped (``-stream_loop -1``) and lowered to
+    ``music_volume`` before being mixed under the clip audio with
+    ``amix=...:normalize=0`` (so dialogue is not auto-attenuated). The mix length
+    is bounded by the clip audio (``duration=first``) and/or ``-t duration``.
+    Subtitles are burned in via the ASS filter when ``caption_path`` is set.
+
+    Pure (no I/O) so the audio/video graph can be unit-tested.
+    """
+    cmd = ["ffmpeg", "-y", "-i", clip_path]
+    music_idx = None
+    if music_path:
+        cmd += ["-stream_loop", "-1", "-i", music_path]
+        music_idx = 1
+
+    filter_parts = [
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},fps={fps},setsar=1[v0]"
+    ]
+    if caption_path:
+        safe_caption_path = _escape_ass_path(caption_path)
+        filter_parts.append(f"[v0]ass={safe_caption_path}[v]")
+    else:
+        filter_parts.append("[v0]null[v]")
+
+    audio_map: str | None = None
+    if has_audio and music_path:
+        filter_parts.append(f"[{music_idx}:a]volume={music_volume}[m]")
+        filter_parts.append("[0:a][m]amix=inputs=2:duration=first:normalize=0[aout]")
+        audio_map = "[aout]"
+    elif has_audio and not music_path:
+        audio_map = "0:a"
+    elif not has_audio and music_path:
+        filter_parts.append(f"[{music_idx}:a]volume={music_volume}[aout]")
+        audio_map = "[aout]"
+    # else: clip has no audio and there is no music → silent video
+
+    cmd += ["-filter_complex", ";".join(filter_parts), "-map", "[v]"]
+    if audio_map:
+        cmd += ["-map", audio_map]
+    if duration and duration > 0:
+        cmd += ["-t", str(duration)]
+    if music_path:
+        # Music is fed with -stream_loop -1 (infinite). Bound the output by the
+        # finite clip so a missing/zero probed duration can't cause a runaway
+        # encode (the music-only branch has no other length bound).
+        cmd += ["-shortest"]
+
+    cmd += [
+        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        # Strip all container/provenance metadata (incl. any C2PA/tool tags) so
+        # the upload carries no "generated with X" signal.
+        "-map_metadata", "-1",
+        output_path,
+    ]
+    return cmd
+
+
+def _escape_ass_path(caption_path: str) -> str:
+    """Escape a caption path for the libass ``ass`` filter in ``-filter_complex``.
+
+    Forward slashes plus a DOUBLE-backslash-escaped drive colon (``C\\\\:/...``) is
+    the only unquoted form libass accepts on Windows — a single ``\\:`` makes
+    FFmpeg mis-parse the drive colon as a filter-option separator. POSIX paths
+    (no drive colon) pass through unchanged.
+    """
+    return caption_path.replace("\\", "/").replace(":", "\\\\:")
+
+
+def _has_audio_stream(media_path: str) -> bool:
+    """Return True if the media file has at least one audio stream (via ffprobe)."""
+    import subprocess
+
+    if not media_path or not os.path.exists(media_path):
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=index",
+                "-of", "csv=p=0",
+                media_path,
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except Exception as e:  # noqa: BLE001 — probe failures default to "no audio"
+        log.warning("ffprobe_audio_stream_failed", path=media_path, error=str(e))
+        return False
 
 
 def _get_valid_background_paths(assets: list[Asset]) -> list[str]:
@@ -624,8 +831,16 @@ def _create_title_card(
     """Create a title card video segment."""
     import subprocess
 
-    # Escape text for FFmpeg drawtext
-    safe_text = text.replace("'", "\\'").replace(":", "\\:")
+    # Escape text for FFmpeg drawtext. Truncate FIRST so the slice can't orphan a
+    # trailing backslash, then escape backslash (must be first), percent, quote,
+    # and colon — all of which are special to the drawtext filter.
+    safe_text = (
+        text[:60]
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+    )
 
     cmd = [
         "ffmpeg", "-y",
@@ -636,7 +851,7 @@ def _create_title_card(
         "-vf", (
             f"drawtext=text='Story {story_num} of {total}':"
             f"fontcolor=white:fontsize=36:x=(w-text_w)/2:y=h/2-80,"
-            f"drawtext=text='{safe_text[:60]}':"
+            f"drawtext=text='{safe_text}':"
             f"fontcolor=white:fontsize=28:x=(w-text_w)/2:y=h/2+20"
         ),
         "-t", str(duration),
@@ -649,7 +864,13 @@ def _create_title_card(
         output_path,
     ]
 
-    subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    # Fail loudly here rather than letting the later concat reference a missing
+    # file and report a misleading "No such file or directory".
+    if result.returncode != 0 or not os.path.exists(output_path):
+        raise RuntimeError(
+            f"Title card render failed for story {story_num}: {result.stderr[-300:]}"
+        )
 
 
 def _extract_thumbnail(video_path: str, thumbnail_path: str, time: str = "00:00:01"):
