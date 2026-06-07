@@ -40,6 +40,12 @@ log = get_logger("slideshow_renderer")
 SLEEP_VIDEO = {"width": 1920, "height": 1080}
 _XFADE_BATCH = 10            # clips combined per xfade graph (bounds graph size)
 _REEL_TMP = "./data/tmp"
+_MAX_CLIP_WORKERS = 6        # cap on concurrent Ken Burns encodes
+
+
+def _default_clip_workers() -> int:
+    """Concurrent clip encodes: leave a core free, cap at _MAX_CLIP_WORKERS."""
+    return max(2, min(_MAX_CLIP_WORKERS, (os.cpu_count() or 4) - 1))
 
 
 def _fmt(value: float) -> str:
@@ -182,6 +188,54 @@ def _build_loop_assembly_cmd(
 # ============================================================
 
 
+def _render_clips(
+    image_paths: list[str],
+    tmp_dir: Path,
+    *,
+    dwell: float,
+    crossfade: float,
+    width: int,
+    height: int,
+    fps: int,
+    ken_burns: bool,
+    workers: int | None = None,
+) -> list[str]:
+    """Encode one Ken Burns clip per image, CONCURRENTLY, preserving input order.
+
+    The clips are independent, so encoding them in a thread pool (each waiting on
+    its own ffmpeg subprocess) is far faster than the old sequential loop. Failed
+    clips are logged and skipped; the surviving clips keep their original order.
+    """
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    n = max(1, min(workers or _default_clip_workers(), len(image_paths)))
+    results: list[str | None] = [None] * len(image_paths)
+
+    def _one(idx: int, image: str):
+        clip = str(tmp_dir / f"clip_{idx:04d}.mp4")
+        cmd = _build_ken_burns_clip_cmd(
+            image, clip, dwell=dwell, crossfade=crossfade,
+            width=width, height=height, fps=fps, ken_burns=ken_burns,
+        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0 and os.path.exists(clip):
+            return idx, clip, None
+        return idx, None, (result.stderr[-200:] if result.stderr else "")
+
+    log.info("ken_burns_render_start", images=len(image_paths), workers=n)
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        futures = [pool.submit(_one, i, img) for i, img in enumerate(image_paths)]
+        for fut in as_completed(futures):
+            idx, clip, err = fut.result()
+            if clip:
+                results[idx] = clip
+            else:
+                log.warning("ken_burns_clip_failed", index=idx, stderr=err)
+
+    return [c for c in results if c]  # successful clips, in original order
+
+
 def build_slideshow_reel(
     image_paths: list[str],
     *,
@@ -192,30 +246,21 @@ def build_slideshow_reel(
     fps: int,
     ken_burns: bool,
     batch_size: int = _XFADE_BATCH,
+    clip_workers: int | None = None,
 ) -> str:
     """Render the image set into a single crossfaded reel video; return its path.
 
     Falls back to a plain concat (hard cuts) if the xfade assembly fails, so a
     reel is always produced when at least one image clip renders.
     """
-    import subprocess
-
     tmp_dir = Path(_REEL_TMP) / f"reel_{uuid.uuid4().hex[:8]}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     clip_dur = dwell + crossfade
 
-    clips: list[str] = []
-    for i, image in enumerate(image_paths):
-        clip = str(tmp_dir / f"clip_{i:04d}.mp4")
-        cmd = _build_ken_burns_clip_cmd(
-            image, clip, dwell=dwell, crossfade=crossfade,
-            width=width, height=height, fps=fps, ken_burns=ken_burns,
-        )
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if result.returncode == 0 and os.path.exists(clip):
-            clips.append(clip)
-        else:
-            log.warning("ken_burns_clip_failed", image=image, stderr=result.stderr[-200:])
+    clips = _render_clips(
+        image_paths, tmp_dir, dwell=dwell, crossfade=crossfade,
+        width=width, height=height, fps=fps, ken_burns=ken_burns, workers=clip_workers,
+    )
 
     if not clips:
         raise RuntimeError("No slideshow clips could be rendered")
@@ -312,6 +357,7 @@ def render_sleep_video(
     crossfade_seconds: float = 2,
     ken_burns: bool = True,
     fps: int = 24,
+    clip_workers: int | None = None,
     output_dir: str = "./data/renders",
 ) -> RenderJob:
     """Render a long-form sleep video: image slideshow reel looped under narration.
@@ -376,6 +422,7 @@ def render_sleep_video(
                 height=height,
                 fps=fps,
                 ken_burns=ken_burns,
+                clip_workers=clip_workers,
             )
             reel_dir = Path(reel_path).parent
             try:

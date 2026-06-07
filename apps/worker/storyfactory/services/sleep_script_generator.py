@@ -27,6 +27,10 @@ log = get_logger("sleep_script_generator")
 _OUTLINE_MAX_TOKENS = 3000
 _PREVIOUS_TAIL_CHARS = 400
 _MIN_SEGMENT_WORDS = 600
+_MAX_SEGMENT_WORDS = 1500          # realistic per-segment ask (the model under-writes high targets)
+_DEFAULT_MAX_SEGMENTS = 80         # hard cap on total expansion calls (cost bound)
+_MAX_REFILLS = 8                   # how many extra outline rounds we'll request
+_FILL_RATIO = 0.85                 # stop once we reach this fraction of the word target
 
 
 def build_outline_prompt(
@@ -75,82 +79,117 @@ def generate_sleep_script(
     segment_template: str,
     num_movements: int = 16,
     segment_max_tokens: int = 2800,
+    max_segments: int = _DEFAULT_MAX_SEGMENTS,
     dry_run: bool = False,
 ) -> dict:
     """Produce a full long-form sleep narration for ``topic``.
 
     Returns a dict with the same shape the pipeline already consumes:
     ``{title, hook, body, asset_keywords, image_search_queries, word_count}``.
-    A single failed movement is tolerated (logged + skipped); only an empty
-    outline or a total expansion failure raises.
+
+    The model reliably under-writes a high per-segment word target, so a fixed
+    movement count rarely fills ~3h on its own. We therefore **keep requesting and
+    expanding fresh movements until the cumulative word count approaches
+    ``target_words``** (or we hit ``max_segments`` / run out of distinct sub-areas).
+    A single failed movement is tolerated; only an empty outline or producing no
+    narration at all raises.
     """
     if dry_run:
         return _dry_run_script(topic, target_minutes, num_movements)
 
-    # 1. Outline pass — one call plans the whole video.
-    outline_prompt = build_outline_prompt(
-        outline_template,
-        topic=topic,
-        hints=hints,
-        target_minutes=target_minutes,
-        num_movements=num_movements,
-    )
-    outline = _parse_json(
-        generate_text(
-            prompt=outline_prompt,
-            provider=AIProvider.OPENAI,
-            temperature=0.7,
-            max_tokens=_OUTLINE_MAX_TOKENS,
-            response_format="json",
-        )
-    )
-    movements = [m for m in (outline.get("movements") or []) if isinstance(m, dict)]
-    if not movements:
-        raise RuntimeError("Sleep outline returned no movements")
+    per_words = max(_MIN_SEGMENT_WORDS, min(_MAX_SEGMENT_WORDS, target_words // max(1, num_movements)))
 
-    per_words = max(_MIN_SEGMENT_WORDS, target_words // max(1, len(movements)))
-
-    # 2. Expansion pass — one call per movement, threaded for continuity.
     bodies: list[str] = []
-    covered_headings: list[str] = []
-    previous_tail = ""
-    for idx, movement in enumerate(movements):
-        heading = str(movement.get("heading") or f"Part {idx + 1}")
-        beats = [str(b) for b in (movement.get("beats") or []) if str(b).strip()]
-        running_summary = (
-            "Already covered: " + "; ".join(covered_headings) + "."
-            if covered_headings
-            else ""
-        )
-        seg_prompt = build_segment_prompt(
-            segment_template,
+    covered: list[str] = []
+    seen: set[str] = set()
+    state = {"tail": ""}
+
+    def _outline(extra_hints: str) -> dict:
+        prompt = build_outline_prompt(
+            outline_template,
             topic=topic,
-            heading=heading,
-            beats=beats,
-            running_summary=running_summary,
-            previous_tail=previous_tail,
-            target_words=per_words,
+            hints=(hints + extra_hints) if extra_hints else hints,
+            target_minutes=target_minutes,
+            num_movements=num_movements,
+        )
+        return _parse_json(
+            generate_text(
+                prompt=prompt, provider=AIProvider.OPENAI, temperature=0.7,
+                max_tokens=_OUTLINE_MAX_TOKENS, response_format="json",
+            )
+        )
+
+    def _expand(movement: dict) -> None:
+        heading = str(movement.get("heading") or f"Part {len(bodies) + 1}")
+        seen.add(heading.strip().lower())  # mark even on failure so we don't re-propose it
+        beats = [str(b) for b in (movement.get("beats") or []) if str(b).strip()]
+        running_summary = ("Already covered: " + "; ".join(covered) + ".") if covered else ""
+        seg_prompt = build_segment_prompt(
+            segment_template, topic=topic, heading=heading, beats=beats,
+            running_summary=running_summary, previous_tail=state["tail"], target_words=per_words,
         )
         try:
             seg = _parse_json(
                 generate_text(
-                    prompt=seg_prompt,
-                    provider=AIProvider.OPENAI,
-                    temperature=0.7,
-                    max_tokens=segment_max_tokens,
-                    response_format="json",
+                    prompt=seg_prompt, provider=AIProvider.OPENAI, temperature=0.7,
+                    max_tokens=segment_max_tokens, response_format="json",
                 )
             )
             seg_body = str(seg.get("body") or "").strip()
         except Exception as exc:  # noqa: BLE001 — one bad movement must not abort the video
             log.warning("sleep_segment_failed", heading=heading, error=str(exc))
-            continue
+            return
         if not seg_body:
             log.warning("sleep_segment_empty", heading=heading)
-            continue
+            return
         bodies.append(seg_body)
-        covered_headings.append(heading)
-        previous_tail = _tail(seg_body)
+        covered.append(heading)
+        state["tail"] = _tail(seg_body)
+
+    def _total_words() -> int:
+        return sum(len(b.split()) for b in bodies)
+
+    # 1. Outline pass — one call plans the opening set of movements.
+    outline = _outline("")
+    movements = [m for m in (outline.get("movements") or []) if isinstance(m, dict)]
+    if not movements:
+        raise RuntimeError("Sleep outline returned no movements")
+
+    # 2. Expand the planned movements (the whole first outline).
+    for movement in movements:
+        if len(bodies) >= max_segments:
+            break
+        _expand(movement)
+
+    # 3. Loop: request MORE distinct movements and expand them until we approach
+    #    the word target. Stops on: target reached, segment cap, refill cap, the
+    #    topic running out of fresh sub-areas, or a round that makes no progress.
+    refills = 0
+    while (
+        _total_words() < target_words * _FILL_RATIO
+        and len(bodies) < max_segments
+        and refills < _MAX_REFILLS
+    ):
+        refills += 1
+        extra_hints = (
+            "\n\nAlready covered (do NOT repeat these; propose NEW, distinct sub-areas "
+            "of the topic): " + "; ".join(covered) + "."
+        )
+        extra = _outline(extra_hints)
+        fresh = [
+            m for m in (extra.get("movements") or [])
+            if isinstance(m, dict)
+            and str(m.get("heading") or "").strip().lower() not in seen
+        ]
+        if not fresh:
+            break  # the topic is exhausted; stop rather than loop forever
+        before = len(bodies)
+        for movement in fresh:
+            if len(bodies) >= max_segments or _total_words() >= target_words:
+                break
+            _expand(movement)
+        if len(bodies) == before:
+            break  # no progress this round (e.g. all failed) → stop
 
     if not bodies:
         raise RuntimeError("Sleep script generation produced no narration")
@@ -161,6 +200,7 @@ def generate_sleep_script(
         topic=topic,
         movements=len(bodies),
         word_count=len(body.split()),
+        refills=refills,
     )
     return {
         "title": str(outline.get("title") or f"Calm Facts About {topic} to Fall Asleep To")[:200],

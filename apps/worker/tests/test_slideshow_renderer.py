@@ -188,3 +188,33 @@ def test_render_sleep_video_fails_clean_without_audio(monkeypatch, tmp_path):
 
     assert job.status == "failed"
     assert "output_path" in (job.error or "")
+
+
+def test_render_clips_parallel_preserves_order_and_skips_failures(monkeypatch, tmp_path):
+    """Clips encode concurrently but the surviving ones keep their input order;
+    a failed clip (non-zero ffmpeg) is dropped, not inserted out of place."""
+    import os
+    import re
+    import subprocess
+
+    from storyfactory.services import slideshow_renderer as sr
+
+    def _fake_run(cmd, **kwargs):
+        out = cmd[-1]
+        idx = int(re.search(r"clip_(\d+)\.mp4$", out).group(1))
+        if idx % 2 == 0:  # even indices succeed, odd ones "fail"
+            open(out, "wb").close()
+            return SimpleNamespace(returncode=0, stderr="")
+        return SimpleNamespace(returncode=1, stderr="boom")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    imgs = [f"/img/{i}.jpg" for i in range(6)]
+    clips = sr._render_clips(
+        imgs, tmp_path, dwell=20, crossfade=2, width=1920, height=1080,
+        fps=24, ken_burns=True, workers=4,
+    )
+
+    assert [os.path.basename(c) for c in clips] == [
+        "clip_0000.mp4", "clip_0002.mp4", "clip_0004.mp4",
+    ]

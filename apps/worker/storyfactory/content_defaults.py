@@ -123,8 +123,12 @@ SLEEP_FACTS_DEFAULTS: dict = {
     "long_form_target_minutes": 180,       # ~3 hours of calm narration
     "narration_wpm": 150,                  # word target = minutes x wpm (approximate)
     # --- segmented script generation (avoids the single-call token ceiling) ---
-    "gen_num_movements": 16,               # outline "movements" (sub-areas of the theme)
+    "gen_num_movements": 16,               # outline "movements" per outline call
     "gen_segment_max_tokens": 2800,        # per-movement expansion ceiling (~1.5-2k words)
+    "gen_max_segments": 80,                # hard cap on expansion calls; the generator
+                                           # loops (requesting more movements) until it
+                                           # nears the word target, since the model
+                                           # under-writes a fixed count for ~3h
     # --- narration voice (single, deterministic, calm) ---
     "voice_persona": "calm",
     "tts_voice": "onyx",                   # deep, low-energy voice best for sleep
@@ -136,6 +140,8 @@ SLEEP_FACTS_DEFAULTS: dict = {
     "images_target": 150,                  # collect ~150 topic-matched stock images (>=100)
     "slideshow_dwell_seconds": 20,         # how long each image holds (before crossfade)
     "crossfade_seconds": 2,                # gentle crossfade between images
+    "slideshow_fps": 24,                   # stills don't need 30fps; smaller + faster
+    "slideshow_clip_workers": None,        # concurrent Ken Burns encodes (None = auto: cores-1)
     "ken_burns": True,                     # subtle slow zoom on each still
     # --- explicitly off for sleep ---
     "captions_enabled": False,             # no on-screen text

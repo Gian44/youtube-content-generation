@@ -213,6 +213,29 @@ def _build_youtube_client():
     return build("youtube", "v3", credentials=credentials)
 
 
+def delete_video(video_id: str) -> bool:
+    """Permanently delete a video from YouTube (videos.delete) for the active channel.
+
+    Returns True if the video was deleted (or was already gone, HTTP 404).
+    Raises on other API errors so the caller can keep the DB record and retry.
+    """
+    from googleapiclient.errors import HttpError
+
+    youtube = _build_youtube_client()
+    try:
+        youtube.videos().delete(id=video_id).execute()
+        track_api_call(provider="youtube", endpoint="videos.delete", tokens_used=50)
+        log.info("video_deleted", youtube_id=video_id)
+        return True
+    except HttpError as e:
+        status = getattr(getattr(e, "resp", None), "status", None)
+        if status == 404:
+            log.warning("video_already_gone", youtube_id=video_id)
+            return True
+        log.error("video_delete_failed", youtube_id=video_id, status=status, error=str(e))
+        raise
+
+
 
 def _perform_upload(settings, render_job: RenderJob, upload: YouTubeUpload, privacy_override: str | None = None) -> str:
     """Perform the actual YouTube upload using the Data API."""

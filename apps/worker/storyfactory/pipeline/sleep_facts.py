@@ -181,6 +181,7 @@ def _produce_sleep_video(
         crossfade_seconds=float(cfg.get("crossfade_seconds", 2)),
         ken_burns=bool(cfg.get("ken_burns", True)),
         fps=int(cfg.get("slideshow_fps", 24)),
+        clip_workers=(int(cfg["slideshow_clip_workers"]) if cfg.get("slideshow_clip_workers") else None),
     )
     # render_sleep_video returns a failed RenderJob (it does not raise) on FFmpeg
     # errors. Only advance the topic cursor when a usable video was produced —
@@ -243,6 +244,7 @@ def _make_sleep_story(session, channel, batch, topic, research, cfg, settings) -
             segment_template=segment_tpl.template,
             num_movements=int(cfg.get("gen_num_movements", 16)),
             segment_max_tokens=int(cfg.get("gen_segment_max_tokens", 2800)),
+            max_segments=int(cfg.get("gen_max_segments", 80)),
             dry_run=settings.dry_run,
         )
 

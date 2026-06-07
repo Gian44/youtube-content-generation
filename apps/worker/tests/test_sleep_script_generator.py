@@ -121,7 +121,9 @@ def test_generate_sleep_script_stitches_movements_in_order(monkeypatch):
         topic="The Ocean",
         hints="",
         target_minutes=180,
-        target_words=27000,
+        # Small target so the 3 movements already satisfy it (no refill round here;
+        # the loop-to-target behavior is covered by its own test below).
+        target_words=150,
         outline_template=OUTLINE_TEMPLATE,
         segment_template=SEGMENT_TEMPLATE,
         num_movements=3,
@@ -202,6 +204,72 @@ def test_generate_sleep_script_tolerates_a_failed_movement(monkeypatch):
     assert "Prose for Movement 1" in data["body"]
     assert "Prose for Movement 3" in data["body"]
     assert "Movement 2" not in data["body"]
+
+
+def test_generate_sleep_script_loops_until_word_target(monkeypatch):
+    """The model under-writes per segment, so the generator must keep requesting
+    fresh movements (more outline rounds) until it approaches the word target."""
+    from storyfactory.services import sleep_script_generator as gen
+
+    state = {"outline_calls": 0}
+
+    def _fake_generate(**kwargs):
+        prompt = kwargs["prompt"]
+        if prompt.startswith("OUTLINE"):
+            state["outline_calls"] += 1
+            n = state["outline_calls"]
+            # Unique headings per round so refills add genuinely new movements.
+            movements = [{"heading": f"R{n}M{i}", "beats": ["b"]} for i in range(2)]
+            return json.dumps(
+                {"title": "T", "hook": "h", "movements": movements,
+                 "asset_keywords": [], "image_search_queries": []}
+            )
+        return json.dumps({"body": "word " * 100})  # ~100 words/segment
+
+    monkeypatch.setattr(gen, "generate_text", _fake_generate)
+
+    data = gen.generate_sleep_script(
+        topic="The Ocean",
+        hints="",
+        target_minutes=180,
+        target_words=500,           # ~100 words/seg → needs >=5 segments (>=425 at 0.85)
+        outline_template=OUTLINE_TEMPLATE,
+        segment_template=SEGMENT_TEMPLATE,
+        num_movements=2,
+        max_segments=80,
+        dry_run=False,
+    )
+
+    assert data["word_count"] >= 425          # looped past the single-outline yield (200)
+    assert state["outline_calls"] >= 2         # at least one refill round happened
+
+
+def test_generate_sleep_script_respects_max_segments(monkeypatch):
+    """The expansion loop must stop at max_segments even if the target is unmet."""
+    from storyfactory.services import sleep_script_generator as gen
+
+    state = {"n": 0}
+
+    def _fake_generate(**kwargs):
+        if kwargs["prompt"].startswith("OUTLINE"):
+            state["n"] += 1
+            n = state["n"]
+            return json.dumps(
+                {"title": "T", "hook": "h",
+                 "movements": [{"heading": f"R{n}M{i}", "beats": ["b"]} for i in range(2)],
+                 "asset_keywords": [], "image_search_queries": []}
+            )
+        return json.dumps({"body": "word " * 10})  # tiny, never reaches target
+
+    monkeypatch.setattr(gen, "generate_text", _fake_generate)
+
+    data = gen.generate_sleep_script(
+        topic="The Ocean", hints="", target_minutes=180, target_words=1_000_000,
+        outline_template=OUTLINE_TEMPLATE, segment_template=SEGMENT_TEMPLATE,
+        num_movements=2, max_segments=6, dry_run=False,
+    )
+    # Capped at 6 segments × 10 words — does not run away toward the huge target.
+    assert data["word_count"] == 60
 
 
 def test_generate_sleep_script_raises_when_all_movements_fail(monkeypatch):
