@@ -44,6 +44,38 @@ DEFAULT_VOICE_PERSONAS: list[str] = [
 
 
 # ============================================================
+# Cast library — fiction Shorts with one recurring character per voice persona
+# ============================================================
+# Clips of the character are generated ONCE in Google Flow (from prompts the
+# worker writes into an outbox), dropped into an inbox and sorted into a tagged
+# local bank under ``<local_storage_path>/cast/<channel-slug>/<persona>/``.
+# These are the merged defaults for ``channel.config["cast"]``; a channel
+# overrides individual keys. ``enabled`` is off by default, which means zero
+# behavior change for existing channels. See docs/multi-channel.md.
+#
+# The emotion vocabulary is a module constant (not a config key) because it
+# doubles as the bank's folder names. The character reacts and listens; it
+# never talks (the story's TTS narrates over the clips).
+CAST_EMOTION_TAGS: list[str] = [
+    "neutral_listening", "shocked", "angry", "sad", "smug",
+    "laughing", "thinking", "whisper_secret", "relieved", "disgusted",
+]
+
+CAST_DEFAULTS: dict = {
+    "enabled": False,                      # turn the cast path on for fiction Shorts
+    "library_path": None,                  # bank root override (None = <storage>/cast/<slug>)
+    "planner_model": "gemini-3.6-flash",   # Gemini model for the character bible (free tier)
+    "variants_per_tag": 3,                 # prompts per emotion tag (10 tags x 3 = 30 clips)
+    "clip_seconds": 8,                     # target clip length written into the Flow prompts
+    "clip_in_point_min": 1.0,              # phase 2: seconds skipped so the master pose is never shown
+    "beat_min_seconds": 2.0,               # phase 2: beats shorter than this merge into the previous
+    "beat_max_seconds": 6.0,               # phase 2: beats longer than this are split evenly
+    "hero_outbox_enabled": False,          # phase 3: write hook-beat "hero" Flow prompts
+    "hero_prompts_per_day": 2,             # phase 3: cap on hero prompts per daily run
+}
+
+
+# ============================================================
 # Recap shorts (CinybeShorts) — pipeline_mode="recap_shorts"
 # ============================================================
 # User drops local video files into an inbox; the pipeline cuts many Shorts

@@ -1028,5 +1028,281 @@ def recap_inbox(action, channel_ref, inbox_path):
         session.close()
 
 
+# ============================================
+# Cast library — recurring character clips for fiction Shorts
+# ============================================
+
+@cli.group()
+def cast():
+    """Build the per-persona character clip bank (Google Flow) for fiction Shorts."""
+
+
+def _cast_root(session, ch):
+    """Resolve the merged cast config and bank root inside the channel context."""
+    from storyfactory.channel_context import use_channel
+    from storyfactory.services import cast_library
+
+    with use_channel(session, ch):
+        cfg = cast_library.merged_cast_config()
+    return cfg, cast_library.library_root(ch.slug, cfg)
+
+
+def _bible_template(session, ch) -> str:
+    """Channel prompt override > seeded global prompt > the built-in template.
+
+    The built-in fallback matters for packaged (Electron) installs, which run
+    migrations at startup but never ``npm run seed``.
+    """
+    from storyfactory.pipeline.story_generator import _resolve_prompt
+    from storyfactory.services.cast_bible import BIBLE_PROMPT_TEMPLATE
+
+    row = _resolve_prompt(session, "cast_character_bible", ch.id)
+    return row.template if row else BIBLE_PROMPT_TEMPLATE
+
+
+def _write_outbox(root, persona, bible, cfg):
+    """Write prompt_pack.md + flow_checklist.md for the clips the bank still lacks."""
+    from storyfactory.services import cast_bible, cast_library
+
+    have = cast_library.have_clips(root, persona)
+    pending = [k for k in cast_bible.all_clip_keys(int(cfg["variants_per_tag"])) if k not in have]
+    pack = cast_bible.write_pack(root, persona, bible, pending, cfg)
+    checklist = cast_bible.write_checklist(root, persona, pending, cfg)
+    n = len(pending)
+    console.print(f"   pack:      {pack}")
+    console.print(f"   checklist: {checklist}")
+    console.print(
+        f"   {n} clip(s) to generate · ~{n * cast_bible.CREDITS_FAST} credits on Veo 3.1 Fast, "
+        f"~{n * cast_bible.CREDITS_LITE} on Lite"
+    )
+    return pending
+
+
+@cast.command("init")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--persona", "personas", multiple=True, help="Voice persona (repeatable)")
+@click.option("--all-personas", is_flag=True, help="Every persona in the channel's voice_personas")
+@click.option("--force", is_flag=True, help="Rewrite an existing character.json")
+def cast_init(channel_ref, personas, all_personas, force):
+    """Write a persona's character bible (one free-tier Gemini call) and its Flow prompt pack.
+
+    Example:
+        npm run worker -- cast init --channel my-fiction --persona calm
+    """
+    from storyfactory.channel_context import use_channel
+    from storyfactory.content_defaults import DEFAULT_VOICE_PERSONAS
+    from storyfactory.services import cast_bible
+    from storyfactory.services.gemini_rest import Gemini, GeminiError
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        if all_personas:
+            with use_channel(session, ch) as ctx:
+                personas = tuple(ctx.cfg("voice_personas") or DEFAULT_VOICE_PERSONAS)
+        if not personas:
+            console.print("[red]Pass --persona <name> (repeatable) or --all-personas[/red]")
+            return
+        cfg, root = _cast_root(session, ch)
+        template = _bible_template(session, ch)
+        try:
+            # Inside the channel context so a key stored in the app-level
+            # text.gemini integration is found before the GEMINI_API_KEY env fallback.
+            with use_channel(session, ch):
+                client = Gemini()
+        except GeminiError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return
+        for persona in personas:
+            if cast_bible.load_bible(root, persona) and not force:
+                console.print(f"[yellow]⊘ {persona}: character.json exists (use --force to rewrite)[/yellow]")
+                bible = cast_bible.load_bible(root, persona)
+            else:
+                console.print(f"[blue]Writing character bible for '{persona}' with {cfg['planner_model']}...[/blue]")
+                try:
+                    bible = cast_bible.build_bible(
+                        client,
+                        model=cfg["planner_model"],
+                        persona=persona,
+                        niche=ch.niche,
+                        content_style=ch.content_style,
+                        variants_per_tag=int(cfg["variants_per_tag"]),
+                        template=template,
+                    )
+                except (GeminiError, ValueError) as exc:
+                    console.print(f"[red]✗ {persona}: {exc}[/red]")
+                    continue
+                path = cast_bible.write_bible(root, persona, bible)
+                console.print(f"[bold green]✓ {persona}: {path}[/bold green]")
+            _write_outbox(root, persona, bible, cfg)
+        console.print(
+            "[blue]Next: open outbox/prompt_pack.md, make the master frame in Flow's image tool, "
+            "save it as reference.png, generate the clips into inbox/, then run `cast scan`.[/blue]"
+        )
+    finally:
+        session.close()
+
+
+@cast.command("prompts")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--persona", required=True, help="Voice persona")
+def cast_prompts(channel_ref, persona):
+    """Regenerate the Flow prompt pack and checklist for the clips still missing from the bank."""
+    from storyfactory.services import cast_bible
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        cfg, root = _cast_root(session, ch)
+        bible = cast_bible.load_bible(root, persona)
+        if bible is None:
+            console.print(f"[red]No character.json for '{persona}'. Run: cast init --channel {ch.slug} --persona {persona}[/red]")
+            return
+        _write_outbox(root, persona, bible, cfg)
+    finally:
+        session.close()
+
+
+@cast.command("scan")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--persona", "personas", multiple=True, help="Limit to these personas (default: all with a bank)")
+def cast_scan(channel_ref, personas):
+    """Sort inbox clips into the bank, refresh manifest.json and first_frames_grid.png, report gaps.
+
+    If ``inbox/flow_clips.json`` (a Flow export: [{id, src, line}]) is present, the
+    clips are downloaded first and named by matching each line to its prompt.
+    """
+    import json as _json
+
+    from storyfactory.services import cast_bible, cast_library
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        cfg, root = _cast_root(session, ch)
+        targets = list(personas) or cast_library.personas_in(root)
+        if not targets:
+            console.print(f"[yellow]No persona banks under {root}. Run `cast init` first.[/yellow]")
+            return
+        variants = int(cfg["variants_per_tag"])
+        for persona in targets:
+            console.print(f"[bold]{persona}[/bold] — {root / persona}")
+            flow_json = root / persona / "inbox" / "flow_clips.json"
+            bible = cast_bible.load_bible(root, persona)
+            if flow_json.exists() and bible is not None:
+                try:
+                    entries = _json.loads(flow_json.read_text(encoding="utf-8"))
+                except ValueError as exc:
+                    console.print(f"   [red]inbox/flow_clips.json is not valid JSON: {exc}[/red]")
+                    entries = None
+                if isinstance(entries, list):
+                    prompts = {
+                        key: cast_bible.clip_prompt(bible, *key)
+                        for key in cast_bible.all_clip_keys(variants)
+                    }
+                    fetched = cast_library.fetch_flow_clips(root, persona, entries, prompts)
+                    console.print(
+                        f"   fetched {len(fetched['fetched'])} clip(s) from flow_clips.json, "
+                        f"{len(fetched['unmatched'])} unmatched"
+                    )
+                    # Flow CDN links are signed and expire; mark the list consumed so a
+                    # second scan does not download everything again.
+                    flow_json.rename(flow_json.with_name("flow_clips.done.json"))
+            result = cast_library.ingest_inbox(root, persona)
+            for name, rel in result["moved"]:
+                console.print(f"   [green]→[/green] {name} → {rel}")
+            for name, reason in result["skipped"]:
+                console.print(f"   [yellow]skip[/yellow] {name} ({reason})")
+            manifest = cast_library.build_manifest(root, persona)
+            grid = cast_library.write_first_frames_grid(root, persona, manifest)
+            cov = cast_library.coverage(root, persona, manifest)
+            console.print(
+                "   coverage: " + ", ".join(f"{tag}={n}" for tag, n in cov.items())
+            )
+            missing = cast_library.missing_tags(cov)
+            if missing:
+                console.print(f"   [yellow]missing tags: {', '.join(missing)}[/yellow]")
+            else:
+                console.print("   [green]every tag has at least one clip[/green]")
+            if grid:
+                console.print(f"   grid: {grid}")
+            if bible is not None:
+                have = cast_library.have_clips(root, persona)
+                pending = [k for k in cast_bible.all_clip_keys(variants) if k not in have]
+                if pending:
+                    cast_bible.write_pack(root, persona, bible, pending, cfg)
+                    cast_bible.write_checklist(root, persona, pending, cfg)
+                    console.print(f"   {len(pending)} clip(s) still to generate — pack refreshed in outbox/")
+                else:
+                    console.print("   [green]bank complete[/green]")
+    finally:
+        session.close()
+
+
+@cast.command("status")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+def cast_status(channel_ref):
+    """Show bank coverage per persona and which voice_personas have no bank yet."""
+    from storyfactory.channel_context import use_channel
+    from storyfactory.content_defaults import DEFAULT_VOICE_PERSONAS
+    from storyfactory.services import cast_library
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        cfg, root = _cast_root(session, ch)
+        with use_channel(session, ch) as ctx:
+            voice_personas = list(ctx.cfg("voice_personas") or DEFAULT_VOICE_PERSONAS)
+        console.print(f"cast.enabled = {cfg['enabled']} · bank root: {root}")
+        banked = cast_library.personas_in(root)
+        for persona in banked:
+            cov = cast_library.coverage(root, persona)
+            total = sum(cov.values())
+            missing = cast_library.missing_tags(cov)
+            console.print(
+                f"  [green]{persona}[/green]: {total} clip(s), "
+                f"{len(cov) - len(missing)}/{len(cov)} tags covered"
+                + (f" · missing: {', '.join(missing)}" if missing else "")
+            )
+        no_bank = [p for p in voice_personas if p not in banked]
+        if no_bank:
+            console.print(f"  [yellow]no bank yet: {', '.join(no_bank)}[/yellow]")
+    finally:
+        session.close()
+
+
+@cast.command("config")
+@click.option("--channel", "channel_ref", required=True, help="Channel id/slug")
+@click.option("--enabled/--disabled", "enabled", default=None, help="Turn the cast path on/off (phase 2 consumes it)")
+@click.option("--planner-model", "planner_model", default=None, help="Gemini model for the bible/planner")
+@click.option("--library-path", "library_path", default=None, help="Bank root override")
+@click.option("--variants-per-tag", "variants_per_tag", type=int, default=None)
+def cast_config(channel_ref, enabled, planner_model, library_path, variants_per_tag):
+    """Set cast-library options in channel.config["cast"]."""
+    from storyfactory.services.channel_service import set_cast_options
+
+    session, ch = _with_channel(channel_ref)
+    try:
+        if ch is None:
+            return
+        set_cast_options(
+            session, ch,
+            enabled=enabled,
+            planner_model=planner_model,
+            library_path=library_path,
+            variants_per_tag=variants_per_tag,
+        )
+        cast_cfg = (ch.config or {}).get("cast", {})
+        console.print(f"[bold green]✓ Cast config for '{ch.slug}':[/bold green]")
+        for key, value in cast_cfg.items():
+            console.print(f"   {key} = {value}")
+    finally:
+        session.close()
+
+
 if __name__ == "__main__":
     cli()

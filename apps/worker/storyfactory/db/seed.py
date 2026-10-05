@@ -13,6 +13,7 @@ from storyfactory.db.models import (
     Story,
     Asset,
 )
+from storyfactory.services.cast_bible import BIBLE_PROMPT_TEMPLATE
 
 console = Console()
 
@@ -426,6 +427,13 @@ Each variation should:
 Output as JSON array:
 ["title1", "title2", "title3", "title4", "title5"]""",
         "variables": ["video_type", "original_title", "category"],
+    },
+    {
+        "name": "cast_character_bible",
+        "description": "Write the character bible (identity lock, setting, base motion, master frame prompt, emotion actions) for a cast-library persona",
+        "category": "cast",
+        "template": BIBLE_PROMPT_TEMPLATE,
+        "variables": ["persona", "niche", "content_style", "emotion_tags", "variants_per_tag"],
     },
 ]
 

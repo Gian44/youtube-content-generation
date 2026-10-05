@@ -62,7 +62,7 @@ cp .env.example .env
 | Key | Where to get it | Required? |
 |-----|----------------|-----------|
 | `OPENAI_API_KEY` | https://platform.openai.com/api-keys | Yes |
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Optional |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Optional (free tier; needed for `cast init`) |
 | `YOUTUBE_CLIENT_ID` | Google Cloud Console | For uploads |
 | `YOUTUBE_CLIENT_SECRET` | Google Cloud Console | For uploads |
 | `PEXELS_API_KEY` | https://www.pexels.com/api/ | Recommended |
@@ -128,6 +128,7 @@ npm run worker:analytics
 | `npm run db:migrate` | Run database migrations (creates/upgrades the default channel) |
 | `npm run seed` | Seed database with defaults |
 | `npm run worker:channel` | Manage channels (create/list/set-secret/connect/etc.) |
+| `npm run worker -- cast ...` | Cast library: character clip bank for fiction Shorts (`init`, `prompts`, `scan`, `status`, `config`) — see docs/multi-channel.md |
 | `npm run test` | Run all tests |
 
 Worker commands invoke Python internally but are exposed as npm scripts for consistency.

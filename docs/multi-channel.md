@@ -296,6 +296,79 @@ footage mode if you want to avoid uploading copyrighted frames.
 
 ---
 
+## Cast library (fiction Shorts)
+
+Fiction Shorts can cut between clips of **one recurring character per voice
+persona** instead of looping stock footage. The clips are generated **once** in
+Google Flow (Veo 3.1, Frames to Video from one master frame) with prompts the
+worker writes, then dropped into an inbox and sorted into a tagged local bank.
+No paid API is involved: the character bible is one free-tier Gemini call, and
+the clips cost Flow credits (Google AI Pro: 50/day + 1,000/month) exactly once.
+The character never speaks in the bank — the story's own TTS narrates over it.
+
+Phase 1 (bank tooling) is shipped; the beat planner and renderer changes that
+consume the bank are phase 2. `cast.enabled` defaults to `false`, so nothing in
+the daily run changes until phase 2 lands and you turn it on.
+
+### Bank layout
+
+The bank hangs off `LOCAL_STORAGE_PATH` (`./data/storage` in dev,
+`<userData>/data/storage` in the packaged app), or `cast.library_path`:
+
+```
+<storage>/cast/<channel-slug>/<persona>/
+  character.json          bible written by `cast init` (identity_lock, setting,
+                          base_motion, master_frame_prompt, emotion_actions)
+  reference.png           the master frame YOU generate in Flow's image tool
+  outbox/prompt_pack.md   Flow how-to, master frame prompt, one section per missing clip
+  outbox/flow_checklist.md one checkbox per clip + credit estimate
+  inbox/                  drop downloaded clips here: <tag>_<n>.mp4 (alt takes: <tag>_<n>_alt1.mp4)
+                          optional flow_clips.json ([{id, src, line}]) — `cast scan` downloads and names them
+  <tag>/<n>.mp4           the bank, filled by `cast scan`
+  manifest.json           {relpath: {duration, width, height, mtime, size}} written by `cast scan`
+  first_frames_grid.png   one frame per clip — check it for identity drift
+```
+
+Emotion tags (fixed; they are the folder names): `neutral_listening`, `shocked`,
+`angry`, `sad`, `smug`, `laughing`, `thinking`, `whisper_secret`, `relieved`,
+`disgusted`. With the default `variants_per_tag: 3` a persona bank is 30 clips
+(≈600 Flow credits on Veo 3.1 Fast, ≈300 on Lite).
+
+### Building a persona bank
+
+```bash
+npm run worker -- cast init --channel my-fiction --persona calm   # bible + pack (one Gemini call)
+# open <bank>/calm/outbox/prompt_pack.md and follow it in Flow:
+#   image tool → master frame prompt → save as calm/reference.png
+#   Frames to Video from reference.png for each clip → save into calm/inbox/ as named
+npm run worker -- cast scan --channel my-fiction                  # sort inbox → bank, manifest, grid, gaps
+npm run worker -- cast prompts --channel my-fiction --persona calm # regenerate the pack for what is still missing
+npm run worker -- cast status --channel my-fiction                # coverage per persona; personas with no bank
+```
+
+Look at `first_frames_grid.png` after every scan and re-roll any clip where the
+face drifted from the master frame — before it appears in fifty Shorts.
+
+### Config keys (`channel.config["cast"]`)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Phase 2: turns the cast path on for the channel's fiction Shorts. |
+| `library_path` | `null` | Bank root override (`null` = `<storage>/cast/<slug>`). |
+| `planner_model` | `gemini-3.6-flash` | Gemini model for the character bible (and the phase 2 planner). |
+| `variants_per_tag` | `3` | Prompts per emotion tag. |
+| `clip_seconds` | `8` | Clip length written into the Flow prompts. |
+| `clip_in_point_min`, `beat_min_seconds`, `beat_max_seconds` | `1.0`, `2.0`, `6.0` | Phase 2 renderer/planner knobs. |
+| `hero_outbox_enabled`, `hero_prompts_per_day` | `false`, `2` | Phase 3. |
+
+Set them with `npm run worker -- cast config --channel my-fiction --planner-model gemini-3.6-flash`
+(also `--enabled/--disabled`, `--library-path`, `--variants-per-tag`). The bible
+prompt is the seeded `cast_character_bible` template and can be overridden per
+channel with `channel set-prompt`; packaged installs that never ran `npm run seed`
+fall back to the built-in template.
+
+---
+
 ## Sleep On Facts (`pipeline_mode: sleep_facts`)
 
 Sleep On Facts produces **one calm, single-topic ~3-hour long-form video** per run

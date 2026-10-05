@@ -283,6 +283,23 @@ def set_recap_options(
     return update_channel(session, channel, config_updates={"recap": recap_cfg}, commit=commit)
 
 
+def set_cast_options(
+    session: Session,
+    channel: Channel,
+    *,
+    commit: bool = True,
+    **options,
+) -> Channel:
+    """Deep-merge cast-library settings into ``channel.config["cast"]``.
+
+    Same contract as :func:`set_recap_options`: ``None`` values are ignored and
+    the rest of the nested block is preserved.
+    """
+    cast_cfg = dict((channel.config or {}).get("cast") or {})
+    cast_cfg.update({k: v for k, v in options.items() if v is not None})
+    return update_channel(session, channel, config_updates={"cast": cast_cfg}, commit=commit)
+
+
 def duplicate_channel(
     session: Session,
     source: Channel,

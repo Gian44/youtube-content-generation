@@ -492,6 +492,42 @@ export const SleepFactsConfigSchema = z
 
 export type SleepFactsConfig = z.infer<typeof SleepFactsConfigSchema>;
 
+/** Cast library — emotion tags double as the bank's folder names (mirrors
+ *  apps/worker/storyfactory/content_defaults.py CAST_EMOTION_TAGS). */
+export const CAST_EMOTION_TAGS = [
+  'neutral_listening',
+  'shocked',
+  'angry',
+  'sad',
+  'smug',
+  'laughing',
+  'thinking',
+  'whisper_secret',
+  'relieved',
+  'disgusted',
+] as const;
+export type CastEmotionTag = (typeof CAST_EMOTION_TAGS)[number];
+
+/** Cast library (fiction Shorts) per-channel config (channel.config.cast).
+ *  Mirrors CAST_DEFAULTS in the worker; Zod strips unknown keys, so without
+ *  this a `cast` block saved through the dashboard would be dropped. */
+export const CastConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    library_path: z.string().nullable(),
+    planner_model: z.string(),
+    variants_per_tag: z.number().int().min(1).max(10),
+    clip_seconds: z.number().int().min(4).max(8),
+    clip_in_point_min: z.number().min(0).max(4),
+    beat_min_seconds: z.number().min(0.5).max(10),
+    beat_max_seconds: z.number().min(1).max(15),
+    hero_outbox_enabled: z.boolean(),
+    hero_prompts_per_day: z.number().int().min(0).max(20),
+  })
+  .partial();
+
+export type CastConfig = z.infer<typeof CastConfigSchema>;
+
 export const ChannelConfigSchema = z
   .object({
     // The content engine for this channel (see PIPELINE_MODES).
@@ -499,6 +535,7 @@ export const ChannelConfigSchema = z
     // Nested, mode-specific config blocks (only meaningful for their mode).
     recap: RecapConfigSchema,
     sleep_facts: SleepFactsConfigSchema,
+    cast: CastConfigSchema,
     // Content outputs (composable per-channel shape). A channel produces Shorts,
     // a long-form video, or both. At least one must stay enabled.
     enable_shorts: z.boolean(),
