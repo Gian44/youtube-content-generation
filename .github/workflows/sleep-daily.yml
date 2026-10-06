@@ -1,0 +1,78 @@
+name: sleep-on-facts daily
+
+on:
+  # ENABLE after the 3-minute smoke run has been reviewed:
+  # schedule:
+  #   - cron: "0 18 * * *"   # 02:00 Asia/Singapore
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Target narration minutes (<=10 = smoke run, always unlisted)"
+        default: "180"
+      topic:
+        description: "Force a topic by name (optional)"
+        default: ""
+      privacy:
+        description: "public | unlisted | private"
+        default: "public"
+      skip_upload:
+        description: "true = render only, no YouTube"
+        default: "false"
+
+concurrency:
+  group: sleep-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        working-directory: cloud/sleep-on-facts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cloud/sleep-on-facts/requirements.txt
+      - name: System deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+      - name: Python deps
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m pytest -q
+      - name: Run pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          IN_MINUTES: ${{ github.event.inputs.minutes || '180' }}
+          IN_TOPIC: ${{ github.event.inputs.topic || '' }}
+          IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
+          IN_SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || 'false' }}
+        run: |
+          set -e
+          ARGS=(--minutes "$IN_MINUTES" --privacy "$IN_PRIVACY")
+          if [ -n "$IN_TOPIC" ]; then ARGS+=(--topic "$IN_TOPIC"); fi
+          if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
+          python run.py "${ARGS[@]}"
+      - name: Keep small run artifacts (script, thumbnail, credits)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ github.run_id }}
+          path: |
+            cloud/sleep-on-facts/work/**/script.json
+            cloud/sleep-on-facts/work/**/thumb.jpg
+            cloud/sleep-on-facts/work/**/credits.json
+          if-no-files-found: ignore
+          retention-days: 14
