@@ -12,6 +12,10 @@ StoryFactory runs any number of **channels** — each an independent content ope
 
 ---
 
+## Cloud pipelines
+
+- **Sleep On Facts** now runs in GitHub Actions, not the desktop app: `cloud/sleep-on-facts/` (daily ~3-hour narrated image-slideshow video, uploaded automatically). See its README; the desktop `sleep_facts` mode is legacy and the channel is paused in the app.
+
 ## Architecture
 
 ```
