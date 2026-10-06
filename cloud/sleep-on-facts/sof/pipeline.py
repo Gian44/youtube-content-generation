@@ -90,11 +90,16 @@ def run(cfg: Config) -> int:
     # 4. Images.
     _stage("images")
     img_dir = work / "images"
+    # Never fetch more images than the narration can show (plus a margin); 3 h → the full 150,
+    # a 3-minute smoke → ~15, so the reel build stays proportional to the video.
+    showable = int(duration // max(1.0, cfg.dwell_seconds)) + 6
+    target = max(cfg.images_fail_below, min(cfg.images_target, showable))
+    minimum = min(cfg.images_min, target)
     existing = sorted(str(p) for p in img_dir.glob("*.jpg")) if img_dir.exists() else []
-    if len(existing) >= cfg.images_min:
+    if len(existing) >= minimum:
         image_paths = existing
     else:
-        urls = images.collect_urls(list(topic.queries) + list(sc.image_queries), target=cfg.images_target,
+        urls = images.collect_urls(list(topic.queries) + list(sc.image_queries), target=target,
                                    pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key)
         image_paths = images.download_all(urls, str(img_dir))
     if len(image_paths) < cfg.images_fail_below:

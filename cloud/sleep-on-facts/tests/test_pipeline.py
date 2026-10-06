@@ -119,3 +119,14 @@ def test_ledger_pushed_in_actions(tmp_path, monkeypatch):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert calls[-1] == "git"
+
+
+def test_image_target_scales_with_narration(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    seen = {}
+    monkeypatch.setattr(pipeline.images, "collect_urls", lambda qs, **kw: (seen.update(kw), [{"url": f"u{i}", "credit": "c"} for i in range(kw["target"])])[1])
+    cfg = _cfg(tmp_path, minutes=3)  # fake narration is 120 s → 120//20 + 6 = 12 images
+    cfg.images_fail_below, cfg.images_min = 1, 100
+    pipeline.run(cfg)
+    assert seen["target"] == 12
