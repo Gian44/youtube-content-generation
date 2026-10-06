@@ -5,8 +5,13 @@ from __future__ import annotations
 import logging
 import time
 
+import socket
+import ssl
+from http.client import HTTPException
+
 log = logging.getLogger("sof.upload")
 TOKEN_URI = "https://oauth2.googleapis.com/token"
+TRANSIENT = (ssl.SSLError, socket.timeout, ConnectionError, HTTPException, OSError)
 
 
 def build_client(cfg):
@@ -55,6 +60,14 @@ def upload_video(yt, video_path: str, body: dict, thumb_path: str | None, *, chu
                 sleep(min(60, 2 ** errors))
                 continue
             raise
+        except TRANSIENT as exc:
+            # Dropped TLS/TCP connections mid-chunk (SSLEOFError, ConnectionReset, timeouts) are
+            # routine on a 1-3 GB upload; the resumable session survives them, so retry the chunk.
+            if errors >= 10:
+                raise
+            errors += 1
+            log.warning("upload chunk failed (%s: %s); retry %d", type(exc).__name__, exc, errors)
+            sleep(min(60, 2 ** errors))
     video_id = response["id"]
     if thumb_path:
         try:

@@ -31,3 +31,22 @@ def test_upload_returns_id_and_sets_thumbnail(tmp_path):
 
 def test_health_returns_channel_title():
     assert health(FakeYT()) == "Sleep On Facts"
+
+
+def test_upload_retries_dropped_connections(tmp_path):
+    import ssl
+
+    class FlakyYT(FakeYT):
+        calls = 0
+
+        def next_chunk(self):
+            FlakyYT.calls += 1
+            if FlakyYT.calls <= 2:
+                raise ssl.SSLEOFError("EOF occurred in violation of protocol")
+            return None, {"id": "vid456"}
+
+    f = tmp_path / "f.mp4"; f.write_bytes(b"x")
+    slept = []
+    assert upload_video(FlakyYT(), str(f), video_body(title="T", description="D", tags=[], privacy="public"), None,
+                        sleep=slept.append) == "vid456"
+    assert FlakyYT.calls == 3 and slept == [2, 4]
