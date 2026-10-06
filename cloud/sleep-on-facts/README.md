@@ -4,7 +4,7 @@ Unattended daily ~3-hour "facts to fall asleep to" videos, rendered on GitHub Ac
 uploaded to the Sleep On Facts YouTube channel. No desktop app, no database, no PC.
 
 ```
-topic (topics.yml) → script (gpt-4o-mini, Gemini fallback) → narration (OpenAI tts-1, onyx 0.9)
+topic (topics.yml) → script (gpt-4o-mini, Gemini fallback) → narration (OpenAI gpt-4o-mini-tts, echo, bedtime direction)
   → ~150 landscape photos (Pexels/Pixabay) → Ken Burns reel, looped under the audio (ffmpeg)
   → YouTube upload → ledger.json (committed)
 ```
@@ -41,9 +41,9 @@ Locally (needs ffmpeg + the env vars below): `python run.py --minutes 3 --skip-u
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
 
-## Cost per video (≈ $2.50)
+## Cost per video (≈ $2.80)
 
-OpenAI `tts-1` ≈ $15 per 1M characters → ~150k chars ≈ $2.25; `gpt-4o-mini` script ≈ $0.15;
+OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~150k chars ≈ $2.60; `gpt-4o-mini` script ≈ $0.15;
 Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script
 exceeds 1.3× the word target, and before everything if the YouTube token is dead.
 
