@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from sof.prompts import METADATA_PROMPT, OUTLINE_PROMPT, SEGMENT_PROMPT
 
 log = logging.getLogger("sof.script")
-_MIN_SEG, _MAX_SEG, _TAIL, _MAX_REFILLS = 600, 1500, 400, 8
+_MAX_SEG, _TAIL, _MAX_REFILLS = 1500, 400, 8
 
 
 class ScriptTooLong(RuntimeError):
@@ -62,7 +62,9 @@ def generate_script(
     max_words_ratio: float,
     segment_max_tokens: int = 2800,
 ) -> Script:
-    per_words = max(_MIN_SEG, min(_MAX_SEG, target_words // max(1, num_movements)))
+    # Scale the plan to the target so a 3-minute smoke run does not get 16×600-word movements.
+    num_movements = max(2, min(num_movements, round(target_words / 1200)))
+    per_words = max(150, min(_MAX_SEG, target_words // num_movements))
     bodies: list[str] = []
     covered: list[str] = []
     seen: set[str] = set()
@@ -102,8 +104,8 @@ def generate_script(
     movements = [m for m in (first.get("movements") or []) if isinstance(m, dict)]
     if not movements:
         raise RuntimeError("outline returned no movements")
-    for m in movements:
-        if len(bodies) >= max_segments:
+    for m in movements[:num_movements]:
+        if len(bodies) >= max_segments or total() >= target_words:
             break
         expand(m)
 
