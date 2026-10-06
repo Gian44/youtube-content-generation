@@ -39,3 +39,11 @@ def test_commands_and_cost():
     assert concat_cmd("l.txt", "o.mp3")[:4] == ["ffmpeg", "-y", "-f", "concat"]
     assert "loudnorm=I=-18" in " ".join(loudnorm_cmd("i.mp3", "o.mp3"))
     assert abs(estimate_cost_usd(150_000, "tts-1") - 2.25) < 0.01
+
+
+def test_request_body_switches_fields_by_model():
+    from sof.tts import request_body
+    old = request_body("hi", model="tts-1", voice="onyx", speed=0.9, instructions="calm")
+    new = request_body("hi", model="gpt-4o-mini-tts", voice="ash", speed=0.9, instructions="calm")
+    assert old["speed"] == 0.9 and "instructions" not in old
+    assert new["instructions"] == "calm" and "speed" not in new

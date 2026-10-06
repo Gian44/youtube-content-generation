@@ -30,10 +30,15 @@ class Config:
     fill_ratio: float = 0.9
     max_words_ratio: float = 1.3
     # tts
-    tts_model: str = "tts-1"
-    tts_voice: str = "onyx"
-    tts_speed: float = 0.9
-    tts_chunk_chars: int = 4000
+    tts_model: str = "gpt-4o-mini-tts"
+    tts_voice: str = "ash"          # placeholder until Gian picks from _cowork_tmp/voice_samples
+    tts_speed: float = 0.9          # tts-1 only; gpt-4o-mini-tts takes pace from tts_instructions
+    tts_instructions: str = (
+        "You are narrating a gentle bedtime video. Speak slowly and softly, in a warm, low, unhurried voice, "
+        "with long natural pauses between sentences. No excitement, no emphasis spikes. An even, soothing "
+        "cadence, like telling a quiet story to someone who is drifting off to sleep."
+    )
+    tts_chunk_chars: int = 2000     # gpt-4o-mini-tts input cap is 2,000 chars (tts-1 allows 4,096)
     # images
     images_target: int = 150
     images_min: int = 100

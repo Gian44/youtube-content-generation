@@ -13,8 +13,20 @@ import httpx
 
 log = logging.getLogger("sof.tts")
 URL = "https://api.openai.com/v1/audio/speech"
-PRICE_PER_M_CHARS = {"tts-1": 15.0, "tts-1-hd": 30.0}
+# gpt-4o-mini-tts is billed per audio token (~$0.015/min ≈ 900 chars/min at narration pace) → ≈ $17/M chars.
+PRICE_PER_M_CHARS = {"tts-1": 15.0, "tts-1-hd": 30.0, "gpt-4o-mini-tts": 17.0}
 _SENT = re.compile(r"(?<=[.!?])\s+")
+
+
+def request_body(chunk: str, *, model: str, voice: str, speed: float, instructions: str | None) -> dict:
+    """``speed`` only exists on tts-1/tts-1-hd; ``instructions`` (delivery direction) only on gpt-4o-*-tts."""
+    body = {"model": model, "voice": voice, "input": chunk, "response_format": "mp3"}
+    if model.startswith("gpt-4o"):
+        if instructions:
+            body["instructions"] = instructions
+    else:
+        body["speed"] = speed
+    return body
 
 
 def chunk_text(text: str, limit: int) -> list[str]:
@@ -40,7 +52,7 @@ def chunk_text(text: str, limit: int) -> list[str]:
 
 
 def synthesize(chunks: list[str], out_dir: str, *, api_key: str, model: str, voice: str, speed: float,
-               transport=None, retries: int = 4, sleep=time.sleep) -> list[str]:
+               instructions: str | None = None, transport=None, retries: int = 4, sleep=time.sleep) -> list[str]:
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     paths: list[str] = []
     with httpx.Client(timeout=180.0, transport=transport, headers={"Authorization": f"Bearer {api_key}"}) as c:
@@ -51,8 +63,7 @@ def synthesize(chunks: list[str], out_dir: str, *, api_key: str, model: str, voi
                 continue
             delay = 2.0
             for attempt in range(retries + 1):
-                r = c.post(URL, json={"model": model, "voice": voice, "speed": speed, "input": chunk,
-                                      "response_format": "mp3"})
+                r = c.post(URL, json=request_body(chunk, model=model, voice=voice, speed=speed, instructions=instructions))
                 if r.status_code == 200 and r.content:
                     p.write_bytes(r.content)
                     break

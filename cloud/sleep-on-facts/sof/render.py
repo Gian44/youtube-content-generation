@@ -28,16 +28,42 @@ def run(cmd: list[str], timeout: int) -> None:
 
 # ---------------------------------------------------------------- command builders (pure)
 
+ZOOM_END = 1.10     # slow push-in: 1.00 → 1.10 over the clip
+CANVAS = 1.25       # the pre-covered source is this much larger than the output, so the zoom never upscales it
+
+
+def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = CANVAS) -> str:
+    """Resize+centre-crop ``src`` once (Pillow, Lanczos) to ``scale``× the output frame.
+
+    Doing this once per image instead of per frame inside ffmpeg is what keeps a 150-clip reel
+    affordable; 4000-px Pexels originals shrink here, never grow.
+    """
+    from PIL import Image, ImageOps
+
+    tw, th = int(width * scale), int(height * scale)
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        ImageOps.fit(im, (tw, th), method=Image.LANCZOS, centering=(0.5, 0.5)).save(dst, "JPEG", quality=94, subsampling=0)
+    return dst
+
+
 def ken_burns_cmd(image: str, out: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int) -> list[str]:
+    """Slow, smooth push-in without ``zoompan`` (``image`` is already covered by ``cover_image``).
+
+    ``zoompan`` snaps its crop window to whole pixels every frame, which is the well-known
+    jitter/shake, and it rescales an already-downsized frame, which is the blur. Instead the
+    pre-covered source is scaled continuously with a per-frame ``t`` expression and
+    centre-cropped — sub-pixel, bicubic, no snapping — and it is only ever scaled *down*.
+    """
     clip_dur = dwell + crossfade
-    cover = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
+    grow = f"(1+{ZOOM_END - 1:g}*min(t/{clip_dur:g},1))"
     vf = (
-        f"{cover},zoompan=z='min(max(zoom,pzoom)+0.0008,1.12)':d=1:"
-        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},setsar=1"
+        f"scale=w='trunc({width}*{grow}/2)*2':h='trunc({height}*{grow}/2)*2':eval=frame:flags=bicubic,"
+        f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2,setsar=1,format=yuv420p"
     )
     return [
-        "ffmpeg", "-y", "-loop", "1", "-i", image, "-t", _fmt(clip_dur), "-vf", vf, "-r", str(fps),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-pix_fmt", "yuv420p", "-an",
+        "ffmpeg", "-y", "-loop", "1", "-framerate", str(fps), "-i", image, "-t", _fmt(clip_dur), "-vf", vf,
+        "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an",
         "-map_metadata", "-1", out,
     ]
 
@@ -79,7 +105,11 @@ def _render_clips(images: list[str], tmp: Path, *, dwell, crossfade, width, heig
 
     def one(idx: int, img: str):
         clip = str(tmp / f"clip_{idx:04d}.mp4")
-        r = subprocess.run(ken_burns_cmd(img, clip, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps),
+        try:
+            covered = cover_image(img, str(tmp / f"cover_{idx:04d}.jpg"), width=width, height=height)
+        except Exception as exc:  # noqa: BLE001 — a corrupt download must not kill the reel
+            return idx, None, f"cover failed: {exc}"
+        r = subprocess.run(ken_burns_cmd(covered, clip, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps),
                            capture_output=True, text=True, timeout=600)
         return idx, clip if (r.returncode == 0 and os.path.exists(clip)) else None, r.stderr[-200:]
 

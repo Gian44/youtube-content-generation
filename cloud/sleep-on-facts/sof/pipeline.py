@@ -82,7 +82,7 @@ def run(cfg: Config) -> int:
     if not narration.exists():
         chunks = tts.chunk_text(sc.body, cfg.tts_chunk_chars)
         parts = tts.synthesize(chunks, str(work / "tts"), api_key=cfg.openai_api_key, model=cfg.tts_model,
-                               voice=cfg.tts_voice, speed=cfg.tts_speed)
+                               voice=cfg.tts_voice, speed=cfg.tts_speed, instructions=cfg.tts_instructions)
         tts.assemble(parts, str(work))
     duration = tts.duration_seconds(str(narration))
     print(f"narration: {duration / 60:.1f} min · est. TTS cost ${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)

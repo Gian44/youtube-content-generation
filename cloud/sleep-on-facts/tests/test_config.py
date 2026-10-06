@@ -6,7 +6,7 @@ def test_defaults_and_env(monkeypatch):
     monkeypatch.setenv("PEXELS_API_KEY", "px")
     cfg = Config.from_env(minutes=180)
     assert cfg.minutes == 180 and cfg.target_words == 27000
-    assert cfg.tts_model == "tts-1" and cfg.tts_voice == "onyx" and cfg.tts_speed == 0.9
+    assert cfg.tts_model == "gpt-4o-mini-tts" and cfg.tts_instructions and cfg.tts_chunk_chars <= 2000
     assert cfg.script_model == "gpt-4o-mini"
     assert cfg.gemini_models == ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
     assert cfg.images_target == 150 and cfg.images_min == 100
