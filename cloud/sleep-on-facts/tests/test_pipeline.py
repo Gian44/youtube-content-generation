@@ -20,6 +20,7 @@ def _cfg(tmp_path, **kw):
 
 
 def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(pipeline.upload, "build_client", lambda cfg: "YT")
     def health(yt):
         calls.append("preflight")
@@ -65,7 +66,6 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
 def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     calls = []
     _fakes(monkeypatch, calls)
-    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert calls == ["preflight", "script", "tts", "images", "render", "upload"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
@@ -111,3 +111,11 @@ def test_smoke_run_uploads_unlisted_without_ledger(tmp_path, monkeypatch):
     cfg.privacy = "unlisted"
     assert pipeline.run(cfg) == 0 and "upload" in calls
     assert json.loads((tmp_path / "ledger.json").read_text()) == []
+
+
+def test_ledger_pushed_in_actions(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    assert calls[-1] == "git"
