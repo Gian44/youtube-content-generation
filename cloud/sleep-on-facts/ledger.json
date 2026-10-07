@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "date": "2026-10-07",
+    "topic": "Ancient Egypt",
+    "video_id": "CAxMtvBvjNU",
+    "title": "Calm Facts About Ancient Egypt to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 10751,
+    "words": 27613,
+    "images": 150,
+    "cost_estimate_usd": 3.03,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37566503018"
+  }
+]
