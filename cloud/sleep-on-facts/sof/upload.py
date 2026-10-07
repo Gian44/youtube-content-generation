@@ -38,7 +38,10 @@ def video_body(*, title: str, description: str, tags: list[str], privacy: str) -
     return {
         "snippet": {"title": title[:100], "description": description[:4900], "tags": tags[:30],
                     "categoryId": "24", "defaultLanguage": "en"},
-        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False, "containsSyntheticMedia": True},
+        # No altered/synthetic-content label: YouTube requires it for realistic depictions of real people,
+        # events or places, or AI music as the main focus — not for a TTS narrator reading an AI-assisted
+        # script over real stock photos ("production assistance" / voice-over in its own examples).
+        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
     }
 
 

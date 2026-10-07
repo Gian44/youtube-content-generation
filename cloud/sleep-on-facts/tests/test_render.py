@@ -5,7 +5,7 @@ from sof.render import ken_burns_cmd, xfade_chain_cmd, loop_assembly_cmd, plan_b
 
 def test_cmd_builders():
     kb = " ".join(ken_burns_cmd("a.jpg", "a.mp4", dwell=20, crossfade=1.5, width=1920, height=1080, fps=24))
-    assert "zoompan" not in kb and "-t 21.5" in kb and "eval=frame" in kb and "crop=1920:1080:" in kb
+    assert "zoompan=" in kb and "d=516" in kb and "-frames:v 516" in kb and "s=1920x1080" in kb and "-loop" not in kb
     xf = " ".join(xfade_chain_cmd(["a.mp4", "b.mp4", "c.mp4"], [21.5, 21.5, 21.5], "r.mp4", crossfade=1.5, fps=24))
     assert xf.count("xfade=") == 2 and "offset=20" in xf and "offset=40" in xf
     la = " ".join(loop_assembly_cmd("reel.mp4", "n.mp3", "f.mp4", audio_duration=10800.0, fps=24))

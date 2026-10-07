@@ -4,7 +4,7 @@ from sof.upload import video_body, upload_video, health
 def test_video_body():
     b = video_body(title="T", description="D", tags=["a"], privacy="public")
     assert b["snippet"]["categoryId"] == "24" and b["status"]["privacyStatus"] == "public"
-    assert b["status"]["selfDeclaredMadeForKids"] is False and b["status"]["containsSyntheticMedia"] is True
+    assert b["status"]["selfDeclaredMadeForKids"] is False and "containsSyntheticMedia" not in b["status"]
 
 
 class FakeYT:

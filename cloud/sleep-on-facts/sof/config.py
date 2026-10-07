@@ -39,6 +39,9 @@ class Config:
         "cadence, like telling a quiet story to someone who is drifting off to sleep."
     )
     tts_chunk_chars: int = 2000     # gpt-4o-mini-tts input cap is 2,000 chars (tts-1 allows 4,096)
+    # music: synthesised ambient pad looped under the voice (see sof/music.py)
+    music_enabled: bool = True
+    music_lufs: float = -34.0       # ≈16 dB under the −18 LUFS narration: present, never competing
     # images
     images_target: int = 150
     images_min: int = 100

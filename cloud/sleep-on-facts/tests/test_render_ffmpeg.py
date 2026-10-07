@@ -27,3 +27,51 @@ def test_reel_and_loop_assembly(tmp_path):
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name",
                             "-of", "csv=p=0", final], capture_output=True, text=True).stdout.strip()
     assert probe.startswith("h264,640,360")
+
+
+def _grid_line_spacing_per_frame(path, width, height):
+    """For each frame: least-squares spacing of the bright vertical grid lines (sub-pixel)."""
+    import numpy as np
+    p = subprocess.Popen(["ffmpeg", "-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt", "gray", "-"], stdout=subprocess.PIPE)
+    spacing = []
+    while True:
+        buf = p.stdout.read(width * height)
+        if len(buf) < width * height:
+            break
+        fr = np.frombuffer(buf, np.uint8).reshape(height, width)
+        row = fr[height // 2 - 40:height // 2 - 25].min(axis=0).astype(float)  # min over a band removes horizontal lines
+        thr, xs, i = row > 120, [], 0
+        while i < width:
+            if thr[i]:
+                j = i
+                while j < width and thr[j]:
+                    j += 1
+                seg = row[i:j] - row.min()
+                xs.append(i + (seg * np.arange(len(seg))).sum() / max(seg.sum(), 1e-9)); i = j
+            else:
+                i += 1
+        xs = np.array([x for x in xs if 60 < x < width - 60])
+        if len(xs) >= 4:
+            spacing.append(np.polyfit(np.arange(len(xs)), xs, 1)[0])
+    return np.array(spacing)
+
+
+def test_ken_burns_zoom_is_smooth_not_stepped(tmp_path):
+    """Regression for the 'shaking' Gian saw: the zoom must advance a little every frame, not hold
+    still and jump. Measured as the std-dev of the per-frame change in grid-line spacing relative
+    to its mean — the old scale(t)+crop renderer scored ~2.1 here, 4× zoompan ~0.4."""
+    import numpy as np
+    from PIL import Image, ImageDraw
+    w, h = 1920, 1080
+    im = Image.new("RGB", (3840, 2160), (30, 60, 120)); d = ImageDraw.Draw(im)
+    for x in range(0, 3840, 100):
+        d.line([(x, 0), (x, 2160)], fill=(230, 230, 230), width=8)
+    src = tmp_path / "grid.jpg"; im.save(src, quality=92)
+    covered = render.cover_image(str(src), str(tmp_path / "cover.jpg"), width=w, height=h)
+    clip = str(tmp_path / "clip.mp4")
+    subprocess.run(render.ken_burns_cmd(covered, clip, dwell=3.0, crossfade=0.0, width=w, height=h, fps=24), check=True, capture_output=True)
+    sp = _grid_line_spacing_per_frame(clip, w, h)
+    assert len(sp) >= 70 and sp[-1] > sp[0] * 1.03          # it did zoom in
+    steps = np.diff(sp)
+    ratio = steps.std() / abs(steps.mean())
+    assert ratio < 1.0, f"stepped zoom: std/mean={ratio:.2f}"

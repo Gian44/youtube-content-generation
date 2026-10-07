@@ -42,6 +42,9 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
         p = Path(out_dir) / "narration.mp3"; p.write_bytes(b"audio"); return str(p)
     monkeypatch.setattr(pipeline.tts, "assemble", assemble_tts)
     monkeypatch.setattr(pipeline.tts, "duration_seconds", lambda p: 120.0)
+    def mix(narration, out, **kw):
+        calls.append("music"); Path(out).write_bytes(b"mix"); return out
+    monkeypatch.setattr(pipeline.music, "mix", mix)
     monkeypatch.setattr(pipeline.images, "collect_urls", lambda qs, **kw: (calls.append("images"), [{"url": f"u{i}", "credit": "c"} for i in range(image_count)])[1])
     def dl(urls, out_dir, **kw):
         Path(out_dir).mkdir(parents=True, exist_ok=True); out = []
@@ -54,7 +57,7 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
         p = Path(tmp) / "reel.mp4"; p.write_bytes(b"reel"); return str(p)
     monkeypatch.setattr(pipeline.render, "build_reel", build_reel)
     def assemble(reel, narration, out, **kw):
-        Path(out).write_bytes(b"final"); return out
+        calls.append(f"assemble:{Path(narration).name}"); Path(out).write_bytes(b"final"); return out
     monkeypatch.setattr(pipeline.render, "assemble", assemble)
     monkeypatch.setattr(pipeline.render, "thumbnail", lambda img, title, out: (Path(out).write_bytes(b"t"), out)[1])
     def up(yt, path, body, thumb, **kw):
@@ -67,7 +70,7 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     calls = []
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
-    assert calls == ["preflight", "script", "tts", "images", "render", "upload"]
+    assert calls == ["preflight", "script", "tts", "music", "images", "render", "assemble:soundtrack.mp3", "upload"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
 
@@ -130,3 +133,10 @@ def test_image_target_scales_with_narration(tmp_path, monkeypatch):
     cfg.images_fail_below, cfg.images_min = 1, 100
     pipeline.run(cfg)
     assert seen["target"] == 12
+
+
+def test_music_can_be_disabled(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    assert pipeline.run(_cfg(tmp_path, music_enabled=False)) == 0
+    assert "music" not in calls and "assemble:narration.mp3" in calls

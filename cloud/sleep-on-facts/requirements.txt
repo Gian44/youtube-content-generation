@@ -5,3 +5,4 @@ google-auth-httplib2>=0.2
 Pillow>=10.3
 PyYAML>=6.0
 pytest>=8
+numpy>=1.26

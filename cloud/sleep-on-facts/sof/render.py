@@ -28,15 +28,14 @@ def run(cmd: list[str], timeout: int) -> None:
 
 # ---------------------------------------------------------------- command builders (pure)
 
-ZOOM_END = 1.10     # slow push-in: 1.00 → 1.10 over the clip
-CANVAS = 1.25       # the pre-covered source is this much larger than the output, so the zoom never upscales it
+ZOOM_END = 1.06     # very slow push-in: 1.00 → 1.06 over the clip (sleep audience; smaller steps too)
+CANVAS = 4          # pre-cover at 4× the output so zoompan's whole-pixel rounding is ¼ of an output pixel
 
 
 def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = CANVAS) -> str:
     """Resize+centre-crop ``src`` once (Pillow, Lanczos) to ``scale``× the output frame.
 
-    Doing this once per image instead of per frame inside ffmpeg is what keeps a 150-clip reel
-    affordable; 4000-px Pexels originals shrink here, never grow.
+    Done once per image, not per frame inside ffmpeg, so a 150-clip reel stays affordable.
     """
     from PIL import Image, ImageOps
 
@@ -48,22 +47,24 @@ def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = C
 
 
 def ken_burns_cmd(image: str, out: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int) -> list[str]:
-    """Slow, smooth push-in without ``zoompan`` (``image`` is already covered by ``cover_image``).
+    """Slow, smooth push-in from ONE pre-covered 4× frame (see ``cover_image``).
 
-    ``zoompan`` snaps its crop window to whole pixels every frame, which is the well-known
-    jitter/shake, and it rescales an already-downsized frame, which is the blur. Instead the
-    pre-covered source is scaled continuously with a per-frame ``t`` expression and
-    centre-cropped — sub-pixel, bicubic, no snapping — and it is only ever scaled *down*.
+    Why this shape (measured, not guessed — see tests/test_render_ffmpeg.py):
+    * scale(t)+crop quantises to whole output pixels → the picture holds still then jumps ~0.4 px
+      every few frames: the "shaking". ``zoompan`` on a 1× frame has the same problem plus blur.
+    * ``zoompan`` on a 4× frame rounds its crop window to ¼ output pixel: 5× lower frame-to-frame
+      step variance. The 4× canvas is an intermediate (Lanczos up, bicubic down); net, a 2560-px
+      photo is still shown below its own resolution. Faster too: one decoded frame feeds every
+      output frame instead of ``-loop 1`` re-decoding and re-scaling the JPEG per frame.
     """
-    clip_dur = dwell + crossfade
-    grow = f"(1+{ZOOM_END - 1:g}*min(t/{clip_dur:g},1))"
+    frames = max(1, int(round((dwell + crossfade) * fps)))
     vf = (
-        f"scale=w='trunc({width}*{grow}/2)*2':h='trunc({height}*{grow}/2)*2':eval=frame:flags=bicubic,"
-        f"crop={width}:{height}:(iw-{width})/2:(ih-{height})/2,setsar=1,format=yuv420p"
+        f"zoompan=z='1+{ZOOM_END - 1:g}*on/{max(1, frames - 1)}':d={frames}:"
+        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},setsar=1,format=yuv420p"
     )
     return [
-        "ffmpeg", "-y", "-loop", "1", "-framerate", str(fps), "-i", image, "-t", _fmt(clip_dur), "-vf", vf,
-        "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an",
+        "ffmpeg", "-y", "-i", image, "-vf", vf, "-frames:v", str(frames), "-r", str(fps),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an",
         "-map_metadata", "-1", out,
     ]
 

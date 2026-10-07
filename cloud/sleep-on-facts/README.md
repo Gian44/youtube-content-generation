@@ -5,7 +5,8 @@ uploaded to the Sleep On Facts YouTube channel. No desktop app, no database, no 
 
 ```
 topic (topics.yml) → script (gpt-4o-mini, Gemini fallback) → narration (OpenAI gpt-4o-mini-tts, echo, bedtime direction)
-  → ~150 landscape photos (Pexels/Pixabay) → Ken Burns reel, looped under the audio (ffmpeg)
+  → faint synthesised ambient bed mixed under the voice (numpy + ffmpeg, licence-free)
+  → ~150 landscape photos (Pexels, 2560 px) → smooth 4× zoompan reel, looped under the audio (ffmpeg)
   → YouTube upload → ledger.json (committed)
 ```
 

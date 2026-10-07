@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import images, ledger, render, research, script, topics, tts, upload
+from sof import images, ledger, music, render, research, script, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
 
@@ -87,6 +87,16 @@ def run(cfg: Config) -> int:
     duration = tts.duration_seconds(str(narration))
     print(f"narration: {duration / 60:.1f} min · est. TTS cost ${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)
 
+    # 3b. Faint ambient bed under the voice (synthesised, licence-free).
+    soundtrack = narration
+    if cfg.music_enabled:
+        _stage("music")
+        mixed = work / "soundtrack.mp3"
+        if not mixed.exists():
+            music.mix(str(narration), str(mixed), work_dir=str(work), bed_lufs=cfg.music_lufs)
+        soundtrack = mixed
+        print(f"soundtrack: bed at {cfg.music_lufs:g} LUFS under narration", flush=True)
+
     # 4. Images.
     _stage("images")
     img_dir = work / "images"
@@ -117,7 +127,7 @@ def run(cfg: Config) -> int:
                                       crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
                                       fps=cfg.fps, batch=cfg.xfade_batch)
             os.replace(built, reel)
-        render.assemble(str(reel), str(narration), str(final), audio_duration=duration, fps=cfg.fps)
+        render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
         render.thumbnail(image_paths[min(9, len(image_paths) - 1)], sc.title, str(thumb))
