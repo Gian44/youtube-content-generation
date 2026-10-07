@@ -30,8 +30,8 @@ gh workflow run sleep-daily.yml -f minutes=180 -f skip_upload=true
 gh run list --workflow sleep-daily.yml --limit 3 && gh run watch
 ```
 
-The daily cron is commented out in the workflow until the smoke run has been reviewed —
-uncomment the `schedule:` block to go live (02:00 Asia/Singapore).
+The daily cron (`0 18 * * *` UTC = 02:00 Asia/Manila) is live since 2026-10-07. Comment out the
+`schedule:` block to pause; `workflow_dispatch` still works for manual runs.
 
 Locally (needs ffmpeg + the env vars below): `python run.py --minutes 3 --skip-upload`.
 

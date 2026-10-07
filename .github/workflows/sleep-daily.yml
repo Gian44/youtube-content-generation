@@ -1,9 +1,8 @@
 name: sleep-on-facts daily
 
 on:
-  # ENABLE after the 3-minute smoke run has been reviewed:
-  # schedule:
-  #   - cron: "0 18 * * *"   # 02:00 Asia/Singapore
+  schedule:
+    - cron: "0 18 * * *"   # daily 02:00 Asia/Manila (smoke runs reviewed 2026-10-07)
   workflow_dispatch:
     inputs:
       minutes:
