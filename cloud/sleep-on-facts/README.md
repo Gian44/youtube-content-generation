@@ -54,7 +54,7 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 | --- | --- |
 | `topics.yml` | topics + stock-photo queries; the picker takes the topic with the fewest ledger entries |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
-| `run.py`, `sof/` | the pipeline (`config, llm, topics, research, script, prompts, tts, images, render, upload, ledger, pipeline`) |
+| `run.py`, `sof/` | the pipeline (`config, llm, topics, research, script, prompts, tts, music, images, render, thumbnail, upload, ledger, pipeline`) |
 | `tests/` | unit tests (mocked HTTP) + one real-ffmpeg render test |
 
 Each run works in `work/<date>-<topic>/` and resumes from existing stage outputs if re-run

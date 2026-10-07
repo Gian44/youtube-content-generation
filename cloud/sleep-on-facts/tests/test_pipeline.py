@@ -59,7 +59,7 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
     def assemble(reel, narration, out, **kw):
         calls.append(f"assemble:{Path(narration).name}"); Path(out).write_bytes(b"final"); return out
     monkeypatch.setattr(pipeline.render, "assemble", assemble)
-    monkeypatch.setattr(pipeline.render, "thumbnail", lambda img, title, out: (Path(out).write_bytes(b"t"), out)[1])
+    monkeypatch.setattr(pipeline.thumbnail, "make", lambda imgs, out, **kw: (Path(out).write_bytes(b"t"), out)[1])
     def up(yt, path, body, thumb, **kw):
         calls.append("upload"); return "vid123"
     monkeypatch.setattr(pipeline.upload, "upload_video", up)

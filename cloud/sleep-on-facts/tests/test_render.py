@@ -1,6 +1,6 @@
 import os
 import subprocess
-from sof.render import ken_burns_cmd, xfade_chain_cmd, loop_assembly_cmd, plan_batches, thumbnail
+from sof.render import ken_burns_cmd, xfade_chain_cmd, loop_assembly_cmd, plan_batches
 
 
 def test_cmd_builders():
@@ -16,12 +16,3 @@ def test_cmd_builders():
 def test_plan_batches():
     assert plan_batches(45, 20) == [(0, 20), (20, 40), (40, 45)]
     assert plan_batches(3, 20) == [(0, 3)]
-
-
-def test_thumbnail_renders(tmp_path):
-    from PIL import Image
-    src = tmp_path / "src.jpg"
-    Image.new("RGB", (800, 600), (40, 60, 120)).save(src)
-    out = thumbnail(str(src), "Calm Facts About The Deep Sea to Fall Asleep To (3 Hours)", str(tmp_path / "t.jpg"))
-    with Image.open(out) as im:
-        assert im.size == (1280, 720)

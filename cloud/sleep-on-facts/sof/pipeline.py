@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import images, ledger, music, render, research, script, topics, tts, upload
+from sof import images, ledger, music, render, research, script, thumbnail, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
 
@@ -130,7 +130,7 @@ def run(cfg: Config) -> int:
         render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
-        render.thumbnail(image_paths[min(9, len(image_paths) - 1)], sc.title, str(thumb))
+        thumbnail.make(image_paths, topic=topic.name, hours=max(1, round(cfg.minutes / 60)), out=str(thumb))
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
 
