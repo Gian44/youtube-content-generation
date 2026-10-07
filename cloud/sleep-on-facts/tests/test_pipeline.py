@@ -30,6 +30,11 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
     monkeypatch.setattr(pipeline.upload, "health", health)
     monkeypatch.setattr(pipeline, "LLM", lambda *a, **k: "LLM")
     monkeypatch.setattr(pipeline.research, "wikipedia_hints", lambda t: "")
+    from sof.research import Corpus, Chunk
+    monkeypatch.setattr(pipeline.research, "build_corpus", lambda name, **kw: (calls.append(f"research:{name}"),
+        Corpus(topic=name, title=name, url="u", lead="lead", sections=["A"], chunks=[Chunk(name, "fact " * 30)], sources=[name]))[1])
+    monkeypatch.setattr(pipeline.topicgen, "choose", lambda llm, **kw: (calls.append("topicgen"),
+        __import__("sof.topicgen", fromlist=["Pick"]).Pick(topic="Honeybees", wiki_title="Honey bee", category="nature"))[1])
     def gen(llm, **kw):
         calls.append("script")
         return Script(title="T", description="D", tags=["t"], body="word " * 300, word_count=300, movements=2, image_queries=["q"])
@@ -70,7 +75,7 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     calls = []
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
-    assert calls == ["preflight", "script", "tts", "music", "images", "render", "assemble:soundtrack.mp3", "upload"]
+    assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "render", "assemble:soundtrack.mp3", "upload"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
 
@@ -140,3 +145,16 @@ def test_music_can_be_disabled(tmp_path, monkeypatch):
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path, music_enabled=False)) == 0
     assert "music" not in calls and "assemble:narration.mp3" in calls
+
+
+def test_generated_topic_when_seeds_exhausted(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    (tmp_path / "ledger.json").write_text(json.dumps([{"date": "2026-10-07", "topic": "Whales", "video_id": "x"}]))
+    cfg = _cfg(tmp_path)
+    (tmp_path / "ledger.json").write_text(json.dumps([{"date": "2026-10-07", "topic": "Whales", "video_id": "x"}]))
+    assert pipeline.run(cfg) == 0
+    assert calls[:3] == ["preflight", "topicgen", "research:Honey bee"]
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert rows[-1]["topic"] == "Honeybees" and rows[-1]["category"] == "nature" and rows[-1]["wiki_title"] == "Honey bee"
+    assert (tmp_path / "work" / "2026-10-07-honeybees").exists() or any(p.name.endswith("-honeybees") for p in (tmp_path / "work").iterdir())

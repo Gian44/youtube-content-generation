@@ -1,23 +1,19 @@
-# One entry per topic. `queries` are stock-photo searches (landscape photos work best).
-# The picker chooses the topic with the fewest ledger entries, ties by list order.
-topics:
-  - name: Ancient Egypt
-    queries: [egypt pyramids desert, nile river sunset, ancient egyptian temple columns]
-  - name: The Deep Sea
-    queries: [deep ocean dark water, jellyfish glowing underwater, underwater cave light rays]
-  - name: Outer Space
-    queries: [nebula stars space, milky way night sky, planet surface horizon]
-  - name: The Roman Empire
-    queries: [roman ruins colosseum, ancient roman aqueduct, marble statue columns]
-  - name: Volcanoes
-    queries: [volcano lava night, volcanic landscape fog, crater lake mountain]
-  - name: The Human Brain
-    queries: [neurons abstract blue, calm person sleeping, brain scan abstract]
-  - name: Whales
-    queries: [humpback whale ocean, whale tail sunset sea, blue ocean surface aerial]
-  - name: Antarctica
-    queries: [antarctica iceberg, penguins snow landscape, aurora over ice]
-  - name: The Solar System
-    queries: [saturn rings planet, moon surface craters, sunrise from space earth]
-  - name: Dinosaurs
-    queries: [fossil skeleton museum, prehistoric forest ferns fog, dinosaur footprint rock]
+# Categories rotate daily (fewest past videos first). Each run a cheap model proposes specific
+# subjects in the day's category; the first one with a substantial Wikipedia article (and not in
+# the ledger) is used. Edit freely — the generator reads this file every run.
+categories:
+  - nature & animals
+  - history & ancient civilisations
+  - space & astronomy
+  - oceans & rivers
+  - how things work (machines, materials, everyday engineering)
+  - cities, islands & landscapes
+  - food, farming & plants
+  - inventions, crafts & ideas
+
+# Optional seed list. If present AND some entries are still unused, the picker takes those first
+# (in order); when they are exhausted the category generator takes over. Empty by decision
+# (2026-10-07): every day's subject is generated. Example entry:
+#   - name: The Deep Sea
+#     queries: [deep ocean dark water, jellyfish glowing underwater]
+topics: []

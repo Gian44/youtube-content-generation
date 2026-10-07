@@ -91,12 +91,22 @@ class LLM:
             return resp
         return resp  # type: ignore[return-value]
 
-    def _openai(self, prompt, system, max_tokens, temperature) -> str:
+    @staticmethod
+    def openai_payload(model: str, msgs: list[dict], max_tokens: int, temperature: float, reasoning: str) -> dict:
+        """GPT-5-family models reject ``max_tokens``/``temperature`` and take ``max_completion_tokens``
+        (which also pays for hidden reasoning tokens, hence the headroom) plus ``reasoning_effort``."""
+        body = {"model": model, "messages": msgs, "response_format": {"type": "json_object"}}
+        if model.startswith("gpt-5") or model.startswith("o"):
+            body["max_completion_tokens"] = max_tokens * 2
+            body["reasoning_effort"] = reasoning
+        else:
+            body["max_tokens"] = max_tokens
+            body["temperature"] = temperature
+        return body
+
+    def _openai(self, prompt, system, max_tokens, temperature, model, reasoning) -> str:
         msgs = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
-        resp = self._post_retry(self._oa, OPENAI_URL, {
-            "model": self.openai_model, "messages": msgs, "temperature": temperature,
-            "max_tokens": max_tokens, "response_format": {"type": "json_object"},
-        })
+        resp = self._post_retry(self._oa, OPENAI_URL, self.openai_payload(model, msgs, max_tokens, temperature, reasoning))
         if resp.status_code != 200:
             raise _HttpError(resp.status_code, resp.text[:300])
         return resp.json()["choices"][0]["message"]["content"]
@@ -121,11 +131,12 @@ class LLM:
     # -- public --------------------------------------------------------------
 
     def generate_json(self, prompt: str, *, system: str | None = None, max_tokens: int = 3000,
-                      temperature: float = 0.7) -> dict:
+                      temperature: float = 0.7, model: str | None = None, reasoning: str = "low") -> dict:
+        """``model`` overrides the default OpenAI model for this call (e.g. a cheap one for metadata)."""
         last: Exception | None = None
         if self._oa is not None:
             try:
-                return parse_json(self._openai(prompt, system, max_tokens, temperature))
+                return parse_json(self._openai(prompt, system, max_tokens, temperature, model or self.openai_model, reasoning))
             except _HttpError as exc:
                 if exc.status not in CAPACITY:
                     raise LLMError(f"OpenAI HTTP {exc.status}: {exc.body}")

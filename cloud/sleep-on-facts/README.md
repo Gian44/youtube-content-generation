@@ -4,7 +4,9 @@ Unattended daily ~3-hour "facts to fall asleep to" videos, rendered on GitHub Ac
 uploaded to the Sleep On Facts YouTube channel. No desktop app, no database, no PC.
 
 ```
-topic (topics.yml) → script (gpt-4o-mini, Gemini fallback) → narration (OpenAI gpt-4o-mini-tts, echo, bedtime direction)
+topic (generated daily from topics.yml categories, verified on Wikipedia) → research (full Wikipedia article
+  + ~15 linked articles, chunked; per-movement retrieval) → script (gpt-5.6-terra writes from the notes,
+  gpt-5.6-luna plans; repetition guard; sources in description) → narration (gpt-4o-mini-tts, echo)
   → faint synthesised ambient bed mixed under the voice (numpy + ffmpeg, licence-free)
   → ~150 landscape photos (Pexels, 2560 px) → smooth 4× zoompan reel, looped under the audio (ffmpeg)
   → YouTube upload → ledger.json (committed)
@@ -42,9 +44,9 @@ Locally (needs ffmpeg + the env vars below): `python run.py --minutes 3 --skip-u
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
 
-## Cost per video (≈ $2.80)
+## Cost per video (≈ $3.70)
 
-OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~150k chars ≈ $2.60; `gpt-4o-mini` script ≈ $0.15;
+OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning ≈ $0.03;
 Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script
 exceeds 1.3× the word target, and before everything if the YouTube token is dead.
 
@@ -52,7 +54,7 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 
 | file | purpose |
 | --- | --- |
-| `topics.yml` | topics + stock-photo queries; the picker takes the topic with the fewest ledger entries |
+| `topics.yml` | categories that rotate daily (fewest past videos first); optional seed topics |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
 | `run.py`, `sof/` | the pipeline (`config, llm, topics, research, script, prompts, tts, music, images, render, thumbnail, upload, ledger, pipeline`) |
 | `tests/` | unit tests (mocked HTTP) + one real-ffmpeg render test |

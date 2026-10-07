@@ -19,13 +19,15 @@ class Config:
     work_dir: str = "work"
     topics_path: str = "topics.yml"
     ledger_path: str = "ledger.json"
-    # script
-    script_model: str = "gpt-4o-mini"
+    # script — writer does the 30 prose movements; fast model does topic/outline/metadata.
+    script_model: str = "gpt-5.6-terra"     # writer (≈ $0.75 per 3-h script at $2/$12 per 1M tokens)
+    fast_model: str = "gpt-5.6-luna"        # planner/metadata (≈ $0.03)
+    research_linked_articles: int = 15      # linked Wikipedia articles pulled into the corpus
     gemini_models: list[str] = field(
         default_factory=lambda: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
     )
     num_movements: int = 16
-    segment_max_tokens: int = 2800
+    segment_max_tokens: int = 3200
     max_segments: int = 40
     fill_ratio: float = 0.9
     max_words_ratio: float = 1.3

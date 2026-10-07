@@ -1,5 +1,5 @@
 import json
-from sof.topics import load_topics, pick_next, Topic
+from sof.topics import load_topics, load_categories, unused_seed, pick_next, Topic
 from sof.ledger import load_ledger, append_entry, commit_message
 
 YAML = """
@@ -24,8 +24,16 @@ def test_load_and_pick_round_robin(tmp_path):
 
 
 def test_repo_topics_file_is_valid():
-    topics = load_topics("topics.yml")
-    assert len(topics) == 10 and all(len(t.queries) == 3 for t in topics)
+    assert load_topics("topics.yml") == []          # generated daily; see topics.yml
+    assert len(load_categories("topics.yml")) == 8
+
+
+def test_unused_seed_then_none(tmp_path):
+    p = tmp_path / "topics.yml"; p.write_text(YAML)
+    topics = load_topics(str(p))
+    assert unused_seed(topics, []).name == "Ancient Egypt"
+    assert unused_seed(topics, [{"topic": "ancient egypt"}]).name == "The Deep Sea"
+    assert unused_seed(topics, [{"topic": "Ancient Egypt"}, {"topic": "The Deep Sea"}]) is None
 
 
 def test_ledger_roundtrip(tmp_path):

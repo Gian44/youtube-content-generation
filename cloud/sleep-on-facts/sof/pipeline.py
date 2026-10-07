@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import images, ledger, music, render, research, script, thumbnail, topics, tts, upload
+from sof import images, ledger, music, render, research, script, thumbnail, topicgen, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
 
@@ -50,27 +50,53 @@ def run(cfg: Config) -> int:
             print(f"✗ YouTube preflight failed: {exc}", flush=True)
             return EXIT_PREFLIGHT
 
-    # 1. Topic.
-    topic_list = topics.load_topics(cfg.topics_path)
+    # 1. Topic: forced (--topic) → unused seed from topics.yml → generated from the day's category.
+    _stage("topic")
     rows = ledger.load_ledger(cfg.ledger_path)
-    topic = topics.pick_next(topic_list, rows, forced=cfg.topic)
-    run_id = f"{today}-{_slug(topic.name)}"
+    llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
+    seeds = topics.load_topics(cfg.topics_path)
+    category, wiki_title, queries = "", None, []
+    if cfg.topic:
+        name = cfg.topic.strip()
+        seed = next((t for t in seeds if t.name.lower() == name.lower()), None)
+        queries = seed.queries if seed else []
+    elif (seed := topics.unused_seed(seeds, rows)) is not None:
+        name, queries = seed.name, seed.queries
+    else:
+        pick = topicgen.choose(llm, categories=topics.load_categories(cfg.topics_path), ledger=rows, model=cfg.fast_model)
+        name, wiki_title, category = pick.topic, pick.wiki_title, pick.category
+    run_id = f"{today}-{_slug(name)}"
     work = Path(cfg.work_dir) / run_id
     work.mkdir(parents=True, exist_ok=True)
-    print(f"topic: {topic.name} · run {run_id} · {cfg.minutes} min target", flush=True)
+    print(f"topic: {name}{' (' + category + ')' if category else ''} · run {run_id} · {cfg.minutes} min target", flush=True)
 
-    # 2. Script.
+    # 2. Research: the Wikipedia article + the articles it links to, chunked for retrieval.
+    _stage("research")
+    corpus_path = work / "corpus.json"
+    corpus = None
+    if corpus_path.exists():
+        corpus = research.Corpus.from_dict(json.loads(corpus_path.read_text(encoding="utf-8")))
+    else:
+        try:
+            corpus = research.build_corpus(wiki_title or name, max_linked=cfg.research_linked_articles)
+            corpus_path.write_text(json.dumps(corpus.to_dict(), ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001 — research is strongly preferred, not mandatory
+            print(f"! research unavailable ({exc}); writing from the lead section only", flush=True)
+    if corpus:
+        print(f"research: {corpus.title} + {len(corpus.sources) - 1} linked articles · {len(corpus.chunks)} chunks · "
+              f"{corpus.chars // 1000}k chars", flush=True)
+
+    # 3. Script.
     _stage("script")
     script_path = work / "script.json"
     if script_path.exists():
         sc = script.Script.from_dict(json.loads(script_path.read_text(encoding="utf-8")))
     else:
-        llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
-        hints = research.wikipedia_hints(topic.name)
         sc = script.generate_script(
-            llm, topic=topic.name, hints=hints, minutes=cfg.minutes, target_words=cfg.target_words,
-            num_movements=cfg.num_movements, max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio,
-            max_words_ratio=cfg.max_words_ratio, segment_max_tokens=cfg.segment_max_tokens,
+            llm, topic=name, corpus=corpus, hints=research.wikipedia_hints(name) if corpus is None else "",
+            minutes=cfg.minutes, target_words=cfg.target_words, num_movements=cfg.num_movements,
+            max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio, max_words_ratio=cfg.max_words_ratio,
+            segment_max_tokens=cfg.segment_max_tokens, writer_model=cfg.script_model, fast_model=cfg.fast_model,
         )
         script_path.write_text(json.dumps(sc.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"script: {sc.word_count} words, {sc.movements} movements · {sc.title}", flush=True)
@@ -109,7 +135,7 @@ def run(cfg: Config) -> int:
     if len(existing) >= minimum:
         image_paths = existing
     else:
-        urls = images.collect_urls(list(topic.queries) + list(sc.image_queries), target=target,
+        urls = images.collect_urls(list(queries) + list(sc.image_queries), target=target,
                                    pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key)
         image_paths = images.download_all(urls, str(img_dir))
     if len(image_paths) < cfg.images_fail_below:
@@ -130,7 +156,7 @@ def run(cfg: Config) -> int:
         render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
-        thumbnail.make(image_paths, topic=topic.name, hours=max(1, round(cfg.minutes / 60)), out=str(thumb))
+        thumbnail.make(image_paths, topic=name, hours=max(1, round(cfg.minutes / 60)), out=str(thumb))
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
 
@@ -142,9 +168,10 @@ def run(cfg: Config) -> int:
     body = upload.video_body(title=sc.title, description=sc.description, tags=sc.tags, privacy=cfg.privacy)
     video_id = upload.upload_video(yt, str(final), body, str(thumb))
     entry = {
-        "date": today, "topic": topic.name, "video_id": video_id, "title": sc.title, "privacy": cfg.privacy,
+        "date": today, "topic": name, "category": category, "wiki_title": (corpus.title if corpus else wiki_title),
+        "video_id": video_id, "title": sc.title, "privacy": cfg.privacy,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
-        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.15, 2),
+        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
         "run_url": _run_url(),
     }
     if cfg.is_smoke:

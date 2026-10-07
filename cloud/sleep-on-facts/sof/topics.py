@@ -13,15 +13,33 @@ class Topic:
     queries: list[str]
 
 
-def load_topics(path: str) -> list[Topic]:
+def _load(path: str) -> dict:
     with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        return yaml.safe_load(f) or {}
+
+
+def load_topics(path: str) -> list[Topic]:
+    """Optional seed topics (may be empty when the file only has categories)."""
     out = []
-    for t in data.get("topics") or []:
+    for t in _load(path).get("topics") or []:
         out.append(Topic(name=str(t["name"]).strip(), queries=[str(q) for q in (t.get("queries") or [])]))
-    if not out:
-        raise ValueError(f"no topics in {path}")
     return out
+
+
+def load_categories(path: str) -> list[str]:
+    cats = [str(c).strip() for c in (_load(path).get("categories") or []) if str(c).strip()]
+    if not cats and not load_topics(path):
+        raise ValueError(f"{path} has neither categories nor topics")
+    return cats
+
+
+def unused_seed(topics: list[Topic], ledger: list[dict]) -> Topic | None:
+    """First seed topic with no ledger entry, in list order; None once all seeds are used."""
+    used = {str(e.get("topic")).lower() for e in ledger}
+    for t in topics:
+        if t.name.lower() not in used:
+            return t
+    return None
 
 
 def pick_next(topics: list[Topic], ledger: list[dict], forced: str | None = None) -> Topic:
