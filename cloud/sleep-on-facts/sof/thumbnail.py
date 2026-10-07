@@ -15,6 +15,13 @@ log = logging.getLogger("sof.thumbnail")
 
 W, H = 1280, 720
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
+# Same roles on other systems (the backfill script runs on Windows); first hit wins.
+FONT_FALLBACKS = {
+    "DejaVuSans-Bold.ttf": ["C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/segoeuib.ttf", "/Library/Fonts/Arial Bold.ttf",
+                            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"],
+    "DejaVuSerif-Italic.ttf": ["C:/Windows/Fonts/georgiai.ttf", "C:/Windows/Fonts/timesi.ttf", "/Library/Fonts/Georgia Italic.ttf",
+                               "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"],
+}
 CREAM = (246, 240, 228)
 GOLD = (233, 196, 106)
 MUTED = (200, 204, 214)
@@ -23,10 +30,15 @@ MUTED = (200, 204, 214)
 def _font(name: str, size: int):
     from PIL import ImageFont
 
-    p = Path(FONT_DIR) / name
+    for cand in [str(Path(FONT_DIR) / name), *FONT_FALLBACKS.get(name, [])]:
+        try:
+            return ImageFont.truetype(cand, size)
+        except OSError:
+            continue
+    log.warning("no TrueType font found for %s; using Pillow default at size %d", name, size)
     try:
-        return ImageFont.truetype(str(p), size)
-    except OSError:
+        return ImageFont.load_default(size=size)      # Pillow ≥ 10.1 scales its built-in font
+    except TypeError:
         return ImageFont.load_default()
 
 
