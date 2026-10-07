@@ -42,3 +42,30 @@ def test_ledger_roundtrip(tmp_path):
     e = append_entry(str(p), {"date": "2026-10-07", "topic": "Whales", "video_id": "abc"})
     assert load_ledger(str(p)) == [e] and json.loads(p.read_text())[0]["video_id"] == "abc"
     assert commit_message(e) == "ledger: 2026-10-07 Whales (abc)"
+
+
+def test_ledger_push_reapplies_entry_after_conflict(tmp_path, monkeypatch):
+    from sof import ledger as L
+    p = tmp_path / "ledger.json"
+    p.write_text(json.dumps([{"date": "2026-10-07", "topic": "Egypt", "video_id": "a"}]))
+    entry = {"date": "2026-10-08", "topic": "Honeybees", "video_id": "b"}
+    L.append_entry(str(p), entry)
+    calls = []
+
+    class R:  # fake CompletedProcess
+        def __init__(self, rc): self.returncode = rc
+
+    def fake_git(*args, check=True):
+        calls.append(args)
+        if args[0] == "pull" and calls.count(args) == 1:
+            return R(1)                    # first rebase conflicts
+        if args[:2] == ("reset", "--hard"):
+            # remote ledger has a different newer row and lacks ours
+            p.write_text(json.dumps([{"date": "2026-10-07", "topic": "Egypt", "video_id": "a"},
+                                     {"date": "2026-10-08", "topic": "Other", "video_id": "z"}]))
+        return R(0)
+
+    L.git_commit_and_push(str(p), entry, run=fake_git)
+    rows = json.loads(p.read_text())
+    assert [r["video_id"] for r in rows] == ["a", "z", "b"]   # remote kept, ours re-appended
+    assert ("push",) in calls and sum(1 for c in calls if c[0] == "commit") == 2
