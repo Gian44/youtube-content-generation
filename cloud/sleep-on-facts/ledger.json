@@ -10,5 +10,19 @@
     "images": 150,
     "cost_estimate_usd": 3.03,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37566503018"
+  },
+  {
+    "date": "2026-10-07",
+    "topic": "Amazon Rainforest",
+    "category": "nature & animals",
+    "wiki_title": "Amazon rainforest",
+    "video_id": "uNW1Zsry5So",
+    "title": "Calm Facts About the Amazon Rainforest to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 10453,
+    "words": 26702,
+    "images": 138,
+    "cost_estimate_usd": 3.58,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37585277107"
   }
 ]
