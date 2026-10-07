@@ -93,14 +93,20 @@ def resolve_title(c: httpx.Client, topic: str) -> str | None:
     return hits[0]["title"] if hits else None
 
 
-def fetch_article(c: httpx.Client, title: str) -> str:
-    """Whole article as plain text (section headings kept as '== Heading =='). One page per call —
-    the API only batches *intro* extracts."""
+def fetch_article_resolved(c: httpx.Client, title: str) -> tuple[str, str]:
+    """(resolved title, whole article as plain text with '== Heading ==' markers). One page per
+    call — the API only batches *intro* extracts. The resolved title follows redirects, so
+    "Cephalopods" and "Cephalopod" come back as the same article."""
     r = c.get(API, params={"action": "query", "prop": "extracts", "explaintext": "1", "exsectionformat": "wiki",
                            "redirects": "1", "titles": title, "format": "json"})
     r.raise_for_status()
     pages = (r.json().get("query") or {}).get("pages") or {}
-    return " ".join((p.get("extract") or "") for p in pages.values()).strip()
+    resolved = next((p.get("title") for p in pages.values() if p.get("title")), title)
+    return resolved, " ".join((p.get("extract") or "") for p in pages.values()).strip()
+
+
+def fetch_article(c: httpx.Client, title: str) -> str:
+    return fetch_article_resolved(c, title)[1]
 
 
 def linked_titles(c: httpx.Client, title: str) -> list[str]:
@@ -236,11 +242,11 @@ def build_corpus(topic: str, *, transport=None, max_linked: int = 15, min_linked
                 break
             tried += 1
             try:
-                text = fetch_article(c, t)
+                t, text = fetch_article_resolved(c, t)
             except httpx.HTTPError as exc:
                 log.warning("linked article %s failed: %s", t, exc)
                 continue
-            if len(text) < min_linked_chars:
+            if len(text) < min_linked_chars or t in sources:
                 continue
             back = text.lower()
             if not any(w in back for w in subject_words):

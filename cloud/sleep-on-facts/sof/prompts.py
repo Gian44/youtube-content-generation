@@ -58,7 +58,9 @@ Output as JSON:
   "movements": [                   // exactly {{num_movements}} items, in order
     {"heading": "...", "beats": ["...", "..."]}
   ],
-  "image_search_queries": ["..."] // 8-15 short stock-photo search queries on-topic (landscapes, animals, places, objects)
+  "image_search_queries": ["..."], // 10-15 stock-photo searches that show THE SUBJECT ITSELF (e.g. "octopus underwater close up", "octopus tentacles reef")
+  "image_setting_queries": ["..."], // 4-6 searches for its natural setting/places only (e.g. "coral reef underwater", "deep ocean floor") — used sparingly
+  "image_keywords": ["..."]        // 4-8 lowercase words a photo's caption must contain to count as the subject (e.g. "octopus", "cephalopod", "tentacle")
 }"""
 
 SEGMENT_PROMPT = """You are narrating a calm "facts to fall asleep to" video about ONE topic.
@@ -97,7 +99,8 @@ HARD RULES:
   "imagine", "picture this", "let's", "we", "you" (except at most one quiet aside per
   movement), rhetorical questions, exclamation marks, "welcome back", calls to action.
 - Do not restate the topic's definition; the listener already knows what the video is about.
-- Begin mid-flow as a natural continuation.
+- Begin mid-flow as a natural continuation, with a plain concrete fact — not a metaphor,
+  not a scene-setting flourish ("In the slow grammar of the sea…").
 
 Output as JSON:
 {

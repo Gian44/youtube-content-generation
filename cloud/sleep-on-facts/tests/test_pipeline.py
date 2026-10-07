@@ -57,6 +57,7 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
             p = Path(out_dir) / f"{i:03d}.jpg"; p.write_bytes(b"img"); out.append(str(p))
         return out
     monkeypatch.setattr(pipeline.images, "download_all", dl)
+    monkeypatch.setattr(pipeline.images, "verify_relevance", lambda paths, **kw: (calls.append("vision"), paths)[1])
     def build_reel(imgs, tmp, **kw):
         calls.append("render"); Path(tmp).mkdir(parents=True, exist_ok=True)
         p = Path(tmp) / "reel.mp4"; p.write_bytes(b"reel"); return str(p)
@@ -75,7 +76,7 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     calls = []
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
-    assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "render", "assemble:soundtrack.mp3", "upload"]
+    assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "vision", "render", "assemble:soundtrack.mp3", "upload"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
 

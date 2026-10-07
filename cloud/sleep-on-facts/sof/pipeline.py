@@ -135,10 +135,18 @@ def run(cfg: Config) -> int:
     if len(existing) >= minimum:
         image_paths = existing
     else:
-        # Ask for ~40 % more URLs than needed: CDN 5xx, tiny files and duplicates all eat into the count.
+        # Subject shots first (caption must mention a subject keyword), setting shots as a minority,
+        # generic calm imagery only up to the hard floor. Ask for ~40 % more than needed: CDN 5xx,
+        # tiny files, duplicates and the vision check all eat into the count.
         urls = images.collect_urls(list(queries) + list(sc.image_queries), target=int(target * 1.4) + 5,
-                                   pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key)
-        image_paths = images.download_all(urls, str(img_dir), want=target)
+                                   pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
+                                   keywords=sc.image_keywords, setting_queries=sc.setting_queries,
+                                   generic_floor=cfg.images_fail_below)
+        image_paths = images.download_all(urls, str(img_dir), want=int(target * 1.25) + 2)
+        if cfg.images_vision_check:
+            image_paths = images.verify_relevance(image_paths, subject=name, api_key=cfg.openai_api_key,
+                                                  model=cfg.images_vision_model, keep_min=cfg.images_fail_below)
+        image_paths = image_paths[:target]
     if len(image_paths) < cfg.images_fail_below:
         print(f"✗ only {len(image_paths)} images; need at least {cfg.images_fail_below}", flush=True)
         return EXIT_IMAGES

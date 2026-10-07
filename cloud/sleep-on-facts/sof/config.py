@@ -48,6 +48,8 @@ class Config:
     images_target: int = 150
     images_min: int = 100
     images_fail_below: int = 30
+    images_vision_check: bool = True            # gpt-4o-mini looks at each photo and drops off-topic ones (~$0.02/video)
+    images_vision_model: str = "gpt-4o-mini"
     # render
     width: int = 1920
     height: int = 1080

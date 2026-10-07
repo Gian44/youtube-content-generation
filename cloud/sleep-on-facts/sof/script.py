@@ -34,18 +34,21 @@ class Script:
     movements: int
     image_queries: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    image_keywords: list[str] = field(default_factory=list)
+    setting_queries: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "title": self.title, "description": self.description, "tags": self.tags, "body": self.body,
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
-            "sources": self.sources,
+            "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Script":
         return cls(**{k: d[k] for k in ("title", "description", "tags", "body", "word_count", "movements")},
-                   image_queries=list(d.get("image_queries") or []), sources=list(d.get("sources") or []))
+                   image_queries=list(d.get("image_queries") or []), sources=list(d.get("sources") or []),
+                   image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []))
 
 
 def _fill(template: str, **kw) -> str:
@@ -190,4 +193,6 @@ def generate_script(
         movements=len(bodies),
         image_queries=[str(q) for q in (first.get("image_search_queries") or [])],
         sources=list(corpus.sources) if corpus else [],
+        image_keywords=[str(k).lower() for k in (first.get("image_keywords") or [])] or [w for w in topic.lower().split() if len(w) > 3],
+        setting_queries=[str(q) for q in (first.get("image_setting_queries") or [])],
     )

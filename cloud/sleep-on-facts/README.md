@@ -46,7 +46,7 @@ OAuth refresh token (re-authorize with the StoryFactory CLI
 
 ## Cost per video (≈ $3.70)
 
-OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning ≈ $0.03;
+OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning ≈ $0.03 + `gpt-4o-mini` photo relevance check ≈ $0.02;
 Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script
 exceeds 1.3× the word target, and before everything if the YouTube token is dead.
 
