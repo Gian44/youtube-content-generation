@@ -29,6 +29,13 @@ MIN_ARTICLE_CHARS = 20_000     # a subject needs this much text to carry three h
 _SKIP_SECTIONS = {"see also", "references", "external links", "further reading", "notes", "bibliography",
                   "sources", "citations", "footnotes", "gallery"}
 _WORD = re.compile(r"[a-z0-9]+")
+# Linked titles that rank high by raw mention count but add nothing specific to any topic.
+_GENERIC_LINKS = {"world", "region", "species", "plant", "tree", "animal", "water", "earth", "human", "people", "country",
+                  "city", "year", "day", "night", "time", "life", "history", "science", "nature", "sea", "ocean", "land",
+                  "air", "sun", "moon", "food", "energy", "light", "sound", "colour", "color", "rock", "soil", "river",
+                  "lake", "mountain", "island", "forest", "climate", "weather", "war", "government", "economy", "culture",
+                  "language", "religion", "art", "music", "united states", "europe", "asia", "africa", "english language",
+                  "latin", "greek language", "common era", "anno domini"}
 _STOP = set("""a an the of and or in on at to for from by with as is are was were be been being this that these those it its
 into over under about between through during after before above below up down out off than then there their they them we our
 you your he she his her him who whom which what when where why how not no nor so such very can could would should may might
@@ -216,20 +223,28 @@ def build_corpus(topic: str, *, transport=None, max_linked: int = 15, min_linked
         main = fetch_article(c, title)
         lead, sections = split_sections(main)
         chunks = chunk_text(title, lead) + [ch for h, b in sections for ch in chunk_text(f"{title} — {h}", b)]
-        # Rank linked articles by how often their title appears in the main text (minimum twice).
+        # Rank linked articles by how often their title appears in the main text (minimum twice),
+        # skip generic words, and keep only articles that mention the subject back (reciprocal
+        # relevance): "Brazil" talks about the Amazon; "Region" and "Species" do not.
         low = main.lower()
-        ranked = sorted(((low.count(t.lower()), t) for t in set(linked_titles(c, title)) if len(t) > 3),
-                        reverse=True)
-        sources, fetched = [title], 0
+        subject_words = [w for w in _tokens(title) if len(w) > 3] or [title.lower()]
+        ranked = sorted(((low.count(t.lower()), t) for t in set(linked_titles(c, title))
+                         if len(t) > 3 and t.lower() not in _GENERIC_LINKS and t.lower() != title.lower()), reverse=True)
+        sources, fetched, tried = [title], 0, 0
         for count, t in ranked:
-            if fetched >= max_linked or count < 2:
+            if fetched >= max_linked or count < 2 or tried >= max_linked * 3:
                 break
+            tried += 1
             try:
                 text = fetch_article(c, t)
             except httpx.HTTPError as exc:
                 log.warning("linked article %s failed: %s", t, exc)
                 continue
             if len(text) < min_linked_chars:
+                continue
+            back = text.lower()
+            if not any(w in back for w in subject_words):
+                log.info("skipping %r: never mentions %r", t, title)
                 continue
             l2, s2 = split_sections(text)
             chunks += chunk_text(t, l2) + [ch for h, b in s2 for ch in chunk_text(f"{t} — {h}", b)]

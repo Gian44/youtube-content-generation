@@ -135,9 +135,10 @@ def run(cfg: Config) -> int:
     if len(existing) >= minimum:
         image_paths = existing
     else:
-        urls = images.collect_urls(list(queries) + list(sc.image_queries), target=target,
+        # Ask for ~40 % more URLs than needed: CDN 5xx, tiny files and duplicates all eat into the count.
+        urls = images.collect_urls(list(queries) + list(sc.image_queries), target=int(target * 1.4) + 5,
                                    pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key)
-        image_paths = images.download_all(urls, str(img_dir))
+        image_paths = images.download_all(urls, str(img_dir), want=target)
     if len(image_paths) < cfg.images_fail_below:
         print(f"✗ only {len(image_paths)} images; need at least {cfg.images_fail_below}", flush=True)
         return EXIT_IMAGES

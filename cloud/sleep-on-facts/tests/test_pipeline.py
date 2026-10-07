@@ -137,7 +137,7 @@ def test_image_target_scales_with_narration(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, minutes=3)  # fake narration is 120 s → 120//20 + 6 = 12 images
     cfg.images_fail_below, cfg.images_min = 1, 100
     pipeline.run(cfg)
-    assert seen["target"] == 12
+    assert seen["target"] == int(12 * 1.4) + 5   # 12 needed (120 s // 20 + 6), fetched with a 40 % margin
 
 
 def test_music_can_be_disabled(tmp_path, monkeypatch):

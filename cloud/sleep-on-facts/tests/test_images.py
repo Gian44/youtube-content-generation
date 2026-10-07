@@ -67,3 +67,13 @@ def test_download_rejects_narrow_images(tmp_path):
     paths = download_all([{"url": "https://x/wide.jpg", "credit": "A"}, {"url": "https://x/narrow.jpg", "credit": "B"}], str(tmp_path),
                          transport=httpx.MockTransport(handler))
     assert [p.endswith("000.jpg") for p in paths] == [True]
+
+
+def test_download_stops_at_want_and_survives_cdn_errors(tmp_path):
+    def handler(req):
+        if "bad" in str(req.url):
+            return httpx.Response(522)
+        return httpx.Response(200, content=(b"\xff\xd8" + str(req.url).encode() + b"0" * 60_000))
+    urls = [{"url": f"https://x/{'bad' if i % 3 == 0 else 'ok'}{i}.jpg", "credit": "A"} for i in range(12)]
+    paths = download_all(urls, str(tmp_path), transport=httpx.MockTransport(handler), verify_image=lambda p: True, want=5)
+    assert len(paths) == 5

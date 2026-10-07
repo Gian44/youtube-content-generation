@@ -44,6 +44,11 @@ drift toward the quieter, stranger corners late in the video.
 HARD RULES:
 - Every movement must stay on "{{topic}}". Never drift to unrelated domains.
 - Each movement has 6-12 short factual "beats" grounded in the sections above.
+- THIS IS FOR SLEEP. Build the movements from the descriptive, wonder-filled, slow material:
+  geography, how things form and work, daily rhythms, creatures and plants, craftsmanship,
+  quiet history, the senses. Articles always carry sections on threats, destruction, disease,
+  conflict, politics, controversies and statistics of loss — do NOT make movements of those.
+  At most one calm sentence of acknowledgement if it would be dishonest to omit it entirely.
 - No hype, no loud hooks, no second-person calls to action.
 
 Output as JSON:
@@ -83,6 +88,9 @@ HARD RULES:
   more generally. Never fabricate a statistic, a quotation, or a named person.
 - Depth over breadth: dwell on one specific thing at a time (a particular place, animal,
   craftsman, year, mechanism) and explain it properly before moving on.
+- Keep it restful. Pass over destruction, disease, conflict, politics and alarming statistics
+  in a sentence at most, even if the notes dwell on them; choose the notes that describe,
+  explain and evoke.
 - Calm, slow, unhurried tone. Vary sentence length. Mostly plain, concrete words.
 - Continuous PROSE only. No headings, bullets, lists or numbering.
 - BANNED: "did you know", "fun fact", "interestingly", "it is worth noting", "in conclusion",

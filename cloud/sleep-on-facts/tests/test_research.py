@@ -6,7 +6,7 @@ ARTICLE = ("Whales are marine mammals of the order Cetacea. " * 12 + "\n\n== Ana
            "Baleen plates filter krill from seawater, and a blue whale heart weighs about 180 kilograms. " * 10 +
            "\n\n== Song ==\n" + "Humpback whale song is produced by males and can last twenty minutes. Songs change over years. " * 10 +
            "\n\n== See also ==\nList of cetaceans\n\n== References ==\nfoo")
-LINKED = {"Humpback whale": "Humpback whales sing complex songs. " * 400, "Krill": "Krill are small crustaceans. " * 400,
+LINKED = {"Humpback whale": "Humpback whales sing complex songs. " * 400, "Krill": "Krill are small crustaceans eaten by whales. " * 400,
           "Stub": "Too short."}
 
 
@@ -62,3 +62,19 @@ def test_chunk_text_respects_size():
 def test_hints_degrade_to_empty_on_failure():
     assert research.wikipedia_hints("X", transport=httpx.MockTransport(lambda r: httpx.Response(403))) == ""
     assert research.wikipedia_hints("Whale", transport=_transport()).startswith("Whales are marine mammals")
+
+
+def test_linked_articles_need_reciprocal_mention_and_skip_generic(monkeypatch):
+    import tests.test_research as me
+    monkeypatch.setattr(me, "ARTICLE", ARTICLE + " Humpback whale humpback whale krill krill krill world world world region region.")
+    monkeypatch.setitem(LINKED, "World", "The world is large. " * 500)            # generic → skipped by name
+    monkeypatch.setitem(LINKED, "Region", "A region is an area. " * 500)         # never mentions whales → skipped
+    monkeypatch.setitem(LINKED, "Krill", "Krill are eaten by baleen whales. " * 400)
+
+    def handler(req):
+        q = dict(req.url.params)
+        if q.get("prop") == "links":
+            return httpx.Response(200, json={"query": {"pages": {"1": {"links": [{"title": t} for t in ("Humpback whale", "Krill", "World", "Region", "Stub")]}}}})
+        return _transport().handler(req)
+    c = research.build_corpus("Whale", transport=httpx.MockTransport(handler), max_linked=5, min_linked_chars=1000)
+    assert set(c.sources) == {"Whale", "Humpback whale", "Krill"}

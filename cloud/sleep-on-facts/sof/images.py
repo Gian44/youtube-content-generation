@@ -97,13 +97,17 @@ def _pillow_ok(path: str) -> bool:
         return False
 
 
-def download_all(urls: list[dict], out_dir: str, *, transport=None, verify_image=_pillow_ok) -> list[str]:
+def download_all(urls: list[dict], out_dir: str, *, transport=None, verify_image=_pillow_ok,
+                 want: int | None = None) -> list[str]:
+    """Download in order until ``want`` good files exist (or the list runs out); extra URLs are the margin."""
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     paths: list[str] = []
     credits: list[dict] = []
     seen_hash: set[str] = set()
     with httpx.Client(timeout=60.0, transport=transport, follow_redirects=True) as c:
         for i, it in enumerate(urls):
+            if want and len(paths) >= want:
+                break
             p = Path(out_dir) / f"{i:03d}.jpg"
             try:
                 if not p.exists():
