@@ -1,0 +1,7 @@
+:root{color-scheme:light dark;--bg:#0e1424;--fg:#e9e6df;--muted:#aab0bd;--gold:#e9c46a;--card:#161e33}
+@media (prefers-color-scheme: light){:root{--bg:#f7f5f0;--fg:#1d2233;--muted:#555c6b;--card:#ffffff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.6 Georgia,"Times New Roman",serif}
+main{max-width:720px;margin:0 auto;padding:48px 20px 80px}h1{font-size:2rem;margin:0 0 .3em}h2{font-size:1.25rem;margin:2em 0 .4em}
+p,li{color:var(--fg)}.muted{color:var(--muted)}nav a{color:var(--gold);text-decoration:none;margin-right:18px}a{color:var(--gold)}
+.badge{display:inline-block;border:1px solid var(--gold);border-radius:999px;padding:2px 12px;font:600 13px/1.8 system-ui,sans-serif;letter-spacing:.06em;color:var(--gold)}
+footer{margin-top:60px;font-size:.9rem;color:var(--muted)}
