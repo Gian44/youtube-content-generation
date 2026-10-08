@@ -24,5 +24,19 @@
     "images": 138,
     "cost_estimate_usd": 3.58,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37585277107"
+  },
+  {
+    "date": "2026-10-07",
+    "topic": "Indus Valley Civilization",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Indus Valley Civilisation",
+    "video_id": "TypcP9WqAow",
+    "title": "Calm Facts About the Indus Valley Civilization to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 11232,
+    "words": 27716,
+    "images": 77,
+    "cost_estimate_usd": 3.79,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37696685698"
   }
 ]
