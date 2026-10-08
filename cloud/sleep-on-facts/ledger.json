@@ -38,5 +38,19 @@
     "images": 77,
     "cost_estimate_usd": 3.79,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37696685698"
+  },
+  {
+    "date": "2026-10-08",
+    "topic": "Saturn",
+    "category": "space & astronomy",
+    "wiki_title": "Saturn",
+    "video_id": "xM3KHlsTLtA",
+    "title": "Calm Facts About Saturn to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 10067,
+    "words": 25738,
+    "images": 38,
+    "cost_estimate_usd": 3.48,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37855297633"
   }
 ]
