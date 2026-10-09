@@ -52,5 +52,19 @@
     "images": 38,
     "cost_estimate_usd": 3.48,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37855297633"
+  },
+  {
+    "date": "2026-10-09",
+    "topic": "Great Barrier Reef",
+    "category": "oceans & rivers",
+    "wiki_title": "Great Barrier Reef",
+    "video_id": "pjxQ2-gTN-8",
+    "title": "Calm Facts About the Great Barrier Reef to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 10147,
+    "words": 26148,
+    "images": 150,
+    "cost_estimate_usd": 3.51,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37997336842"
   }
 ]
