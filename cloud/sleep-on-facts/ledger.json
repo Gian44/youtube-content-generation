@@ -66,5 +66,19 @@
     "images": 150,
     "cost_estimate_usd": 3.51,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37997336842"
+  },
+  {
+    "date": "2026-10-10",
+    "topic": "Steam Engine",
+    "category": "how things work (machines, materials, everyday engineering)",
+    "wiki_title": "Steam engine",
+    "video_id": "WZP2k6KWXdA",
+    "title": "Calm Facts About Steam Engine to Fall Asleep To (3 Hours)",
+    "privacy": "public",
+    "duration_seconds": 10509,
+    "words": 27482,
+    "images": 118,
+    "cost_estimate_usd": 3.65,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38085880252"
   }
 ]
