@@ -24,7 +24,9 @@ def test_load_and_pick_round_robin(tmp_path):
 
 
 def test_repo_topics_file_is_valid():
-    assert load_topics("topics.yml") == []          # generated daily; see topics.yml
+    seeds = load_topics("topics.yml")               # usually empty (subjects are generated daily); seeds go first
+    assert all(t.name.strip() and t.queries and all(isinstance(q, str) and q for q in t.queries) for t in seeds)
+    assert len({t.name.lower() for t in seeds}) == len(seeds)
     assert len(load_categories("topics.yml")) == 8
 
 

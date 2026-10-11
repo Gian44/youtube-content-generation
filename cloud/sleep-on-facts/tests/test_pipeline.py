@@ -280,3 +280,15 @@ def test_second_run_on_the_same_day_is_a_no_op(tmp_path, monkeypatch, capsys):
     assert "already published a video today" in capsys.readouterr().out
     cfg.topic = "Whales"                                                           # a forced topic always runs
     assert pipeline.run(cfg) == 0 and "upload" in calls
+
+
+def test_abandoned_ledger_rows_do_not_count_as_published(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    cfg = _cfg(tmp_path)
+    (tmp_path / "ledger.json").write_text(json.dumps([{"date": "2026-10-07", "topic": "Whales", "video_id": "gone",
+                                                       "abandoned": "processing abandoned: too long"}]))
+    assert pipeline.run(cfg) == 0
+    assert "research:Whales" in calls and "topicgen" not in calls       # the seed is made again
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert rows[-1]["topic"] == "Whales" and rows[-1]["title_variant"] == 0     # rotations ignore the abandoned row
