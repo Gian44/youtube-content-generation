@@ -41,6 +41,13 @@ def run(cfg: Config) -> int:
     t0 = time.time()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    # One public video per UTC day: a manual run earlier in the day makes the scheduled one a no-op
+    # (forced topics and smoke tests are deliberate and always run).
+    if not cfg.is_smoke and not cfg.topic and not cfg.skip_upload and any(
+            str(r.get("date")) == today for r in ledger.load_ledger(cfg.ledger_path)):
+        print(f"already published a video today ({today} UTC); nothing to do", flush=True)
+        return EXIT_OK
+
     # 0. Preflight: a dead YouTube token must fail before we pay for TTS.
     yt = None
     if not cfg.skip_upload:
@@ -51,6 +58,7 @@ def run(cfg: Config) -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"✗ YouTube preflight failed: {exc}", flush=True)
             return EXIT_PREFLIGHT
+        _check_recent_uploads(yt, cfg)
 
     # 1. Topic: forced (--topic) → unused seed from topics.yml → generated from the day's category.
     _stage("topic")
@@ -220,6 +228,15 @@ def run(cfg: Config) -> int:
         publish_at = seo.rfc3339(slot) if slot else None
     body = upload.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy, publish_at=publish_at)
     video_id = upload.upload_video(yt, str(final), body, str(thumb))
+    try:
+        state, reason = upload.wait_until_accepted(yt, video_id, timeout=cfg.upload_check_seconds)
+    except Exception as exc:  # noqa: BLE001 — the check is advisory; an API hiccup must not fail a good upload
+        state, reason = "unknown", str(exc)
+    if state in upload.BAD_STATES:      # no ledger row: the topic stays unused, so a seeded topic is simply made again
+        print(f"✗ YouTube did not accept the upload: {state} ({reason or 'no reason given'}) — "
+              f"https://studio.youtube.com/video/{video_id}/edit", flush=True)
+        return EXIT_FAIL
+    print(f"youtube status: {state}{' (' + reason + ')' if reason else ''}", flush=True)
     print(f"uploaded {video_id}: {title} · " + (f"scheduled for {publish_at}" if publish_at else cfg.privacy), flush=True)
     credits.write_page(str(credits_file), title=title, video_url=f"https://youtu.be/{video_id}", items=used)
     if cfg.playlists and not cfg.is_smoke:
@@ -246,6 +263,22 @@ def run(cfg: Config) -> int:
         ledger.git_commit_and_push(cfg.ledger_path, entry, extra_paths=[str(credits_file)])
     print(f"✓ uploaded https://youtu.be/{video_id} · {(time.time() - t0) / 60:.1f} min total", flush=True)
     return EXIT_OK
+
+
+def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
+    """Warn (GitHub annotation) if any of the last few published videos was rejected, abandoned or deleted."""
+    try:
+        rows = [r for r in ledger.load_ledger(cfg.ledger_path) if r.get("video_id")][-last:]
+        if not rows:
+            return
+        states = upload.upload_state(yt, [r["video_id"] for r in rows])
+        for r in rows:
+            state, reason = states.get(r["video_id"], ("unknown", ""))
+            if state in upload.BAD_STATES:
+                print(f"::warning::earlier video {r['video_id']} ({r.get('topic')}) is {state}"
+                      f"{': ' + reason if reason else ''} — check YouTube Studio", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("recent-upload check skipped: %s", exc)
 
 
 def _used_credits(img_dir: Path, image_paths: list[str]) -> list[dict]:

@@ -52,6 +52,56 @@ def video_body(*, title: str, description: str, tags: list[str], privacy: str, p
     }
 
 
+BAD_STATES = {"rejected", "failed", "deleted", "missing"}
+
+
+def upload_state(yt, video_ids: list[str]) -> dict[str, tuple[str, str]]:
+    """video_id → (uploadStatus, reason). "missing" = not returned (deleted, or processing abandoned).
+
+    The 2026-10-07 Ancient Egypt video was accepted by the upload API and then abandoned by YouTube
+    ("Video is too long": the channel was not yet verified for >15-minute videos) — nobody noticed for
+    four days. This is how we notice now.
+    """
+    resp = yt.videos().list(part="status,processingDetails", id=",".join(video_ids), maxResults=50).execute()
+    found = {v.get("id"): v for v in resp.get("items") or []}
+    out: dict[str, tuple[str, str]] = {}
+    for vid in video_ids:
+        v = found.get(vid)
+        if not v:
+            out[vid] = ("missing", "")
+            continue
+        st = v.get("status") or {}
+        reason = (st.get("rejectionReason") or st.get("failureReason")
+                  or (v.get("processingDetails") or {}).get("processingFailureReason") or "")
+        out[vid] = (str(st.get("uploadStatus") or "unknown"), str(reason))
+    return out
+
+
+def wait_until_accepted(yt, video_id: str, *, timeout: float = 300, every: float = 30, sleep=time.sleep) -> tuple[str, str]:
+    """Poll right after upload. Rejections for length/duplicates arrive within minutes; a 3-hour video
+    still "uploaded" (processing) at the end of the window is fine.
+
+    An abandoned upload simply vanishes from the API (that is how the Ancient Egypt video looked), so a
+    video that was visible and then disappears, or never shows up for the whole window, counts as
+    "missing". A brief miss right after the insert is tolerated (index lag)."""
+    waited, seen = 0.0, False
+    while True:
+        state, reason = upload_state(yt, [video_id])[video_id]
+        if state == "missing":
+            if seen:
+                return "missing", "video disappeared after upload (processing abandoned or removed)"
+        else:
+            seen = True
+        if state == "processed" or (state in BAD_STATES and state != "missing"):
+            return state, reason
+        if waited >= timeout:
+            if state == "missing":
+                return state, f"not visible to the API {int(timeout)} s after upload"
+            return state, reason
+        sleep(every)
+        waited += every
+
+
 def ensure_playlist(yt, title: str, description: str = "") -> str:
     """ID of the channel's playlist called ``title`` (case-insensitive), creating it public if missing."""
     req = yt.playlists().list(part="snippet", mine=True, maxResults=50)

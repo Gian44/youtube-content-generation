@@ -19,8 +19,10 @@ def _cfg(tmp_path, **kw):
                   yt_refresh_token="c", images_min=2, images_fail_below=1, credits_dir=str(tmp_path / "docs" / "credits"), **kw)
 
 
-def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
+def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(pipeline.upload, "upload_state", lambda yt, ids: {i: (earlier or {}).get(i, ("processed", "")) for i in ids})
+    monkeypatch.setattr(pipeline.upload, "wait_until_accepted", lambda yt, vid, **kw: (calls.append("status"), accepted)[1])
     monkeypatch.setattr(pipeline.upload, "build_client", lambda cfg: "YT")
     def health(yt):
         calls.append("preflight")
@@ -87,7 +89,7 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "vision", "render", "assemble:soundtrack.mp3",
-                     "upload", "playlist:Calm Facts to Fall Asleep To"]
+                     "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
     assert rows[0]["title"] == "1 Hour of Calm Facts to Fall Asleep To | Whales" and rows[0]["image_sources"]["commons"] == 3
@@ -106,7 +108,7 @@ def test_rerun_skips_completed_stages(tmp_path, monkeypatch):
     calls.clear()
     (tmp_path / "ledger.json").write_text("[]")  # pretend upload failed last time; artifacts remain
     pipeline.run(cfg)
-    assert calls == ["preflight", "upload", "playlist:Calm Facts to Fall Asleep To"]
+    assert calls == ["preflight", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
 
 
 def test_skip_upload_writes_no_ledger(tmp_path, monkeypatch):
@@ -227,3 +229,53 @@ def test_story_shape_rotates_with_the_ledger(tmp_path, monkeypatch):
     from sof.prompts import STORY_ORDER
     assert seen == [STORY_ORDER[5 % len(STORY_ORDER)]]
     assert json.loads((tmp_path / "ledger.json").read_text())[-1]["story_format"] == seen[0]
+
+
+def test_rejected_upload_fails_without_ledger(tmp_path, monkeypatch, capsys):
+    calls = []
+    _fakes(monkeypatch, calls, accepted=("rejected", "length"))
+    assert pipeline.run(_cfg(tmp_path)) == 1
+    assert json.loads((tmp_path / "ledger.json").read_text()) == []              # topic stays unused → made again
+    assert not any(c.startswith("playlist") for c in calls)
+    assert not (tmp_path / "docs" / "credits").exists()
+    assert "did not accept the upload: rejected (length)" in capsys.readouterr().out
+
+
+def test_vanished_upload_fails(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls, accepted=("missing", "video disappeared after upload"))
+    assert pipeline.run(_cfg(tmp_path)) == 1
+
+
+def test_status_api_hiccup_does_not_fail_a_good_upload(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    def boom(yt, vid, **kw):
+        raise RuntimeError("quota")
+    monkeypatch.setattr(pipeline.upload, "wait_until_accepted", boom)
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    assert json.loads((tmp_path / "ledger.json").read_text())[0]["video_id"] == "vid123"
+
+
+def test_preflight_warns_about_an_earlier_abandoned_video(tmp_path, monkeypatch, capsys):
+    calls = []
+    _fakes(monkeypatch, calls, earlier={"old2": ("missing", "")})
+    cfg = _cfg(tmp_path)
+    (tmp_path / "ledger.json").write_text(json.dumps([{"video_id": "old1", "topic": "Saturn"},
+                                                      {"video_id": "old2", "topic": "Ancient Egypt"}]))
+    assert pipeline.run(cfg) == 0                                                  # a warning, never a blocker
+    warnings = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("::warning::")]
+    assert warnings == ["::warning::earlier video old2 (Ancient Egypt) is missing — check YouTube Studio"]
+
+
+def test_second_run_on_the_same_day_is_a_no_op(tmp_path, monkeypatch, capsys):
+    calls = []
+    _fakes(monkeypatch, calls)
+    cfg = _cfg(tmp_path)
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    (tmp_path / "ledger.json").write_text(json.dumps([{"date": today, "topic": "Saturn", "video_id": "v0"}]))
+    assert pipeline.run(cfg) == 0 and calls == []
+    assert "already published a video today" in capsys.readouterr().out
+    cfg.topic = "Whales"                                                           # a forced topic always runs
+    assert pipeline.run(cfg) == 0 and "upload" in calls

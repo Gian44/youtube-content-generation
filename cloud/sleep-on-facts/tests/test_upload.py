@@ -1,4 +1,4 @@
-from sof.upload import video_body, upload_video, health, ensure_playlist, add_to_playlist
+from sof.upload import video_body, upload_video, health, ensure_playlist, add_to_playlist, upload_state, wait_until_accepted
 
 
 def test_video_body():
@@ -116,3 +116,56 @@ def test_add_to_new_playlist_tolerates_404_then_retries():
     slept = []
     add_to_playlist(NewPlaylistYT(), "PLnew", "vid9", sleep=slept.append)
     assert NewPlaylistYT.inserts == 2 and slept == [5]
+
+
+class FakeStatusYT:
+    """videos().list(...) answers from a script of responses, one per poll (the last one repeats)."""
+    def __init__(self, *responses):
+        self.responses, self.polls = list(responses), 0
+
+    def videos(self): return self
+    def list(self, **kw): self.kw = kw; return self
+
+    def execute(self):
+        r = self.responses[min(self.polls, len(self.responses) - 1)]
+        self.polls += 1
+        return {"items": [{"id": vid, "status": st} for vid, st in r.items()]}
+
+
+def test_upload_state_reads_rejections_failures_and_missing_videos():
+    yt = FakeStatusYT({"a": {"uploadStatus": "rejected", "rejectionReason": "length"},
+                       "b": {"uploadStatus": "processed"}, "d": {"uploadStatus": "failed", "failureReason": "conversion"}})
+    assert upload_state(yt, ["a", "b", "c", "d"]) == {"a": ("rejected", "length"), "b": ("processed", ""),
+                                                      "c": ("missing", ""), "d": ("failed", "conversion")}
+    assert yt.kw["id"] == "a,b,c,d" and "status" in yt.kw["part"]
+
+
+def _wait(yt, **kw):
+    naps = []
+    return wait_until_accepted(yt, "v", timeout=90, every=30, sleep=naps.append, **kw), naps
+
+
+def test_wait_returns_as_soon_as_youtube_rejects():
+    (state, reason), naps = _wait(FakeStatusYT({"v": {"uploadStatus": "uploaded"}},
+                                               {"v": {"uploadStatus": "rejected", "rejectionReason": "length"}}))
+    assert (state, reason) == ("rejected", "length") and naps == [30]
+
+
+def test_wait_accepts_a_video_still_processing_at_the_deadline():
+    (state, _), naps = _wait(FakeStatusYT({"v": {"uploadStatus": "uploaded"}}))
+    assert state == "uploaded" and naps == [30, 30, 30]
+
+
+def test_wait_flags_a_video_that_vanishes_after_upload():
+    (state, reason), _ = _wait(FakeStatusYT({"v": {"uploadStatus": "uploaded"}}, {}))
+    assert state == "missing" and "disappeared" in reason
+
+
+def test_wait_tolerates_a_brief_miss_right_after_insert():
+    (state, _), _ = _wait(FakeStatusYT({}, {"v": {"uploadStatus": "uploaded"}}, {"v": {"uploadStatus": "processed"}}))
+    assert state == "processed"
+
+
+def test_wait_flags_a_video_never_seen():
+    (state, reason), naps = _wait(FakeStatusYT({}))
+    assert state == "missing" and "not visible" in reason and naps == [30, 30, 30]
