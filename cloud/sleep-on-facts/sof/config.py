@@ -69,6 +69,14 @@ class Config:
     playlists: bool = True          # add each video to its category playlist (created on first use)
     upload_check_seconds: int = 300  # after upload, poll up to this long for a rejection ("Video is too long", duplicate…)
     photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos (no external credits page)
+    # narration-matched photos (sof/visuals.py + sof/timeline.py): named things get their own photos when named
+    photo_timeline: bool = True
+    timeline_max_entities: int = 80     # things per video that get their own photos
+    timeline_per_entity: int = 6        # vision-approved photos per thing
+    timeline_lead: float = 5.0          # a photo may appear at most this many seconds before its thing is named
+    timeline_hold: float = 75.0         # a named thing stays on screen up to this long unless something else is named
+    timeline_canvas: float = 3.0        # zoom canvas for the timeline renderer: 3× measured as smooth as 4× at ~0.7× CPU
+    timeline_photo_budget: float = 900.0  # seconds for fetching per-thing photos; later things go without
     # secrets
     openai_api_key: str = ""
     gemini_api_key: str = ""

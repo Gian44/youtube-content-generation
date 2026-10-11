@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import sys
@@ -17,7 +18,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import captions, images, ledger, music, render, research, script, seo, thumbnail, topicgen, topics, tts, upload
+from sof import (captions, images, ledger, music, render, research, script, seo, thumbnail, timeline, topicgen, topics, tts,
+                 upload, visuals)
 from sof.config import Config
 from sof.llm import LLM
 from sof.prompts import STORY_FORMATS, STORY_ORDER
@@ -159,12 +161,12 @@ def run(cfg: Config) -> int:
     article = corpus.title if corpus else wiki_title
     space = images.is_space_topic(category, corpus.lead if corpus else "")
     seo_category = category or (seo.SPACE_CATEGORY if space else "")
+    use_nasa = cfg.images_nasa == "on" or (cfg.images_nasa == "auto" and space)
     if picked_path.exists():
         picked = json.loads(picked_path.read_text(encoding="utf-8"))
         labels, image_paths = picked["labels"], picked["reel"]
     else:
         terms = images.name_terms(name, article or "", sc.image_keywords)
-        use_nasa = cfg.images_nasa == "on" or (cfg.images_nasa == "auto" and space)
         urls = images.gather_urls(topic=name, wiki_title=article, terms=terms, queries=list(queries) + list(sc.image_queries),
                                   setting_queries=sc.setting_queries, target=target,
                                   pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
@@ -190,17 +192,47 @@ def run(cfg: Config) -> int:
     print(f"images: {len(image_paths)} · " + ", ".join(f"{k} {v}" for k, v in by_source.items() if v)
           + f" · subject {sum(1 for p in image_paths if labels.get(p) == 'subject')}", flush=True)
 
+    # 4b. Narration-matched photos: when the narrator names something photographable (Titan, the Cassini
+    # probe, a temple), its own photos fill the slot where it is named; the subject reel fills the rest.
+    slots: list[str] | None = None
+    plan_path = work / "timeline.json"
+    if cfg.photo_timeline:
+        try:
+            if plan_path.exists():
+                slots = json.loads(plan_path.read_text(encoding="utf-8"))["slots"]
+            else:
+                slots = _plan_timeline(cfg, work=work, llm=llm, topic=name, article=article or "", sections=secs,
+                                       duration=duration, chapters=chapters, reel=image_paths, used=used,
+                                       use_nasa=use_nasa, out=plan_path)
+        except Exception as exc:  # noqa: BLE001 — never lose the video over the better visuals
+            log.exception("timeline planning failed")
+            print(f"! narration-matched photos unavailable ({exc}); using the looped subject reel", flush=True)
+            slots = None
+
     # 5. Render.
     _stage("render")
     final = work / "final.mp4"
     if not final.exists():
         reel = work / "reel.mp4"
         if not reel.exists():
-            caps = captions.captions_for(image_paths, used) if cfg.photo_captions else {}
-            print(f"on-screen credits: {len(caps)} of {len(image_paths)} photos", flush=True)
-            built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
-                                      crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
-                                      fps=cfg.fps, batch=cfg.xfade_batch, dim=cfg.video_dim, captions=caps)
+            built = None
+            if slots:
+                caps = _slot_captions(slots, used, img_dir, work / "entities") if cfg.photo_captions else {}
+                print(f"on-screen credits: {len(caps)} of {len(set(slots))} photos", flush=True)
+                try:
+                    built = timeline.build_timeline_reel(
+                        slots, str(work / "timeline_tmp"), dwell=cfg.dwell_seconds, crossfade=cfg.crossfade_seconds,
+                        width=cfg.width, height=cfg.height, fps=cfg.fps, dim=cfg.video_dim, captions=caps, total=duration,
+                        canvas=cfg.timeline_canvas)
+                except Exception as exc:  # noqa: BLE001
+                    log.exception("timeline render failed")
+                    print(f"! timeline render failed ({exc}); falling back to the looped subject reel", flush=True)
+            if built is None:
+                caps = captions.captions_for(image_paths, used) if cfg.photo_captions else {}
+                print(f"on-screen credits: {len(caps)} of {len(image_paths)} photos", flush=True)
+                built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
+                                          crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
+                                          fps=cfg.fps, batch=cfg.xfade_batch, dim=cfg.video_dim, captions=caps)
             os.replace(built, reel)
         render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
@@ -213,9 +245,14 @@ def run(cfg: Config) -> int:
         thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser)
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
-    try:                                   # a dozen stills for checking the run by eye (kept as artifacts)
+    try:                                   # stills for checking the run by eye (kept as artifacts)
         step = max(10.0, duration / 12)
-        render.sample_frames(str(final), str(work / "frames"), [step * (i + 0.5) for i in range(int(duration // step))])
+        times = [step * (i + 0.5) for i in range(int(duration // step))]
+        if plan_path.exists():             # + the first slots that show a just-named thing
+            plan = json.loads(plan_path.read_text(encoding="utf-8")).get("plan") or []
+            named = [r for r in plan if r.get("entity") and r.get("mention_time") is not None]
+            times += [float(r["start"]) + cfg.dwell_seconds / 2 for r in named[::max(1, len(named) // 12)][:12]]
+        render.sample_frames(str(final), str(work / "frames"), sorted(set(times)))
     except Exception as exc:  # noqa: BLE001
         log.warning("sample frames skipped: %s", exc)
 
@@ -261,6 +298,7 @@ def run(cfg: Config) -> int:
         "video_id": video_id, "title": title, "privacy": cfg.privacy, "publish_at": publish_at,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
         "image_sources": by_source, "story_format": sc.story_format, "title_variant": variant,
+        "timeline": _timeline_stats(plan_path),
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
         "run_url": _run_url(),
     }
@@ -288,6 +326,66 @@ def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
                       f"{': ' + reason if reason else ''} — check YouTube Studio", flush=True)
     except Exception as exc:  # noqa: BLE001
         log.warning("recent-upload check skipped: %s", exc)
+
+
+def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, sections: list[dict], duration: float,
+                   chapters: list[dict], reel: list[str], used: list[dict], use_nasa: bool, out: Path) -> list[str]:
+    """Slot list (one photo per ``dwell`` seconds) that follows the narration; writes ``out`` (timeline.json)."""
+    mentions = visuals.extract_mentions(llm, sections, topic=topic, model=cfg.fast_model, wiki_title=article)
+    mentions = visuals.resolve_titles(mentions, topic=topic, wiki_title=article)
+    chunks, owner = tts.chunk_sections(sections, cfg.tts_chunk_chars)
+    parts = [work / "tts" / f"{i:04d}.mp3" for i in range(len(chunks))]
+    durs = [tts.duration_seconds(str(p)) for p in parts]
+    scale = duration / sum(durs) if sum(durs) > 0 else 1.0       # loudnorm/concat drift, spread evenly
+    timed = visuals.mention_times(mentions, chunks=chunks, owner=owner, chunk_durations=[d * scale for d in durs])
+    entities = visuals.rank_entities(timed, max_entities=cfg.timeline_max_entities)
+
+    def label(paths, subject):
+        if not cfg.images_vision_check:
+            return {p: "subject" for p in paths}
+        return images.classify(paths, subject=subject, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+
+    reel_abs = [str(Path(p).resolve()) for p in reel]
+    photos = visuals.gather_entity_photos(entities, str(work / "entities"), topic=topic, use_nasa=use_nasa,
+                                          classify_fn=label, per_entity=cfg.timeline_per_entity,
+                                          max_entities=cfg.timeline_max_entities,
+                                          exclude_urls={str(r.get("url")) for r in used if r.get("url")},
+                                          exclude_paths=reel_abs, budget_seconds=cfg.timeline_photo_budget)
+    windows = visuals.windows_from_starts([float(c["start"]) for c in chapters], duration)
+    n = max(1, math.ceil(duration / cfg.dwell_seconds))
+    slots, plan = visuals.plan_slots(n, dwell=cfg.dwell_seconds, mentions=timed, entity_photos=photos,
+                                     section_windows=windows if len(windows) == len(sections) else None,
+                                     fallback=reel_abs, section_pools=visuals.build_section_pools(timed, photos),
+                                     lead=cfg.timeline_lead, hold=cfg.timeline_hold)
+    stats = visuals.plan_stats(plan)
+    out.write_text(json.dumps({"slots": slots, "stats": stats, "plan": plan,
+                               "entities": [{**e, "photos": len(photos.get(e["key"]) or [])} for e in entities],
+                               "mentions": [{k: m.get(k) for k in ("key", "name", "section", "quote", "time", "timing")}
+                                            for m in timed]}, indent=1, ensure_ascii=False), encoding="utf-8")
+    with_photos = sum(1 for e in entities if photos.get(e["key"]))
+    print(f"timeline: {n} slots · {stats.get('thing_slots')} show a named thing · {len(entities)} things named, "
+          f"{with_photos} with photos · lag median {stats.get('lag_median')} s", flush=True)
+    return slots
+
+
+def _slot_captions(slots: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, str]:
+    """path → on-screen credit for every slot photo whose licence needs one (reel + per-thing photos)."""
+    rows = {str((img_dir / str(r.get("file"))).resolve()): r for r in used if r.get("file")}
+    rows.update(visuals.credits_by_path(str(entity_dir)))           # missing folder → {}
+    out = {}
+    for p in set(slots):
+        row = rows.get(str(Path(p).resolve()))
+        if row and captions.needs_credit(row):
+            out[p] = captions.caption_text(row)
+    return out
+
+
+def _timeline_stats(plan_path: Path) -> dict | None:
+    try:
+        st = json.loads(plan_path.read_text(encoding="utf-8")).get("stats") or {}
+        return {k: st.get(k) for k in ("slots", "thing_slots", "things_shown", "distinct_photos", "lag_median")}
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _thumbnail_credit(thumb: Path, used: list[dict]) -> str:
