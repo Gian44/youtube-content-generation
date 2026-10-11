@@ -81,5 +81,35 @@
     "images": 118,
     "cost_estimate_usd": 3.65,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38085880252"
+  },
+  {
+    "date": "2026-10-11",
+    "topic": "Ancient Egypt",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Ancient Egypt",
+    "video_id": "pRn0Uhn7_Ik",
+    "title": "Bedtime History: Life Along Ancient Egypt's Nile (3 Hours to Fall Asleep To)",
+    "privacy": "public",
+    "publish_at": "2026-10-12T00:30:00Z",
+    "duration_seconds": 10897,
+    "words": 27038,
+    "images": 149,
+    "image_sources": {
+      "commons": 62,
+      "nasa": 0,
+      "pexels": 87,
+      "pixabay": 0
+    },
+    "story_format": "story",
+    "title_variant": 5,
+    "timeline": {
+      "slots": 545,
+      "thing_slots": 208,
+      "things_shown": 43,
+      "distinct_photos": 346,
+      "lag_median": 3.16
+    },
+    "cost_estimate_usd": 3.69,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38168658408"
   }
 ]
