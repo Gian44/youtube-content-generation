@@ -48,3 +48,17 @@ def test_ken_burns_cmd_overlays_a_caption():
     cap = render.ken_burns_cmd("a.jpg", "o.mp4", dwell=2, crossfade=0.5, width=640, height=360, fps=24, caption="c.png")
     assert "-vf" in plain and "overlay" not in " ".join(plain)
     assert cap.count("-i") == 2 and "overlay=0:0" in " ".join(cap) and cap[-1] == "o.mp4"
+
+
+def test_caption_cleans_commons_boilerplate_and_unprintable_names():
+    boiler = "No machine-readable author provided. Jungle assumed (based on copyright claims)."
+    assert captions.caption_text(_row(artist=boiler)) == "Photo: Jungle · CC BY-SA 4.0 · Wikimedia Commons"
+    assert captions.caption_text(_row(artist="राम")) == "Photo: Unknown author · CC BY-SA 4.0 · Wikimedia Commons"
+    assert captions.caption_text(_row(artist="山田太郎")) == "Photo: 山田太郎 · CC BY-SA 4.0 · Wikimedia Commons"
+
+
+def test_caption_runs_switch_fonts_for_cjk_and_never_draw_boxes():
+    assert render.caption_runs("Photo: 山田 Taro · CC BY 3.0", cjk=True) == [("Photo: ", False), ("山田", True),
+                                                                            (" Taro · CC BY 3.0", False)]
+    assert render.caption_runs("Photo: 山田 Taro", cjk=False) == [("Photo: ", False), (" Taro", False)]
+    assert render.caption_runs("Photo: Σταῦρος · CC BY 2.0", cjk=True) == [("Photo: Σταῦρος · CC BY 2.0", False)]

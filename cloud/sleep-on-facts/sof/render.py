@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -64,6 +65,38 @@ def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = C
 
 CAPTION_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
                  "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf")
+# Commons authors are often Japanese, Chinese or Korean user names; DejaVu has no CJK glyphs (they drew as boxes).
+CAPTION_CJK_FONTS = ("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                     "/usr/share/fonts/opentype/noto/NotoSansCJK-Black.ttc", "C:/Windows/Fonts/msyh.ttc",
+                     "C:/Windows/Fonts/msgothic.ttc")
+_CJK = r"\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef"
+# Scripts DejaVu Sans draws: Latin, Greek, Cyrillic, Armenian, Georgian, Hebrew, Arabic, punctuation and symbols.
+_DEJAVU_OK = re.compile(r"[\u0000-\u058f\u0590-\u06ff\u10a0-\u10ff\u1e00-\u1fff\u2000-\u2bff]")
+
+
+def _load_font(paths, size):
+    from PIL import ImageFont
+    for f in paths:
+        try:
+            return ImageFont.truetype(f, size)
+        except OSError:
+            continue
+    return None
+
+
+def caption_runs(text: str, *, cjk: bool) -> list[tuple[str, bool]]:
+    """Split a caption into (text, is_cjk) runs. Characters neither font can draw are dropped (so they
+    never render as boxes); CJK runs are dropped too when no CJK font is installed."""
+    out: list[tuple[str, bool]] = []
+    for seg in re.findall(rf"[{_CJK}]+|[^{_CJK}]+", text):
+        is_cjk = bool(re.match(rf"[{_CJK}]", seg))
+        if is_cjk and not cjk:
+            continue
+        if not is_cjk:
+            seg = "".join(ch for ch in seg if _DEJAVU_OK.match(ch))
+        if seg:
+            out.append((seg, is_cjk))
+    return out
 
 
 def caption_png(text: str, out: str, *, width: int, height: int, alpha: int = 120) -> str:
@@ -75,20 +108,17 @@ def caption_png(text: str, out: str, *, width: int, height: int, alpha: int = 12
     from PIL import Image, ImageDraw, ImageFont
 
     size = max(12, round(height * 0.02))
-    font = None
-    for f in CAPTION_FONTS:
-        try:
-            font = ImageFont.truetype(f, size)
-            break
-        except OSError:
-            continue
-    if font is None:
-        font = ImageFont.load_default(size=size)
+    font = _load_font(CAPTION_FONTS, size) or ImageFont.load_default(size=size)
+    cjk_font = _load_font(CAPTION_CJK_FONTS, size)
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     margin = round(height * 0.033)
-    d.text((margin + 1, height - margin + 1), text, font=font, fill=(0, 0, 0, min(255, alpha)), anchor="ls")
-    d.text((margin, height - margin), text, font=font, fill=(255, 255, 255, alpha), anchor="ls")
+    x, y = float(margin), height - margin
+    for seg, is_cjk in caption_runs(re.sub(r"\s+", " ", text).strip(), cjk=cjk_font is not None):
+        f = cjk_font if is_cjk else font
+        d.text((x + 1, y + 1), seg, font=f, fill=(0, 0, 0, min(255, alpha)), anchor="ls")
+        d.text((x, y), seg, font=f, fill=(255, 255, 255, alpha), anchor="ls")
+        x += d.textlength(seg, font=f)
     im.save(out, "PNG")
     return out
 

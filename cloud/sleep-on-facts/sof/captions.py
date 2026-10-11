@@ -21,8 +21,15 @@ def needs_credit(row: dict) -> bool:
     return str(row.get("source") or "") == "commons" and bool(_ATTRIBUTION.search(str(row.get("license") or "").strip()))
 
 
+_ASSUMED = re.compile(r"No machine-readable author provided\.?\s*(.+?)\s+assumed\b.*", re.I | re.S)
+
+
 def _clean(s: object) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(s or ""))).strip(" .,;")
+    t = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(s or ""))).strip(" .,;")
+    m = _ASSUMED.match(t)                # Commons boilerplate: "No machine-readable author provided. X assumed (…)"
+    if m:
+        t = m.group(1).strip(" .,;")
+    return re.sub(r"^No machine-readable author provided\.?$", "", t, flags=re.I).strip()
 
 
 def _short(s: str, n: int) -> str:
@@ -32,9 +39,19 @@ def _short(s: str, n: int) -> str:
     return (cut or s[:n]) + "…"
 
 
+# What the caption fonts can draw (DejaVu Sans + a CJK font, see render.caption_png); other scripts would
+# be dropped at render time, so a name written only in them reads "Unknown author" instead of vanishing.
+_DRAWABLE = re.compile("[\u0020-\u06ff\u10a0-\u10ff\u1e00-\u1fff\u2000-\u2bff\u3000-\u30ff\u3400-\u4dbf"
+                       "\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]")
+
+
+def _drawable(s: str) -> str:
+    return re.sub(r"\s+", " ", "".join(ch for ch in s if _DRAWABLE.match(ch))).strip(" .,;()")
+
+
 def caption_text(row: dict) -> str:
     """One short line: ``Photo: <author> · <licence> · Wikimedia Commons``."""
-    artist = _short(_clean(row.get("artist")), 60) or "Unknown author"
+    artist = _short(_drawable(_clean(row.get("artist"))), 60) or "Unknown author"
     return f"Photo: {artist} · {str(row.get('license') or '').strip()} · Wikimedia Commons"
 
 

@@ -42,7 +42,7 @@ jobs:
           cache: pip
           cache-dependency-path: cloud/sleep-on-facts/requirements.txt
       - name: System deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-wqy-microhei
       - name: Python deps
         run: pip install -r requirements.txt
       - name: Unit tests
