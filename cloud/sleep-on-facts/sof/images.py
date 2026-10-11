@@ -33,7 +33,9 @@ MIN_BYTES = 20_000        # broken/placeholder files; real quality is checked by
 MAX_BYTES = 40_000_000
 MIN_WIDTH = 1600          # stock search filter; anything narrower looks soft when shown at 1080p
 PEXELS_WIDTH = 2560       # ask Pexels' image CDN for a 2560-px rendition of the original
-COMMONS_WIDTH = 2560      # Commons thumbnail request; Wikimedia serves the nearest standard size
+COMMONS_WIDTH = 1920      # Commons thumbnail request, a standard size: enough for 1080p under a slow ≤12 % zoom. Below
+                          # 2560 also means more photos arrive as cached thumbnails: originals at or under the requested
+                          # width are served unscaled, and big ones can trickle from upload.wikimedia.org
 CONTAIN_BELOW = 1.3       # aspect ratio under which the renderer shows the whole picture (see render.cover_image)
 ENWIKI_API = "https://en.wikipedia.org/w/api.php"
 COMMONS_API = "https://commons.wikimedia.org/w/api.php"
@@ -421,8 +423,13 @@ def nasa_images(c: httpx.Client, queries: list[str], terms: list[str], *, limit:
 
 def gather_urls(*, topic: str, wiki_title: str | None, terms: list[str], queries: list[str], setting_queries: list[str],
                 target: int, pexels_key: str, pixabay_key: str, use_commons: bool = True, use_nasa: bool = False,
-                generic_floor: int = 0, transport=None) -> list[dict]:
-    """Candidate URLs in priority order (see module docstring). Free sources never fail the run."""
+                generic_floor: int = 0, transport=None, category_limit: int = 250, category_subcats: int = 6,
+                category_per_subcat: int = 60) -> list[dict]:
+    """Candidate URLs in priority order (see module docstring). Free sources never fail the run.
+
+    ``category_*`` bound the Commons-category crawl (defaults: the subject reel's wide pool); the
+    per-thing photos of ``sof.visuals`` need ~8 photos each, so they pass a much smaller budget.
+    """
     out: list[dict] = []
     seen: set[str] = set()
 
@@ -447,7 +454,8 @@ def gather_urls(*, topic: str, wiki_title: str | None, terms: list[str], queries
                 log.warning("nasa images unavailable: %s", exc)
         if use_commons and wiki_title and len(out) < target * 3:
             try:
-                add(commons_category_images(c, wiki_title, seed=topic), "commons category")
+                add(commons_category_images(c, wiki_title, seed=topic, limit=category_limit, subcats=category_subcats,
+                                            per_subcat=category_per_subcat), "commons category")
             except Exception as exc:  # noqa: BLE001
                 log.warning("commons category images unavailable: %s", exc)
     # Many free candidates fail later (small originals, CDN errors, vision rejects), so keep a wide
@@ -480,7 +488,12 @@ def image_ok(path: str) -> bool:
 _pillow_ok = image_ok     # backwards-compatible name
 
 
-def _fetch(c: httpx.Client, url: str) -> bytes | None:
+FETCH_SECONDS = 45.0      # a trickling download is abandoned (seen: 5 MB in 6 min from upload.wikimedia.org)
+
+
+def _fetch(c: httpx.Client, url: str, *, deadline: float = FETCH_SECONDS, clock=time.monotonic) -> bytes | None:
+    """One photo, or None. The httpx timeout only bounds the wait for each chunk, so a server that keeps
+    trickling bytes would never time out; ``deadline`` bounds the whole download."""
     for attempt in range(2):
         try:
             with c.stream("GET", url) as r:
@@ -491,8 +504,15 @@ def _fetch(c: httpx.Client, url: str) -> bytes | None:
                     return None
                 if int(r.headers.get("content-length") or 0) > MAX_BYTES:
                     return None
-                data = r.read()
-                return data if MIN_BYTES <= len(data) <= MAX_BYTES else None
+                t0, buf = clock(), bytearray()
+                for chunk in r.iter_bytes():
+                    buf += chunk
+                    if len(buf) > MAX_BYTES:
+                        return None
+                    if clock() - t0 > deadline:
+                        log.warning("image %s abandoned: slower than %.0f s", url, deadline)
+                        return None
+                return bytes(buf) if MIN_BYTES <= len(buf) <= MAX_BYTES else None
         except httpx.HTTPError as exc:
             log.warning("image %s failed: %s", url, exc)
             return None

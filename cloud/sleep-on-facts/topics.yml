@@ -16,9 +16,8 @@ categories:
 # (2026-10-07): every day's subject is generated. Example entry:
 #   - name: The Deep Sea
 #     queries: [deep ocean dark water, jellyfish glowing underwater]
-topics: []
-# Queued re-make (the Oct 7 upload was abandoned by YouTube: too long for an unverified channel).
-# Enabled once narration-matched photos ship, so it gets the better visuals:
-#  - name: Ancient Egypt
-#    category: history & ancient civilisations
-#    queries: [egyptian pyramids giza, ancient egyptian temple columns, nile river egypt]
+topics:
+  # 2026-10-11: re-make; the Oct 7 upload was abandoned by YouTube (too long for an unverified channel).
+  - name: Ancient Egypt
+    category: history & ancient civilisations
+    queries: [egyptian pyramids giza, ancient egyptian temple columns, nile river egypt]

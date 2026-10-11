@@ -16,7 +16,8 @@ def _cfg(tmp_path, **kw):
     (tmp_path / "ledger.json").write_text("[]")
     return Config(minutes=kw.pop("minutes", 180), work_dir=str(tmp_path / "work"), topics_path=str(tmp_path / "topics.yml"),
                   ledger_path=str(tmp_path / "ledger.json"), openai_api_key="sk", yt_client_id="a", yt_client_secret="b",
-                  yt_refresh_token="c", images_min=2, images_fail_below=1, **kw)
+                  yt_refresh_token="c", images_min=2, images_fail_below=1,
+                  photo_timeline=kw.pop("photo_timeline", False), **kw)
 
 
 def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None):
@@ -302,3 +303,70 @@ def test_seed_category_drives_title_and_playlist(tmp_path, monkeypatch):
     assert pipeline.run(cfg) == 0
     assert "playlist:Ocean Facts to Fall Asleep To" in calls
     assert json.loads((tmp_path / "ledger.json").read_text())[0]["category"] == "oceans & rivers"
+
+
+def _timeline_fakes(monkeypatch, calls, tmp_path, *, render_fails=False):
+    """Fake the planner's network/LLM edges; the planning itself (times, ranking, slots) runs for real."""
+    from PIL import Image
+    ent_dir = tmp_path / "ent"
+    ent_dir.mkdir()
+    titan = []
+    for i in range(2):
+        f = ent_dir / f"titan{i}.jpg"
+        Image.new("RGB", (1600, 900), (10 * i, 20, 30)).save(f)
+        titan.append(str(f))
+    monkeypatch.setattr(pipeline.visuals, "extract_mentions", lambda llm, secs, **kw: (calls.append("mentions"), [
+        {"key": "titan", "name": "Titan", "wiki_title": "Titan (moon)", "kind": "celestial", "section": 0,
+         "quote": "the great orange moon titan", "pos": 0.5, "rank": 0}])[1])
+    monkeypatch.setattr(pipeline.visuals, "resolve_titles", lambda m, **kw: m)
+    monkeypatch.setattr(pipeline.visuals, "gather_entity_photos",
+                        lambda ents, out_dir, **kw: (calls.append(f"entity-photos:{len(ents)}"), {"titan": titan})[1])
+    monkeypatch.setattr(pipeline.visuals, "credits_by_path", lambda d: {
+        titan[0]: {"source": "commons", "artist": "NASA/JPL", "license": "CC BY 2.0"}})
+    seen = {}
+
+    def build(slots, tmp, **kw):
+        calls.append("timeline-render")
+        if render_fails:
+            raise RuntimeError("ffmpeg exploded")
+        seen.update(slots=slots, **kw)
+        Path(tmp).mkdir(parents=True, exist_ok=True)
+        f = Path(tmp) / "reel.mp4"; f.write_bytes(b"reel"); return str(f)
+    monkeypatch.setattr(pipeline.timeline, "build_timeline_reel", build)
+    return titan, seen
+
+
+def test_photos_follow_the_narration(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    titan, seen = _timeline_fakes(monkeypatch, calls, tmp_path)
+    assert pipeline.run(_cfg(tmp_path, photo_timeline=True)) == 0
+    assert "mentions" in calls and "entity-photos:1" in calls and "timeline-render" in calls and "render" not in calls
+    assert len(seen["slots"]) == 6 and seen["total"] == 120.0          # 120 s of narration / 20 s slots
+    assert set(titan) & set(seen["slots"])                               # Titan's photos are on screen
+    assert seen["captions"] == {titan[0]: "Photo: NASA/JPL · CC BY 2.0 · Wikimedia Commons"}
+    work = next((tmp_path / "work").iterdir())
+    tl = json.loads((work / "timeline.json").read_text())
+    assert tl["slots"] == seen["slots"] and tl["entities"][0]["photos"] == 2 and tl["stats"]["slots"] == 6
+    row = json.loads((tmp_path / "ledger.json").read_text())[0]
+    assert row["timeline"]["slots"] == 6 and row["timeline"]["things_shown"] == 1
+
+
+def test_timeline_render_failure_falls_back_to_the_looped_reel(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    _timeline_fakes(monkeypatch, calls, tmp_path, render_fails=True)
+    assert pipeline.run(_cfg(tmp_path, photo_timeline=True)) == 0
+    assert calls.index("timeline-render") < calls.index("render")
+
+
+def test_planner_failure_falls_back_to_the_looped_reel(tmp_path, monkeypatch, capsys):
+    calls = []
+    _fakes(monkeypatch, calls)
+    _timeline_fakes(monkeypatch, calls, tmp_path)
+    def boom(*a, **k):
+        raise RuntimeError("LLM down")
+    monkeypatch.setattr(pipeline.visuals, "extract_mentions", boom)
+    assert pipeline.run(_cfg(tmp_path, photo_timeline=True)) == 0
+    assert "render" in calls and "timeline-render" not in calls
+    assert "narration-matched photos unavailable (LLM down)" in capsys.readouterr().out

@@ -245,3 +245,20 @@ def test_gather_reel_tops_up_until_full(tmp_path):
     assert len(calls) >= 2                                          # a second round topped up the rejects
     credits = json.loads((tmp_path / "credits.json").read_text())
     assert {c["file"] for c in credits} >= {Path(p).name for p in reel}
+
+
+def test_fetch_abandons_a_trickling_download():
+    import httpx
+    from sof import images
+
+    class Trickle(httpx.SyncByteStream):
+        def __iter__(self):
+            for _ in range(50):
+                yield b"x" * 1000
+
+    ticks = iter(range(0, 10_000, 10))            # every chunk "takes" 10 s
+    t = httpx.MockTransport(lambda req: httpx.Response(200, stream=Trickle()))
+    with httpx.Client(transport=t) as c:
+        assert images._fetch(c, "https://upload.wikimedia.org/x.jpg", deadline=45, clock=lambda: next(ticks)) is None
+        fast = iter([0.0] * 1000)
+        assert images._fetch(c, "https://upload.wikimedia.org/x.jpg", deadline=45, clock=lambda: next(fast)) == b"x" * 50_000
