@@ -132,3 +132,17 @@ def test_story_shape_opening_line_and_closing_signature():
     assert "Part 100" in closing_prompt and "This is Sleep On Facts" not in closing_prompt   # built from the movements
     assert s.story_format == "day" and Script.from_dict(s.to_dict()).story_format == "day"
     assert generate_script(FakeLLM(), topic="X", corpus=None, story_format="nope", **KW).story_format == "journey"
+
+
+def test_signature_segments_do_not_trip_the_length_guard():
+    class LongClosing(FakeLLM):
+        def generate_json(self, prompt, **kw):
+            if "Three quiet things to keep" in prompt:
+                self.calls.append(prompt)
+                return {"body": " ".join(["gentle"] * 200)}
+            return super().generate_json(prompt, **kw)
+    llm = LongClosing(words_per_segment=300, movements=2)
+    s = generate_script(llm, topic="Mount Fuji", corpus=None, minutes=4, target_words=600, num_movements=16,
+                        max_segments=40, fill_ratio=0.9, max_words_ratio=1.3)
+    assert s.sections[-1]["heading"] == "Three Quiet Things to Keep" and s.word_count > 780   # was ScriptTooLong
+    assert "about 60 words" in next(c for c in llm.calls if "Three quiet things to keep" in c)  # scaled for a smoke

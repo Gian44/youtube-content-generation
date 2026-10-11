@@ -204,6 +204,11 @@ def generate_script(
 
     if not bodies:
         raise RuntimeError("script generation produced no narration")
+    # Cost guard on the researched movements; the fixed opening line and the short closing
+    # signature are bounded and excluded (they would trip the guard on a 3-minute smoke run).
+    if total() > target_words * max_words_ratio:
+        raise ScriptTooLong(f"{total()} words > {max_words_ratio}x target {target_words}")
+    closing_words = max(60, min(closing_words, target_words // 10))
 
     # Channel signature: the same spoken opening line every night (naming tonight's story shape) and
     # the same closing segment, "Three quiet things to keep", written from what this video covered.
@@ -220,8 +225,6 @@ def generate_script(
     body = "\n\n".join(bodies)
     words = len(body.split())
     log.info("script: %d words in %d movements (%d refills), target %d", words, len(bodies), refills, target_words)
-    if words > target_words * max_words_ratio:
-        raise ScriptTooLong(f"{words} words > {max_words_ratio}x target {target_words}")
 
     meta = llm.generate_json(
         _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600]), max_tokens=600,
