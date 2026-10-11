@@ -79,9 +79,23 @@ def pick_photo(paths: list[str]) -> str:
 # ------------------------------------------------------------------ composition
 
 def _cover(im, w: int, h: int):
-    from PIL import Image, ImageOps
+    """Wide photos fill the frame. Square/portrait ones (a planet's full disk, a statue) are shown whole
+    on the RIGHT, over a blurred, darkened fill of themselves, leaving the left for the title."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-    return ImageOps.fit(im.convert("RGB"), (w, h), method=Image.LANCZOS, centering=(0.5, 0.45))
+    im = im.convert("RGB")
+    if im.width / max(1, im.height) >= 1.3:
+        return ImageOps.fit(im, (w, h), method=Image.LANCZOS, centering=(0.5, 0.45))
+    bg = ImageOps.fit(im, (max(16, w // 16), max(9, h // 16)), method=Image.BILINEAR).filter(ImageFilter.GaussianBlur(3))
+    bg = ImageEnhance.Brightness(bg.resize((w, h), Image.BILINEAR)).enhance(0.35)
+    fg = ImageOps.contain(im, (int(w * 0.62), h), method=Image.LANCZOS)
+    # feather the photo's left edge into the fill so there is no visible seam behind the title
+    fade = max(1, int(fg.width * 0.18))
+    mask = Image.new("L", fg.size, 255)
+    ramp = Image.linear_gradient("L").rotate(90, expand=True).resize((fade, fg.height))   # 0 at left → 255
+    mask.paste(ramp, (0, 0))
+    bg.paste(fg, (w - fg.width, (h - fg.height) // 2), mask)
+    return bg
 
 
 def _cool(im):
@@ -208,18 +222,20 @@ def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates
 
     ``candidates`` — photos verified to show the subject itself (vision-labelled); the thumbnail is
     never taken from scenery when those exist. ``choose(paths) -> path | None`` picks the most iconic
-    one (a vision call); the mood/contrast heuristic is the fallback. Wide photos are preferred
-    because the template crops to 16:9.
+    one (a vision call) among up to ``max_choices`` (wide first, then square/portrait, which
+    ``_cover`` shows whole); the mood/contrast heuristic over wide photos is the fallback.
     """
     pool = [p for p in (candidates or []) if p] or list(image_paths)
-    wide = [p for p in pool if _aspect(p) >= 1.3] or pool
+    wide = [p for p in pool if _aspect(p) >= 1.3]
+    # Offer both shapes (wide first): the most recognisable view of a planet or a statue is often square.
+    offer = (wide + [p for p in pool if p not in wide])[:max_choices]
     best = None
     if choose is not None:
         try:
-            best = choose(wide[:max_choices])
+            best = choose(offer)
         except Exception as exc:  # noqa: BLE001
             log.warning("thumbnail chooser failed: %s", exc)
     if not best:
-        best = pick_photo(wide)
+        best = pick_photo(wide or pool)
     log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
     return compose(best, topic=topic, hours=hours, out=out)

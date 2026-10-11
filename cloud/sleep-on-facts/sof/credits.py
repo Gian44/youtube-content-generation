@@ -17,6 +17,8 @@ SOURCE_LABELS = [("commons", "Wikimedia Commons"), ("nasa", "NASA Image and Vide
 
 
 def _title_of(item: dict) -> str:
+    if str(item.get("title") or "").strip():
+        return str(item["title"]).strip()[:120]
     desc = str(item.get("desc") or "").strip()
     if item.get("source") == "commons":
         desc = re.sub(r"\.(jpe?g|tiff?)\b.*$", "", desc, flags=re.I)        # "File name.jpg <description>" → "File name"

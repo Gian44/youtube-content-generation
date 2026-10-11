@@ -177,7 +177,7 @@ def _pexels(c: httpx.Client, key: str, q: str, page: int) -> list[dict]:
         url = _pexels_url(p.get("src") or {})
         if url and int(p.get("width") or 0) >= MIN_WIDTH:
             out.append({"url": url, "credit": f"{p.get('photographer', '')} / Pexels {p.get('url', '')}",
-                        "desc": str(p.get("alt") or ""), "query": q, "source": "pexels",
+                        "desc": str(p.get("alt") or ""), "title": str(p.get("alt") or "")[:120], "query": q, "source": "pexels",
                         "artist": str(p.get("photographer") or ""), "license": "Pexels License", "page": str(p.get("url") or "")})
     return out
 
@@ -191,7 +191,8 @@ def _pixabay(c: httpx.Client, key: str, q: str, page: int) -> list[dict]:
         log.warning("pixabay %s page %d: HTTP %s", q, page, r.status_code)
         return []
     return [{"url": h["largeImageURL"], "credit": f"{h.get('user', '')} / Pixabay {h.get('pageURL', '')}",
-             "desc": str(h.get("tags") or ""), "query": q, "source": "pixabay", "artist": str(h.get("user") or ""),
+             "desc": str(h.get("tags") or ""), "title": str(h.get("tags") or "")[:120], "query": q, "source": "pixabay",
+             "artist": str(h.get("user") or ""),
              "license": "Pixabay Content License", "page": str(h.get("pageURL") or "")}
             for h in (r.json().get("hits") or []) if h.get("largeImageURL")]
 
@@ -296,6 +297,7 @@ def commons_candidate(page: dict, *, query: str) -> dict | None:
     page_url = str(ii.get("descriptionurl") or "")
     return {"url": str(ii.get("thumburl") or ii.get("url")), "credit": f"{artist} / {lic} / Wikimedia Commons {page_url}",
             "desc": f"{title.removeprefix('File:')} {_plain(_meta(md, 'ImageDescription'))[:300]}", "query": query,
+            "title": re.sub(r"\.(jpe?g|tiff?)$", "", title.removeprefix("File:"), flags=re.I),
             "source": "commons", "artist": artist, "license": lic, "page": page_url, "width": w, "height": h}
 
 
@@ -397,6 +399,7 @@ def _nasa(c: httpx.Client, q: str, page: int, *, page_size: int = 100) -> list[d
         page_url = f"https://images.nasa.gov/details/{enc}"
         out.append({"url": NASA_ASSET.format(id=enc, size="large"), "fallback": [NASA_ASSET.format(id=enc, size="orig")],
                     "credit": f"{credit} / NASA / {page_url}", "desc": f"{d.get('title') or ''} {str(d.get('description') or '')[:300]}",
+                    "title": str(d.get("title") or nid),
                     "query": q, "source": "nasa", "artist": credit, "license": "NASA (public domain)", "page": page_url})
     return out
 

@@ -50,3 +50,14 @@ def test_make_uses_subject_candidates_and_chooser(tmp_path):
     # chooser failing → heuristic, still only among subject candidates
     thumbnail.make([scenery, subj_a], topic="Saturn", hours=3, out=str(tmp_path / "t2.jpg"), candidates=[subj_a],
                    choose=lambda p: None)
+
+
+def test_square_photo_is_shown_whole_on_the_right(tmp_path):
+    from PIL import ImageStat
+    sq = tmp_path / "planet.jpg"
+    im = Image.new("RGB", (1000, 1000), (0, 0, 0)); ImageDraw.Draw(im).ellipse((200, 200, 800, 800), fill=(200, 170, 120)); im.save(sq)
+    out = thumbnail.compose(str(sq), topic="Jupiter", hours=3, out=str(tmp_path / "t.jpg"))
+    with Image.open(out) as t:
+        g = t.convert("L")
+        right = ImageStat.Stat(g.crop((850, 300, 1000, 420))).mean[0]     # middle of the disk, right half of the frame
+        assert right > 60                                                 # the whole disk sits on the right, not cropped away
