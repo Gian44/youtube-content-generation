@@ -178,8 +178,9 @@ What the video covered, movement by movement (heading — opening lines):
 Write the closing segment, about {{target_words}} words:
 - Begin exactly with: "Three quiet things to keep from tonight."
 - Then three short paragraphs, one per thing: a single gentle, memorable, TRUE fact drawn from
-  the material above, said simply and slowly, each with one calm sentence of why it is lovely
-  to remember. No new facts beyond what the material above states.
+  the material above, said simply and slowly, followed by one calm, quiet reflection on it.
+  Word each reflection differently: never start two sentences the same way, and never use a
+  stock phrase such as "it is lovely to remember". No new facts beyond the material above.
 - End with one soft line wishing the listener a good night's sleep. No calls to action, no
   "subscribe", no questions, no exclamation marks.
 
