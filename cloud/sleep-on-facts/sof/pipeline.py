@@ -151,14 +151,20 @@ def run(cfg: Config) -> int:
         terms = images.name_terms(name, article or "", sc.image_keywords)
         use_nasa = cfg.images_nasa == "on" or (cfg.images_nasa == "auto" and space)
         urls = images.gather_urls(topic=name, wiki_title=article, terms=terms, queries=list(queries) + list(sc.image_queries),
-                                  setting_queries=sc.setting_queries, target=int(target * 1.4) + 5,
+                                  setting_queries=sc.setting_queries, target=target,
                                   pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
                                   use_commons=cfg.images_commons, use_nasa=use_nasa, generic_floor=cfg.images_fail_below)
-        downloaded = images.download_all(urls, str(img_dir), want=int(target * 1.25) + 2)
-        labels = (images.classify(downloaded, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
-                  if cfg.images_vision_check else {p: "unknown" for p in downloaded})
-        image_paths = images.select_reel(downloaded, labels, target=target, floor=cfg.images_fail_below,
-                                         setting_share=cfg.images_setting_share)
+
+        def label(paths):
+            if not cfg.images_vision_check:
+                return {p: "unknown" for p in paths}
+            return images.classify(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+
+        if img_dir.exists():                       # a stale partial download from an interrupted run
+            for f in img_dir.iterdir():
+                f.unlink()
+        image_paths, labels = images.gather_reel(urls, str(img_dir), target=target, floor=cfg.images_fail_below,
+                                                 classify_fn=label, setting_share=cfg.images_setting_share)
         picked_path.write_text(json.dumps({"terms": terms, "nasa": use_nasa, "labels": labels, "reel": image_paths},
                                           indent=1, ensure_ascii=False), encoding="utf-8")
     if len(image_paths) < cfg.images_fail_below:

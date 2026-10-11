@@ -442,14 +442,16 @@ def gather_urls(*, topic: str, wiki_title: str | None, terms: list[str], queries
                 add(nasa_images(c, nq, terms), "nasa")
             except Exception as exc:  # noqa: BLE001
                 log.warning("nasa images unavailable: %s", exc)
-        if use_commons and wiki_title and len(out) < target:
+        if use_commons and wiki_title and len(out) < target * 3:
             try:
                 add(commons_category_images(c, wiki_title, seed=topic), "commons category")
             except Exception as exc:  # noqa: BLE001
                 log.warning("commons category images unavailable: %s", exc)
-    out = out[:target]
-    stock = collect_urls(queries, target=max(0, target - len(out)), pexels_key=pexels_key, pixabay_key=pixabay_key,
-                         transport=transport, keywords=terms, setting_queries=setting_queries,
+    # Many free candidates fail later (small originals, CDN errors, vision rejects), so keep a wide
+    # margin; downloads stop as soon as the reel is full. Stock only tops up a thin free pool.
+    out = out[: target * 3]
+    stock = collect_urls(queries, target=max(0, int(target * 1.5) - len(out)), pexels_key=pexels_key,
+                         pixabay_key=pixabay_key, transport=transport, keywords=terms, setting_queries=setting_queries,
                          generic_floor=max(0, generic_floor - len(out)), exclude=seen)
     out += stock
     log.info("photos: %d candidates (%s)", len(out), ", ".join(f"{s} {sum(1 for i in out if i.get('source') == s)}"
@@ -494,22 +496,31 @@ def _fetch(c: httpx.Client, url: str) -> bytes | None:
     return None
 
 
-def download_all(urls: list[dict], out_dir: str, *, transport=None, verify_image=image_ok,
-                 want: int | None = None) -> list[str]:
-    """Download in order until ``want`` good files exist (or the list runs out); extra URLs are the margin.
+def download_range(urls: list[dict], out_dir: str, *, start: int = 0, want: int | None = None, transport=None,
+                   verify_image=image_ok) -> tuple[list[str], int]:
+    """Download ``urls[start:]`` in order until ``want`` good files exist; returns (paths, next index).
 
-    An item may carry ``fallback`` URLs (NASA: ~large, else ~orig). ``credits.json`` records every
-    kept file with its source, author and licence.
+    Files are named by their index in ``urls`` so repeated top-up rounds never collide, and
+    ``credits.json`` (source, author, licence, page per kept file) is extended, not overwritten.
+    An item may carry ``fallback`` URLs (NASA: ~large, else ~orig).
     """
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    paths: list[str] = []
-    credits: list[dict] = []
+    cfile = Path(out_dir) / "credits.json"
+    credits: list[dict] = json.loads(cfile.read_text(encoding="utf-8")) if cfile.exists() else []
     seen_hash: set[str] = set()
+    for c in credits:
+        f = Path(out_dir) / str(c.get("file") or "")
+        if f.exists():
+            seen_hash.add(hashlib.sha1(f.read_bytes()).hexdigest())
+    paths: list[str] = []
+    i = start
     with httpx.Client(timeout=60.0, transport=transport, follow_redirects=True, headers={"User-Agent": UA}) as c:
-        for i, it in enumerate(urls):
+        while i < len(urls):
             if want and len(paths) >= want:
                 break
+            it = urls[i]
             p = Path(out_dir) / f"{i:03d}.jpg"
+            i += 1
             if not p.exists():
                 data = None
                 for u in [it["url"], *(it.get("fallback") or [])]:
@@ -525,10 +536,41 @@ def download_all(urls: list[dict], out_dir: str, *, transport=None, verify_image
                 continue
             seen_hash.add(h)
             paths.append(str(p))
+            credits = [r for r in credits if r.get("file") != p.name]
             credits.append({"file": p.name, **{k: v for k, v in it.items() if k != "fallback"}})
-    with open(Path(out_dir) / "credits.json", "w", encoding="utf-8") as f:
-        json.dump(credits, f, indent=2, ensure_ascii=False)
-    return paths
+    cfile.write_text(json.dumps(credits, indent=2, ensure_ascii=False), encoding="utf-8")
+    return paths, i
+
+
+def download_all(urls: list[dict], out_dir: str, *, transport=None, verify_image=image_ok,
+                 want: int | None = None) -> list[str]:
+    """Download in order until ``want`` good files exist (or the list runs out); extra URLs are the margin."""
+    cfile = Path(out_dir) / "credits.json"
+    if cfile.exists():
+        cfile.unlink()
+    return download_range(urls, out_dir, start=0, want=want, transport=transport, verify_image=verify_image)[0]
+
+
+def gather_reel(urls: list[dict], out_dir: str, *, target: int, floor: int, classify_fn, setting_share: float = 0.3,
+                rounds: int = 4, transport=None, verify_image=image_ok) -> tuple[list[str], dict[str, str]]:
+    """Download → label → top up until the reel has ``target`` keepable photos or candidates run out.
+
+    ``classify_fn(paths) -> {path: label}``. Returns (reel paths, labels of everything downloaded).
+    """
+    downloaded: list[str] = []
+    labels: dict[str, str] = {}
+    pos = 0
+    for _ in range(rounds):
+        have = len(select_reel(downloaded, labels, target=target, floor=0, setting_share=setting_share))
+        if have >= target or pos >= len(urls):
+            break
+        new, pos = download_range(urls, out_dir, start=pos, want=int((target - have) * 1.4) + 4, transport=transport,
+                                  verify_image=verify_image)
+        labels.update(classify_fn(new) if new else {})
+        downloaded += new
+    reel = select_reel(downloaded, labels, target=target, floor=floor, setting_share=setting_share)
+    log.info("reel: %d photos from %d downloaded (%d candidates seen of %d)", len(reel), len(downloaded), pos, len(urls))
+    return reel, labels
 
 
 # ------------------------------------------------------------------ vision
@@ -620,8 +662,9 @@ def select_reel(paths: list[str], labels: dict[str, str], *, target: int, floor:
     setting = [p for p in paths if labels.get(p) == "setting"]
     room = max(0, target - len(subject))
     out = subject[:target] + setting[:min(int(target * setting_share), room)]
-    if len(out) < floor:
-        out += [p for p in paths if p not in out][: floor - len(out)]
+    if len(out) < floor:                      # last resort: more setting shots, then rejects (better than no video)
+        spare = [p for p in setting if p not in out] + [p for p in paths if labels.get(p) == "reject"]
+        out += spare[: floor - len(out)]
     return out
 
 

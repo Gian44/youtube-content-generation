@@ -52,13 +52,17 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3):
     monkeypatch.setattr(pipeline.music, "mix", mix)
     monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"),
         [{"url": f"u{i}", "credit": "c", "source": "commons"} for i in range(image_count)])[1])
-    def dl(urls, out_dir, **kw):
+    def dl(urls, out_dir, *, start=0, want=None, **kw):
         Path(out_dir).mkdir(parents=True, exist_ok=True); out = []
-        for i, it in enumerate(urls):
+        end = len(urls) if not want else min(len(urls), start + want)
+        for i in range(start, end):
             p = Path(out_dir) / f"{i:03d}.jpg"; p.write_bytes(b"img"); out.append(str(p))
-        (Path(out_dir) / "credits.json").write_text(json.dumps([{"file": Path(o).name, **it} for o, it in zip(out, urls)]))
-        return out
-    monkeypatch.setattr(pipeline.images, "download_all", dl)
+        cf = Path(out_dir) / "credits.json"
+        rows = json.loads(cf.read_text()) if cf.exists() else []
+        rows += [{"file": Path(o).name, **urls[int(Path(o).stem)]} for o in out]
+        cf.write_text(json.dumps(rows))
+        return out, end
+    monkeypatch.setattr(pipeline.images, "download_range", dl)
     monkeypatch.setattr(pipeline.images, "classify", lambda paths, **kw: (calls.append("vision"), {p: "subject" for p in paths})[1])
     def build_reel(imgs, tmp, **kw):
         calls.append("render"); Path(tmp).mkdir(parents=True, exist_ok=True)
@@ -153,7 +157,7 @@ def test_image_target_scales_with_narration(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, minutes=3)  # fake narration is 120 s → 120//20 + 6 = 12 images
     cfg.images_fail_below, cfg.images_min = 1, 100
     pipeline.run(cfg)
-    assert seen["target"] == int(12 * 1.4) + 5   # 12 needed (120 s // 20 + 6), fetched with a 40 % margin
+    assert seen["target"] == 12                  # 120 s // 20 + 6 shown; margins are added inside images.*
 
 
 def test_music_can_be_disabled(tmp_path, monkeypatch):

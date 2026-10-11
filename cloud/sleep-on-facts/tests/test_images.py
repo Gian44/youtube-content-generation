@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import httpx
 from sof.images import collect_urls, download_all, verify_relevance, PEXELS_WIDTH
 
@@ -224,3 +225,23 @@ def test_pick_iconic(tmp_path):
     t = httpx.MockTransport(lambda r: httpx.Response(200, json={"choices": [{"message": {"content": '{"best": 2}'}}]}))
     assert I.pick_iconic(paths, subject="Saturn", api_key="k", transport=t) == paths[1]
     assert I.pick_iconic(paths, subject="Saturn", api_key="k", transport=httpx.MockTransport(lambda r: httpx.Response(500))) is None
+
+
+def test_gather_reel_tops_up_until_full(tmp_path):
+    from PIL import Image
+    import io
+    def jpeg():
+        b = io.BytesIO(); Image.new("RGB", (1920, 1080), (40, 60, 90)).save(b, "JPEG"); return b.getvalue() + b"\0" * 30_000
+    blob = jpeg()
+    t = httpx.MockTransport(lambda r: httpx.Response(200, content=blob + str(r.url).encode()))
+    urls = [{"url": f"https://x/{i}.jpg", "credit": "c", "source": "commons"} for i in range(40)]
+    rejects = {f"{i:03d}.jpg" for i in range(0, 40, 2)}            # every other photo is off-subject
+    calls = []
+    def label(paths):
+        calls.append(len(paths))
+        return {p: ("reject" if Path(p).name in rejects else "subject") for p in paths}
+    reel, labels = I.gather_reel(urls, str(tmp_path), target=10, floor=5, classify_fn=label, transport=t)
+    assert len(reel) == 10 and all(labels[p] == "subject" for p in reel)
+    assert len(calls) >= 2                                          # a second round topped up the rejects
+    credits = json.loads((tmp_path / "credits.json").read_text())
+    assert {c["file"] for c in credits} >= {Path(p).name for p in reel}
