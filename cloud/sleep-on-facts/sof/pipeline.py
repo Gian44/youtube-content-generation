@@ -7,6 +7,7 @@ ledger is written only after a successful upload.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 from sof import credits, images, ledger, music, render, research, script, seo, thumbnail, topicgen, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
+from sof.prompts import STORY_FORMATS, STORY_ORDER
 
 log = logging.getLogger("sof.pipeline")
 
@@ -97,9 +99,10 @@ def run(cfg: Config) -> int:
             minutes=cfg.minutes, target_words=cfg.target_words, num_movements=cfg.num_movements,
             max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio, max_words_ratio=cfg.max_words_ratio,
             segment_max_tokens=cfg.segment_max_tokens, writer_model=cfg.script_model, fast_model=cfg.fast_model,
+            story_format=STORY_ORDER[len(rows) % len(STORY_ORDER)],      # rotates one shape per published video
         )
         script_path.write_text(json.dumps(sc.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"script: {sc.word_count} words, {sc.movements} movements · {sc.title}", flush=True)
+    print(f"script: {sc.word_count} words, {sc.movements} movements · shape: {sc.story_format or 'n/a'}", flush=True)
 
     # 3. TTS — synthesised movement by movement so chapter start times are exact.
     _stage("tts")
@@ -128,7 +131,8 @@ def run(cfg: Config) -> int:
         _stage("music")
         mixed = work / "soundtrack.mp3"
         if not mixed.exists():
-            music.mix(str(narration), str(mixed), work_dir=str(work), bed_lufs=cfg.music_lufs)
+            variant = int(hashlib.sha1(run_id.encode()).hexdigest(), 16) % 997    # a different bed per video
+            music.mix(str(narration), str(mixed), work_dir=str(work), bed_lufs=cfg.music_lufs, variant=variant)
         soundtrack = mixed
         print(f"soundtrack: bed at {cfg.music_lufs:g} LUFS under narration", flush=True)
 
@@ -205,7 +209,9 @@ def run(cfg: Config) -> int:
     title = seo.build_title(name, seo_category, hours)
     credits_file = Path(cfg.credits_dir) / f"{run_id}.html"
     credits_url = f"{cfg.site_url.rstrip('/')}/credits/{run_id}.html"
-    description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=sc.blurb,
+    shape = STORY_FORMATS.get(sc.story_format or "")
+    blurb = (f"Tonight: {shape['opening'].format(subject=name)}. " if shape else "") + (sc.blurb or "")
+    description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=blurb,
                                         chapters=chapters, footer=sc.footer or sc.description, credits_url=credits_url)
     tags = seo.build_tags(name, seo_category, sc.tags)
     publish_at = None
@@ -228,7 +234,7 @@ def run(cfg: Config) -> int:
         "date": today, "topic": name, "category": category, "wiki_title": (corpus.title if corpus else wiki_title),
         "video_id": video_id, "title": title, "privacy": cfg.privacy, "publish_at": publish_at,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
-        "image_sources": by_source, "credits": credits_url,
+        "image_sources": by_source, "credits": credits_url, "story_format": sc.story_format,
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
         "run_url": _run_url(),
     }

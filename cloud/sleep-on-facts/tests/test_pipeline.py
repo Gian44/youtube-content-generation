@@ -210,3 +210,20 @@ def test_scheduled_publish_and_chapters(tmp_path, monkeypatch):
     assert "Chapters\n0:00 Part 0\n" in d and "Narration is AI-generated" in d
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["publish_at"] == "2026-10-12T00:30:00Z"
+
+
+def test_story_shape_rotates_with_the_ledger(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    seen = []
+    def gen(llm, **kw):
+        seen.append(kw["story_format"])
+        return Script(title="T", description="D", tags=["t"], body="word " * 300, word_count=300, movements=2,
+                      story_format=kw["story_format"])
+    monkeypatch.setattr(pipeline.script, "generate_script", gen)
+    cfg = _cfg(tmp_path)
+    (tmp_path / "ledger.json").write_text(json.dumps([{"topic": f"T{i}", "video_id": str(i)} for i in range(5)]))
+    pipeline.run(cfg)
+    from sof.prompts import STORY_ORDER
+    assert seen == [STORY_ORDER[5 % len(STORY_ORDER)]]
+    assert json.loads((tmp_path / "ledger.json").read_text())[-1]["story_format"] == seen[0]

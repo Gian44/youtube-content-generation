@@ -37,9 +37,14 @@ only have notes on what the research actually contains):
 
 A "movement" is a distinct sub-area of the topic explored for several minutes.
 Plan exactly {{num_movements}} movements that flow naturally from one to the next,
-together covering the topic broadly and gently. Order them so the journey feels calm and
-continuous, easing the listener toward sleep: begin with the most concrete and familiar,
-drift toward the quieter, stranger corners late in the video.
+together covering the topic broadly and gently.
+
+STORY SHAPE FOR THIS VIDEO — "{{format_name}}":
+{{format_guidance}}
+Shape the order and the headings of the movements around it, so this video plays out
+differently from one that merely lists facts. Adapt it naturally to the subject; never force
+it into something untrue. Within the shape, ease the listener toward sleep: start concrete
+and familiar, drift toward the quieter, stranger corners late in the video.
 
 HARD RULES:
 - Every movement must stay on "{{topic}}". Never drift to unrelated domains.
@@ -122,3 +127,61 @@ DESCRIPTION_FOOTER = """Narration is AI-generated; facts are drawn from the publ
 
 Sources (Wikipedia, CC BY-SA 4.0):
 {{sources}}"""
+
+
+# Story shapes rotate from video to video (YouTube's inauthentic-content policy looks for videos
+# that "play out the same way with only the topic swapped"). Each has an opening line spoken at
+# the very start of the video and planning guidance for the outline.
+STORY_FORMATS = {
+    "journey": {
+        "name": "A slow journey",
+        "opening": "a slow journey through {subject}",
+        "guidance": "Travel through the subject as a gentle physical journey: from its edges inward, from one "
+                    "end to the other, along its rivers, down through its layers, or room by room. Each movement "
+                    "is the next stretch of the route; headings read like places along the way.",
+    },
+    "day": {
+        "name": "A day and a night",
+        "opening": "a day and a night with {subject}",
+        "guidance": "Follow the subject through one long cycle of time: a day from dawn to deep night, the turning "
+                    "seasons, a working day, a life cycle, or one orbit or rotation. Each movement is the next hour, "
+                    "season or stage, and describes what is true of the subject at that moment.",
+    },
+    "story": {
+        "name": "Its long story",
+        "opening": "the long, quiet story of {subject}",
+        "guidance": "Tell the subject's story through time in calm chronological order: how it began or formed, how "
+                    "it grew or was discovered and understood, and how it is today. Each movement is a chapter of "
+                    "that story; avoid battles and disasters, dwell on making, building, slow change and daily life.",
+    },
+    "parts": {
+        "name": "Piece by piece",
+        "opening": "{subject}, piece by piece",
+        "guidance": "Take the subject apart gently, one piece at a time: its parts, layers, materials, members or "
+                    "features. Each movement looks closely at one piece, explains how it works and how it fits with "
+                    "the others, then sets it down before picking up the next.",
+    },
+}
+STORY_ORDER = ["journey", "story", "day", "parts"]
+
+OPENING_LINE = "This is Sleep On Facts. Tonight: {opening}."
+
+CLOSING_HEADING = "Three Quiet Things to Keep"
+
+CLOSING_PROMPT = """You are closing a calm, three-hour "facts to fall asleep to" video about {{topic}}.
+This closing segment is the same every night in shape (it is the channel's signature) but its
+content is specific to tonight's subject.
+
+What the video covered, movement by movement (heading — opening lines):
+{{covered}}
+
+Write the closing segment, about {{target_words}} words:
+- Begin exactly with: "Three quiet things to keep from tonight."
+- Then three short paragraphs, one per thing: a single gentle, memorable, TRUE fact drawn from
+  the material above, said simply and slowly, each with one calm sentence of why it is lovely
+  to remember. No new facts beyond what the material above states.
+- End with one soft line wishing the listener a good night's sleep. No calls to action, no
+  "subscribe", no questions, no exclamation marks.
+
+Output as JSON:
+{"body": "..."}"""

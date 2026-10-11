@@ -13,7 +13,8 @@ import re
 from dataclasses import dataclass, field
 
 from sof import research
-from sof.prompts import DESCRIPTION_FOOTER, METADATA_PROMPT, OUTLINE_PROMPT, SEGMENT_PROMPT
+from sof.prompts import (CLOSING_HEADING, CLOSING_PROMPT, DESCRIPTION_FOOTER, METADATA_PROMPT, OPENING_LINE,
+                         OUTLINE_PROMPT, SEGMENT_PROMPT, STORY_FORMATS)
 
 log = logging.getLogger("sof.script")
 _MAX_SEG, _TAIL, _MAX_REFILLS = 1500, 400, 8
@@ -39,13 +40,14 @@ class Script:
     sections: list[dict] = field(default_factory=list)   # [{"heading", "body"}] — one per movement, for chapters
     blurb: str = ""                                       # 2-3 sentence summary (metadata model)
     footer: str = ""                                      # AI disclosure + Wikipedia sources
+    story_format: str = ""                                # key of prompts.STORY_FORMATS used for this video
 
     def to_dict(self) -> dict:
         return {
             "title": self.title, "description": self.description, "tags": self.tags, "body": self.body,
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
             "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
-            "sections": self.sections, "blurb": self.blurb, "footer": self.footer,
+            "sections": self.sections, "blurb": self.blurb, "footer": self.footer, "story_format": self.story_format,
         }
 
     @classmethod
@@ -54,7 +56,8 @@ class Script:
                  image_queries=list(d.get("image_queries") or []), sources=list(d.get("sources") or []),
                  image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []),
                  sections=[x for x in (d.get("sections") or []) if isinstance(x, dict)],
-                 blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""))
+                 blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""),
+                 story_format=str(d.get("story_format") or ""))
         if not sc.blurb and not sc.footer:
             sc.blurb, sc.footer = split_description(sc.description)
         return sc
@@ -84,6 +87,13 @@ def repeat_ratio(body: str, seen: set[tuple[str, ...]]) -> float:
     return (len(g & seen) / len(g)) if g else 0.0
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _first_sentences(text: str, n: int = 2, limit: int = 300) -> str:
+    return " ".join(_SENTENCE_END.split(text.strip())[:n])[:limit]
+
+
 def sources_footer(corpus: research.Corpus | None) -> str:
     if not corpus:
         return "Narration is AI-generated; facts are drawn from public sources."
@@ -106,7 +116,10 @@ def generate_script(
     writer_model: str | None = None,
     fast_model: str | None = None,
     hints: str = "",
+    story_format: str = "journey",
+    closing_words: int = 180,
 ) -> Script:
+    fmt = STORY_FORMATS.get(story_format) or STORY_FORMATS["journey"]
     # Scale the plan to the target so a 3-minute smoke run does not get 16×600-word movements.
     num_movements = max(2, min(num_movements, round(target_words / 1200)))
     per_words = max(150, min(_MAX_SEG, target_words // num_movements))
@@ -122,7 +135,8 @@ def generate_script(
     def outline(extra: str) -> dict:
         return llm.generate_json(
             _fill(OUTLINE_PROMPT, topic=topic, wiki_title=wiki_title, lead=lead[:3000] + extra, sections=sections,
-                  target_minutes=minutes, num_movements=num_movements),
+                  target_minutes=minutes, num_movements=num_movements, format_name=fmt["name"],
+                  format_guidance=fmt["guidance"]),
             max_tokens=3000, model=fast_model,
         )
 
@@ -190,6 +204,19 @@ def generate_script(
 
     if not bodies:
         raise RuntimeError("script generation produced no narration")
+
+    # Channel signature: the same spoken opening line every night (naming tonight's story shape) and
+    # the same closing segment, "Three quiet things to keep", written from what this video covered.
+    try:
+        lines = "\n".join(f"- {h} — {_first_sentences(b)}" for h, b in zip(covered, bodies))
+        closing = write(_fill(CLOSING_PROMPT, topic=topic, covered=lines, target_words=closing_words))
+        if closing:
+            bodies.append(closing)
+            covered.append(CLOSING_HEADING)
+    except Exception as exc:  # noqa: BLE001 — a missing outro must not cost the video
+        log.warning("closing segment failed: %s", exc)
+    opening = OPENING_LINE.format(opening=fmt["opening"].format(subject=topic))
+    bodies[0] = f"{opening}\n\n{bodies[0]}"
     body = "\n\n".join(bodies)
     words = len(body.split())
     log.info("script: %d words in %d movements (%d refills), target %d", words, len(bodies), refills, target_words)
@@ -216,4 +243,5 @@ def generate_script(
         sections=[{"heading": h, "body": b} for h, b in zip(covered, bodies)],
         blurb=blurb,
         footer=footer,
+        story_format=story_format if story_format in STORY_FORMATS else "journey",
     )

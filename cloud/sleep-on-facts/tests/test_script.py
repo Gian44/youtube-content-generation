@@ -16,6 +16,8 @@ class FakeLLM:
                     "image_search_queries": ["q1", "q2"]}
         if "CURRENT MOVEMENT" in prompt:
             return {"body": " ".join(["calm"] * self.w)}
+        if "Three quiet things to keep" in prompt:
+            return {"body": "Three quiet things to keep from tonight. One. Two. Three. Sleep well."}
         return {"title": "Calm Facts About Whales to Fall Asleep To (3 Hours)", "description": "d", "tags": ["a", "b"]}
 
 
@@ -25,7 +27,8 @@ KW = dict(minutes=20, target_words=3000, num_movements=4, max_segments=40, fill_
 def test_loops_until_target_reached():
     llm = FakeLLM(words_per_segment=600, movements=4)
     s = generate_script(llm, topic="Whales", corpus=None, **KW)
-    assert s.word_count == 3000 and s.movements == 5  # 4 planned + 1 from the refill, stops at target
+    # 4 planned + 1 from the refill (stops at target), + the closing signature; opening line adds 10 words
+    assert s.movements == 6 and s.word_count == 3000 + 10 + 13
     assert sum("Plan exactly" in c for c in llm.calls) == 2
     assert s.title.startswith("Calm Facts") and s.tags == ["a", "b"] and s.image_queries == ["q1", "q2"]
     assert Script.from_dict(s.to_dict()) == s
@@ -38,11 +41,12 @@ def test_too_long_raises():
 
 def test_segment_cap_stops_loop():
     s = generate_script(FakeLLM(words_per_segment=100, movements=4), topic="W", corpus=None, **{**KW, "max_segments": 6})
-    assert s.movements == 6
+    assert s.movements == 6 + 1          # the cap applies to research movements; the closing signature is extra
 
 
 def test_prompts_have_placeholders():
-    for key in ("{{topic}}", "{{lead}}", "{{sections}}", "{{wiki_title}}", "{{num_movements}}", "{{target_minutes}}"):
+    for key in ("{{topic}}", "{{lead}}", "{{sections}}", "{{wiki_title}}", "{{num_movements}}", "{{target_minutes}}",
+                "{{format_name}}", "{{format_guidance}}"):
         assert key in OUTLINE_PROMPT
     for key in ("{{movement_heading}}", "{{movement_beats}}", "{{notes}}", "{{previous_tail}}", "{{target_words}}", "{{running_summary}}"):
         assert key in SEGMENT_PROMPT
@@ -114,3 +118,17 @@ def test_sections_blurb_and_footer_are_kept():
     old = Script.from_dict({"title": "T", "description": "Blurb here.\n\nNarration is AI-generated; facts...", "tags": [],
                             "body": "b", "word_count": 1, "movements": 1})
     assert old.blurb == "Blurb here." and old.footer.startswith("Narration is AI-generated") and old.sections == []
+
+
+
+def test_story_shape_opening_line_and_closing_signature():
+    llm = FakeLLM(words_per_segment=800, movements=4)
+    s = generate_script(llm, topic="Saturn", corpus=None, story_format="day", **KW)
+    outline = next(c for c in llm.calls if "Plan exactly" in c)
+    assert 'STORY SHAPE FOR THIS VIDEO — "A day and a night"' in outline and "one orbit or rotation" in outline
+    assert s.body.startswith("This is Sleep On Facts. Tonight: a day and a night with Saturn.")
+    assert s.sections[-1]["heading"] == "Three Quiet Things to Keep" and s.sections[-1]["body"].startswith("Three quiet")
+    closing_prompt = next(c for c in llm.calls if "Three quiet things to keep" in c)
+    assert "Part 100" in closing_prompt and "This is Sleep On Facts" not in closing_prompt   # built from the movements
+    assert s.story_format == "day" and Script.from_dict(s.to_dict()).story_format == "day"
+    assert generate_script(FakeLLM(), topic="X", corpus=None, story_format="nope", **KW).story_format == "journey"

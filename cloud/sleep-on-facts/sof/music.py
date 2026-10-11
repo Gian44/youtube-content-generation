@@ -23,6 +23,16 @@ CHORDS = [
     (110.00, 164.81, 220.00, 246.94, 329.63),   # A2 E3 A3 B3 E4   (A sus/9)
     (87.31, 130.81, 174.61, 220.00, 261.63),    # F2 C3 F3 A3 C4   (F maj7-ish)
 ]
+# Per-video variety (YouTube's inauthentic-content rules look for identical audio across uploads):
+# each video gets one of these two-chord progressions, all low and open like the original.
+PROGRESSIONS = [
+    CHORDS,                                                                              # A sus9 → F maj7
+    [(98.00, 146.83, 196.00, 220.00, 293.66), (82.41, 123.47, 164.81, 196.00, 246.94)],  # G add9 → E min7
+    [(130.81, 196.00, 261.63, 293.66, 392.00), (110.00, 164.81, 220.00, 261.63, 329.63)],  # C add9 → A min
+    [(146.83, 220.00, 293.66, 329.63, 440.00), (116.54, 174.61, 233.08, 293.66, 349.23)],  # D add9 → B♭ maj
+    [(123.47, 185.00, 246.94, 277.18, 369.99), (98.00, 146.83, 196.00, 246.94, 293.66)],   # B sus → G maj
+    [(103.83, 155.56, 207.65, 233.08, 311.13), (87.31, 130.81, 174.61, 207.65, 261.63)],   # A♭ add9 → F min7
+]
 CHORD_SECONDS = 24.0       # one chord held this long; 2 chords = one 48 s cycle
 LOOP_CYCLES = 2            # loop length 96 s
 
@@ -51,12 +61,13 @@ def _pad_note(freq: float, n: int, rng: np.random.Generator) -> np.ndarray:
     return out / 3.25
 
 
-def render_loop(out_wav: str, *, seed: int = 7) -> str:
+def render_loop(out_wav: str, *, seed: int = 7, progression: int | None = None) -> str:
     rng = np.random.default_rng(seed)
+    chords = PROGRESSIONS[progression % len(PROGRESSIONS)] if progression is not None else CHORDS
     chord_n = int(CHORD_SECONDS * SR)
     pieces = []
     for _ in range(LOOP_CYCLES):
-        for chord in CHORDS:
+        for chord in chords:
             block = np.zeros(chord_n)
             for k, f in enumerate(chord):
                 block += _pad_note(f, chord_n, rng) * (1.0 if k else 1.4)   # bass a touch louder
@@ -121,14 +132,14 @@ def _run(cmd: list[str], timeout: int) -> None:
         raise RuntimeError(f"ffmpeg failed ({cmd[-1]}): {r.stderr[-400:]}")
 
 
-def mix(narration: str, out: str, *, work_dir: str, bed_lufs: float = -34.0) -> str:
-    """narration.mp3 + synthesised bed → ``out`` (mp3)."""
+def mix(narration: str, out: str, *, work_dir: str, bed_lufs: float = -34.0, variant: int | None = None) -> str:
+    """narration.mp3 + synthesised bed → ``out`` (mp3). ``variant`` picks the progression + texture seed."""
     import os
 
     loop = os.path.join(work_dir, "bed_loop.wav")
     levelled = os.path.join(work_dir, "bed.wav")
     if not os.path.exists(levelled):
-        render_loop(loop)
+        render_loop(loop, seed=7 + (variant or 0), progression=variant)
         _run(normalize_cmd(loop, levelled, bed_lufs=bed_lufs), 600)
     _run(mix_cmd(narration, levelled, out), 3600)
     return out
