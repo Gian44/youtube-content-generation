@@ -9,7 +9,8 @@
     "words": 27613,
     "images": 150,
     "cost_estimate_usd": 3.03,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37566503018"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37566503018",
+    "abandoned": "YouTube abandoned processing: video too long (channel not yet verified for >15 min)"
   },
   {
     "date": "2026-10-07",

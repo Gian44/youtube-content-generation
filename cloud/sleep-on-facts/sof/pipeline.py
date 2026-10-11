@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import credits, images, ledger, music, render, research, script, seo, thumbnail, topicgen, topics, tts, upload
+from sof import captions, images, ledger, music, render, research, script, seo, thumbnail, topicgen, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
 from sof.prompts import STORY_FORMATS, STORY_ORDER
@@ -62,7 +62,9 @@ def run(cfg: Config) -> int:
 
     # 1. Topic: forced (--topic) → unused seed from topics.yml → generated from the day's category.
     _stage("topic")
-    rows = ledger.load_ledger(cfg.ledger_path)
+    # Rows YouTube abandoned (e.g. the Oct 7 Ancient Egypt upload) do not count as published: their
+    # topic can be made again and they do not advance the story-shape / title rotations.
+    rows = [r for r in ledger.load_ledger(cfg.ledger_path) if not r.get("abandoned")]
     llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
     seeds = topics.load_topics(cfg.topics_path)
     category, wiki_title, queries = "", None, []
@@ -193,9 +195,11 @@ def run(cfg: Config) -> int:
     if not final.exists():
         reel = work / "reel.mp4"
         if not reel.exists():
+            caps = captions.captions_for(image_paths, used) if cfg.photo_captions else {}
+            print(f"on-screen credits: {len(caps)} of {len(image_paths)} photos", flush=True)
             built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
                                       crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
-                                      fps=cfg.fps, batch=cfg.xfade_batch, dim=cfg.video_dim)
+                                      fps=cfg.fps, batch=cfg.xfade_batch, dim=cfg.video_dim, captions=caps)
             os.replace(built, reel)
         render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
@@ -208,19 +212,24 @@ def run(cfg: Config) -> int:
         thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser)
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
+    try:                                   # a dozen stills for checking the run by eye (kept as artifacts)
+        step = max(10.0, duration / 12)
+        render.sample_frames(str(final), str(work / "frames"), [step * (i + 0.5) for i in range(int(duration // step))])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("sample frames skipped: %s", exc)
 
-    # 6. Upload (scheduled for the evening slot) + playlist + credits page + ledger.
+    # 6. Upload (scheduled for the evening slot) + playlist + ledger.
     if cfg.skip_upload:
         print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
         return EXIT_OK
     _stage("upload")
-    title = seo.build_title(name, seo_category, hours)
-    credits_file = Path(cfg.credits_dir) / f"{run_id}.html"
-    credits_url = f"{cfg.site_url.rstrip('/')}/credits/{run_id}.html"
+    variant = len(rows) % seo.TITLE_VARIANTS             # a different title shape from one video to the next
+    title = seo.build_title(name, seo_category, hours, hook=sc.title_hook, variant=variant)
     shape = STORY_FORMATS.get(sc.story_format or "")
     blurb = (f"Tonight: {shape['opening'].format(subject=name)}. " if shape else "") + (sc.blurb or "")
     description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=blurb,
-                                        chapters=chapters, footer=sc.footer or sc.description, credits_url=credits_url)
+                                        chapters=chapters, footer=sc.footer or sc.description,
+                                        photos=captions.DESCRIPTION_LINE, extra=_thumbnail_credit(thumb, used))
     tags = seo.build_tags(name, seo_category, sc.tags)
     publish_at = None
     if cfg.schedule_publish and not cfg.is_smoke and cfg.privacy == "public":
@@ -238,7 +247,6 @@ def run(cfg: Config) -> int:
         return EXIT_FAIL
     print(f"youtube status: {state}{' (' + reason + ')' if reason else ''}", flush=True)
     print(f"uploaded {video_id}: {title} · " + (f"scheduled for {publish_at}" if publish_at else cfg.privacy), flush=True)
-    credits.write_page(str(credits_file), title=title, video_url=f"https://youtu.be/{video_id}", items=used)
     if cfg.playlists and not cfg.is_smoke:
         try:
             prof = seo.profile(seo_category)
@@ -251,7 +259,7 @@ def run(cfg: Config) -> int:
         "date": today, "topic": name, "category": category, "wiki_title": (corpus.title if corpus else wiki_title),
         "video_id": video_id, "title": title, "privacy": cfg.privacy, "publish_at": publish_at,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
-        "image_sources": by_source, "credits": credits_url, "story_format": sc.story_format,
+        "image_sources": by_source, "story_format": sc.story_format, "title_variant": variant,
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
         "run_url": _run_url(),
     }
@@ -260,7 +268,7 @@ def run(cfg: Config) -> int:
         return EXIT_OK
     ledger.append_entry(cfg.ledger_path, entry)
     if os.environ.get("GITHUB_ACTIONS"):
-        ledger.git_commit_and_push(cfg.ledger_path, entry, extra_paths=[str(credits_file)])
+        ledger.git_commit_and_push(cfg.ledger_path, entry)
     print(f"✓ uploaded https://youtu.be/{video_id} · {(time.time() - t0) / 60:.1f} min total", flush=True)
     return EXIT_OK
 
@@ -279,6 +287,13 @@ def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
                       f"{': ' + reason if reason else ''} — check YouTube Studio", flush=True)
     except Exception as exc:  # noqa: BLE001
         log.warning("recent-upload check skipped: %s", exc)
+
+
+def _thumbnail_credit(thumb: Path, used: list[dict]) -> str:
+    """Description line crediting the thumbnail's photo when its licence needs it ('' otherwise)."""
+    src = thumbnail.source_of(str(thumb))
+    row = next((r for r in used if src and r.get("file") == Path(src).name), None)
+    return captions.thumbnail_line(row)
 
 
 def _used_credits(img_dir: Path, image_paths: list[str]) -> list[dict]:

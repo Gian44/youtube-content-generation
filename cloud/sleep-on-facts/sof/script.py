@@ -39,8 +39,9 @@ class Script:
     setting_queries: list[str] = field(default_factory=list)
     sections: list[dict] = field(default_factory=list)   # [{"heading", "body"}] — one per movement, for chapters
     blurb: str = ""                                       # 2-3 sentence summary (metadata model)
-    footer: str = ""                                      # AI disclosure + Wikipedia sources
+    footer: str = ""                                      # "Facts … drawn from" + Wikipedia sources
     story_format: str = ""                                # key of prompts.STORY_FORMATS used for this video
+    title_hook: str = ""                                  # 2-6 word evocative phrase for the title (metadata model)
 
     def to_dict(self) -> dict:
         return {
@@ -48,6 +49,7 @@ class Script:
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
             "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
             "sections": self.sections, "blurb": self.blurb, "footer": self.footer, "story_format": self.story_format,
+            "title_hook": self.title_hook,
         }
 
     @classmethod
@@ -57,17 +59,21 @@ class Script:
                  image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []),
                  sections=[x for x in (d.get("sections") or []) if isinstance(x, dict)],
                  blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""),
-                 story_format=str(d.get("story_format") or ""))
+                 story_format=str(d.get("story_format") or ""), title_hook=str(d.get("title_hook") or ""))
         if not sc.blurb and not sc.footer:
             sc.blurb, sc.footer = split_description(sc.description)
         return sc
 
 
+FOOTER_STARTS = ("Facts in this video are drawn from", "Narration is AI-generated")   # current, then pre-2026-10-11
+
+
 def split_description(description: str) -> tuple[str, str]:
-    """(blurb, footer) from an older combined description: the footer starts at the AI-disclosure line."""
-    i = (description or "").find("Narration is AI-generated")
-    if i < 0:
+    """(blurb, footer) from a combined description: the footer starts at its first line (either wording)."""
+    found = [i for i in ((description or "").find(m) for m in FOOTER_STARTS) if i >= 0]
+    if not found:
         return (description or "").strip(), ""
+    i = min(found)
     return description[:i].strip(), description[i:].strip()
 
 
@@ -96,7 +102,7 @@ def _first_sentences(text: str, n: int = 2, limit: int = 300) -> str:
 
 def sources_footer(corpus: research.Corpus | None) -> str:
     if not corpus:
-        return "Narration is AI-generated; facts are drawn from public sources."
+        return "Facts in this video are drawn from public sources."
     lines = "\n".join(f"- {t}: https://en.wikipedia.org/wiki/{t.replace(' ', '_')}" for t in corpus.sources[:12])
     return _fill(DESCRIPTION_FOOTER, sources=lines)
 
@@ -227,7 +233,8 @@ def generate_script(
     log.info("script: %d words in %d movements (%d refills), target %d", words, len(bodies), refills, target_words)
 
     meta = llm.generate_json(
-        _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600]), max_tokens=600,
+        _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600],
+              headings="\n".join(f"- {h}" for h in covered)), max_tokens=700,
         model=fast_model,
     )
     blurb, footer = str(meta.get("description") or "").strip(), sources_footer(corpus)
@@ -247,4 +254,5 @@ def generate_script(
         blurb=blurb,
         footer=footer,
         story_format=story_format if story_format in STORY_FORMATS else "journey",
+        title_hook=str(meta.get("title_hook") or "").strip(),
     )

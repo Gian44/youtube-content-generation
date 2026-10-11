@@ -62,7 +62,39 @@ def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = C
     return dst
 
 
-def ken_burns_cmd(image: str, out: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int) -> list[str]:
+CAPTION_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                 "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf")
+
+
+def caption_png(text: str, out: str, *, width: int, height: int, alpha: int = 120) -> str:
+    """A transparent full-frame PNG with one small, dim credit line at the bottom left.
+
+    Overlaid AFTER the Ken Burns zoom, so the text stays put while the photo moves. ~2 % of the frame
+    height and ~47 % opacity: legible when someone looks for it, invisible to a drowsy viewer.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    size = max(12, round(height * 0.02))
+    font = None
+    for f in CAPTION_FONTS:
+        try:
+            font = ImageFont.truetype(f, size)
+            break
+        except OSError:
+            continue
+    if font is None:
+        font = ImageFont.load_default(size=size)
+    im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    margin = round(height * 0.033)
+    d.text((margin + 1, height - margin + 1), text, font=font, fill=(0, 0, 0, min(255, alpha)), anchor="ls")
+    d.text((margin, height - margin), text, font=font, fill=(255, 255, 255, alpha), anchor="ls")
+    im.save(out, "PNG")
+    return out
+
+
+def ken_burns_cmd(image: str, out: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int,
+                  caption: str | None = None) -> list[str]:
     """Slow, smooth push-in from ONE pre-covered 4× frame (see ``cover_image``).
 
     Why this shape (measured, not guessed — see tests/test_render_ffmpeg.py):
@@ -78,11 +110,12 @@ def ken_burns_cmd(image: str, out: str, *, dwell: float, crossfade: float, width
         f"zoompan=z='1+{ZOOM_END - 1:g}*on/{max(1, frames - 1)}':d={frames}:"
         f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={width}x{height}:fps={fps},setsar=1,format=yuv420p"
     )
-    return [
-        "ffmpeg", "-y", "-i", image, "-vf", vf, "-frames:v", str(frames), "-r", str(fps),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-an",
-        "-map_metadata", "-1", out,
-    ]
+    enc = ["-frames:v", str(frames), "-r", str(fps), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+           "-pix_fmt", "yuv420p", "-an", "-map_metadata", "-1", out]
+    if caption:                       # fixed credit line on top of the moving photo
+        return ["ffmpeg", "-y", "-i", image, "-i", caption, "-filter_complex",
+                f"[0:v]{vf}[bg];[bg][1:v]overlay=0:0:format=auto,format=yuv420p[v]", "-map", "[v]", *enc]
+    return ["ffmpeg", "-y", "-i", image, "-vf", vf, *enc]
 
 
 def xfade_chain_cmd(clips: list[str], durations: list[float], out: str, *, crossfade: float, fps: int) -> list[str]:
@@ -117,7 +150,7 @@ def plan_batches(n: int, size: int) -> list[tuple[int, int]]:
 # ---------------------------------------------------------------- orchestration
 
 def _render_clips(images: list[str], tmp: Path, *, dwell, crossfade, width, height, fps, workers: int | None,
-                  dim: float = 1.0) -> list[str]:
+                  dim: float = 1.0, captions: dict[str, str] | None = None) -> list[str]:
     n = max(1, min(workers or max(2, (os.cpu_count() or 2) - 1), len(images)))
     results: list[str | None] = [None] * len(images)
 
@@ -127,7 +160,11 @@ def _render_clips(images: list[str], tmp: Path, *, dwell, crossfade, width, heig
             covered = cover_image(img, str(tmp / f"cover_{idx:04d}.jpg"), width=width, height=height, dim=dim)
         except Exception as exc:  # noqa: BLE001 — a corrupt download must not kill the reel
             return idx, None, f"cover failed: {exc}"
-        r = subprocess.run(ken_burns_cmd(covered, clip, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps),
+        cap = None
+        if (captions or {}).get(img):
+            cap = caption_png(captions[img], str(tmp / f"caption_{idx:04d}.png"), width=width, height=height)
+        r = subprocess.run(ken_burns_cmd(covered, clip, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps,
+                                         caption=cap),
                            capture_output=True, text=True, timeout=600)
         return idx, clip if (r.returncode == 0 and os.path.exists(clip)) else None, r.stderr[-200:]
 
@@ -153,13 +190,13 @@ def _concat_copy(clips: list[str], tmp: Path, name: str) -> str:
 
 
 def build_reel(images: list[str], tmp_dir: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int,
-               batch: int, workers: int | None = None, dim: float = 1.0) -> str:
+               batch: int, workers: int | None = None, dim: float = 1.0, captions: dict[str, str] | None = None) -> str:
     """Return the path of one crossfaded reel built from ``images`` (hard-cut concat as fallback)."""
     tmp = Path(tmp_dir)
     tmp.mkdir(parents=True, exist_ok=True)
     clip_dur = dwell + crossfade
     clips = _render_clips(images, tmp, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps, workers=workers,
-                          dim=dim)
+                          dim=dim, captions=captions)
     if not clips:
         raise RuntimeError("no slideshow clips could be rendered")
     if len(clips) == 1:
@@ -185,4 +222,18 @@ def build_reel(images: list[str], tmp_dir: str, *, dwell: float, crossfade: floa
 
 def assemble(reel: str, narration: str, out: str, *, audio_duration: float, fps: int) -> str:
     run(loop_assembly_cmd(reel, narration, out, audio_duration=audio_duration, fps=fps), 7200)
+    return out
+
+
+def sample_frames(video: str, out_dir: str, times: list[float], *, width: int = 960) -> list[str]:
+    """Small JPEG stills at ``times`` (seconds) — kept as run artifacts so a run can be checked by eye
+    (on-screen credits, which photo shows when) without downloading a 2 GB video."""
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    out = []
+    for t in times:
+        f = str(Path(out_dir) / f"t{int(t):05d}.jpg")
+        r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{max(0.0, t):.2f}", "-i", video, "-frames:v", "1",
+                            "-vf", f"scale={width}:-2", "-q:v", "4", f], capture_output=True, text=True, timeout=120)
+        if r.returncode == 0 and os.path.exists(f):
+            out.append(f)
     return out

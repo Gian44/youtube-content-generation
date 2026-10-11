@@ -68,8 +68,7 @@ class Config:
     schedule_publish: bool = True   # upload private + publishAt; a run that is >12 h from the slot publishes at once
     playlists: bool = True          # add each video to its category playlist (created on first use)
     upload_check_seconds: int = 300  # after upload, poll up to this long for a rejection ("Video is too long", duplicate…)
-    site_url: str = "https://gian44.github.io/youtube-content-generation"
-    credits_dir: str = "../../docs/credits"   # repo-root docs/ (GitHub Pages), relative to cloud/sleep-on-facts
+    photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos (no external credits page)
     # secrets
     openai_api_key: str = ""
     gemini_api_key: str = ""

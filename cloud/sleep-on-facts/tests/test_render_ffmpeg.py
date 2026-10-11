@@ -75,3 +75,28 @@ def test_ken_burns_zoom_is_smooth_not_stepped(tmp_path):
     steps = np.diff(sp)
     ratio = steps.std() / abs(steps.mean())
     assert ratio < 1.0, f"stepped zoom: std/mean={ratio:.2f}"
+
+
+def test_caption_stays_fixed_on_a_moving_photo(tmp_path):
+    """Real ffmpeg: the credit line is visible in the bottom-left corner in the first AND last frame."""
+    import numpy as np
+    from PIL import Image
+    src = tmp_path / "dark.jpg"
+    Image.new("RGB", (1600, 900), (20, 24, 40)).save(src)
+    clips = render._render_clips([str(src)], tmp_path, dwell=1.0, crossfade=0.5, width=640, height=360, fps=24, workers=1,
+                                 captions={str(src): "Photo: Someone · CC BY-SA 4.0 · Wikimedia Commons"})
+    assert len(clips) == 1
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", clips[0], "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                         capture_output=True).stdout
+    frames = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 360, 640)
+    for f in (frames[0], frames[-1]):
+        corner, elsewhere = f[330:352, 8:330], f[20:120, 200:600]
+        assert corner.max() > elsewhere.max() + 40          # text is brighter than the dark photo
+
+
+def test_sample_frames(tmp_path):
+    video = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=navy:s=320x180:d=6", "-r", "24", str(video)],
+                   check=True, capture_output=True)
+    got = render.sample_frames(str(video), str(tmp_path / "frames"), [1.0, 3.5, 99.0], width=160)
+    assert [p.split("/")[-1] for p in got] == ["t00001.jpg", "t00003.jpg"]      # past the end → skipped

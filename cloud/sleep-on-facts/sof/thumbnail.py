@@ -238,4 +238,16 @@ def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates
     if not best:
         best = pick_photo(wide or pool)
     log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
-    return compose(best, topic=topic, hours=hours, out=out)
+    result = compose(best, topic=topic, hours=hours, out=out)
+    Path(_source_file(out)).write_text(str(best), encoding="utf-8")      # for the description's photo credit
+    return result
+
+
+def _source_file(out: str) -> str:
+    return str(Path(out).with_suffix(".source.txt"))
+
+
+def source_of(out: str) -> str | None:
+    """Path of the photo the thumbnail at ``out`` was made from (None if unknown)."""
+    f = Path(_source_file(out))
+    return f.read_text(encoding="utf-8").strip() or None if f.exists() else None

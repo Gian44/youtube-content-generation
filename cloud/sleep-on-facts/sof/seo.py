@@ -1,9 +1,11 @@
 """Discovery metadata: titles, descriptions, chapters, tags, hashtags, playlists, publish slot.
 
-Sleep viewers search broad intent phrases ("space facts to fall asleep to", "history for sleep"),
-not the subject alone, so titles lead with length + intent phrase and end with the subject:
-    "3 Hours of Calm Space Facts to Fall Asleep To | Saturn"
-Each topic category maps to one search phrase, one playlist and one hashtag.
+Sleep viewers search broad intent phrases ("space facts to fall asleep to", "history for sleep",
+"sleep documentary"), so every title carries the length, the intent phrase and the subject. The
+SHAPE rotates from video to video (TITLE_VARIANTS) and most shapes carry a short hook written from the
+video's own chapters ("The Silent Rings of Saturn"), so the channel page does not read as one template
+with the topic swapped — the pattern YouTube's inauthentic-content policy describes.
+Each topic category maps to one search phrase, one documentary noun, one playlist and one hashtag.
 """
 
 from __future__ import annotations
@@ -18,18 +20,19 @@ class Profile:
     phrase: str          # inside the title: "… of Calm {phrase} to Fall Asleep To"
     playlist: str        # playlist title the video is added to
     hashtag: str         # second hashtag (first is always #sleep)
+    doc: str = "Documentary"   # "3-Hour {doc} for Sleep"
 
 
 PROFILES: list[tuple[str, Profile]] = [
-    ("space", Profile("Space Facts", "Space Facts to Fall Asleep To", "spacefacts")),
-    ("astronom", Profile("Space Facts", "Space Facts to Fall Asleep To", "spacefacts")),
-    ("history", Profile("History", "History for Sleep", "historyforsleep")),
-    ("nature", Profile("Nature Facts", "Nature Facts to Fall Asleep To", "naturefacts")),
-    ("ocean", Profile("Ocean Facts", "Ocean Facts to Fall Asleep To", "oceanfacts")),
-    ("how things work", Profile("Science Facts", "Science Facts to Fall Asleep To", "sciencefacts")),
-    ("cities", Profile("Geography Facts", "Geography Facts to Fall Asleep To", "geography")),
-    ("food", Profile("Facts", "Food, Farming & Plants for Sleep", "sleepfacts")),
-    ("invention", Profile("History", "Inventions & Ideas for Sleep", "historyforsleep")),
+    ("space", Profile("Space Facts", "Space Facts to Fall Asleep To", "spacefacts", "Space Documentary")),
+    ("astronom", Profile("Space Facts", "Space Facts to Fall Asleep To", "spacefacts", "Space Documentary")),
+    ("history", Profile("History", "History for Sleep", "historyforsleep", "History Documentary")),
+    ("nature", Profile("Nature Facts", "Nature Facts to Fall Asleep To", "naturefacts", "Nature Documentary")),
+    ("ocean", Profile("Ocean Facts", "Ocean Facts to Fall Asleep To", "oceanfacts", "Ocean Documentary")),
+    ("how things work", Profile("Science Facts", "Science Facts to Fall Asleep To", "sciencefacts", "Science Documentary")),
+    ("cities", Profile("Geography Facts", "Geography Facts to Fall Asleep To", "geography", "Travel Documentary")),
+    ("food", Profile("Facts", "Food, Farming & Plants for Sleep", "sleepfacts", "Documentary")),
+    ("invention", Profile("History", "Inventions & Ideas for Sleep", "historyforsleep", "History Documentary")),
 ]
 DEFAULT = Profile("Facts", "Calm Facts to Fall Asleep To", "sleepfacts")
 SPACE_CATEGORY = "space & astronomy"
@@ -53,11 +56,64 @@ def hours_label(hours: int) -> str:
     return f"{h} Hour{'s' if h != 1 else ''}"
 
 
-def build_title(subject: str, category: str, hours: int) -> str:
-    p = profile(category)
-    t = f"{hours_label(hours)} of Calm {p.phrase} to Fall Asleep To | {_clean(subject)}"
+_HOOK_BANNED = re.compile(r"[!?#@\d\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|you|your|must|best|worst|"
+                          r"top|ultimate|mind|blow\w*|amazing)\b", re.I)
+_ARTICLE_NOUNS = re.compile(r"\b(reef|rainforest|forest|civili[sz]ation|engine|river|desert|ocean|sea|mountains|valley|canyon|"
+                            r"islands|wall|pyramids|alps|andes|himalayas|sahara|nile|amazon|arctic|antarctic|moon|sun|"
+                            r"universe|galaxy|milky way|telescope|railway|printing press|lighthouse)$", re.I)
+
+
+def clean_hook(hook: str) -> str:
+    """A model-written title hook, or '' when it is not a calm 2-7 word phrase (clickbait, question, too long)."""
+    h = re.sub(r"\s+", " ", _clean(hook)).strip(" .,:;-–—'‘’")
+    if not 2 <= len(h.split()) <= 7 or len(h) > 48 or _HOOK_BANNED.search(h):
+        return ""
+    return h
+
+
+def subject_phrase(subject: str) -> str:
+    """How the subject reads mid-sentence: "the Great Barrier Reef", but "Saturn", "Ancient Egypt"."""
+    s = _clean(subject)
+    if len(s.split()) >= 2 and _ARTICLE_NOUNS.search(s) and not re.match(r"(?i)(the|mount|lake|ancient|saint|st\.?)\b", s):
+        return "the " + s
+    return s
+
+
+def _mentions_subject(hook: str, subject: str) -> bool:
+    """More than half of the subject's words are in the hook ("Cities of the Indus Valley" names the
+    Indus Valley Civilization well enough; "Life Along the Ancient Nile" does not name Ancient Egypt)."""
+    words = [w for w in re.findall(r"[a-z0-9]+", subject.lower()) if len(w) > 2 and w != "the"]
+    hits = sum(1 for w in words if re.search(rf"\b{re.escape(w)}", hook.lower()))
+    return bool(words) and hits * 2 > len(words)
+
+
+TITLE_VARIANTS = 7
+
+
+def build_title(subject: str, category: str, hours: int, *, hook: str = "", variant: int = 0) -> str:
+    """One of TITLE_VARIANTS shapes (rotate ``variant`` per video); ``hook`` comes from the metadata model.
+
+    Every shape keeps the subject, the length and a sleep intent phrase; shapes that need a hook fall
+    back to a hook-free form, and anything over YouTube's 100 characters falls back to the classic shape.
+    """
+    p, h, S = profile(category), hours_label(hours), _clean(subject)
+    n = max(1, int(hours))
+    k = clean_hook(hook)
+    lead = (k if _mentions_subject(k, S) else f"{S}: {k}") if k else ""
+    shapes = [
+        f"{h} of Calm {p.phrase} to Fall Asleep To | {S}",
+        f"{lead} | {h} of Calm {p.phrase} to Fall Asleep To" if lead
+        else f"The Story of {subject_phrase(S)} | {h} of Calm {p.phrase} to Fall Asleep To",
+        f"{S} | {h} of Calm {p.phrase} for Deep Sleep",
+        f"Fall Asleep Learning About {subject_phrase(S)} | {h} of Calm {p.phrase}",
+        f"{lead} | {n}-Hour {p.doc} for Sleep" if lead else f"{S}: A Calm {n}-Hour {p.doc} for Sleep",
+        f"Bedtime {p.phrase}: {k if k and _mentions_subject(k, S) else S} ({h} to Fall Asleep To)",
+        f"{lead} | Drift Off to Sleep with {h} of Gentle {p.phrase}" if lead
+        else f"Drift Off with {subject_phrase(S)} | {h} of Gentle {p.phrase} for Sleep",
+    ]
+    t = shapes[int(variant) % len(shapes)]
     if len(t) > 100:
-        t = f"{hours_label(hours)} of {p.phrase} to Fall Asleep To | {_clean(subject)}"
+        t = shapes[0] if len(shapes[0]) <= 100 else f"{h} of {p.phrase} to Fall Asleep To | {S}"
     return t[:100]
 
 
@@ -89,10 +145,11 @@ def chapter_lines(chapters: list[dict], *, min_gap: float = 10.0) -> list[str]:
 
 
 def build_description(*, subject: str, category: str, hours: int, blurb: str = "", chapters: list[dict] | None = None,
-                      footer: str = "", credits_url: str = "", extra: str = "", limit_bytes: int = 4900) -> str:
-    """Keyword-first opening line → blurb → chapters → AI/sources footer → credits → hashtags.
+                      footer: str = "", photos: str = "", extra: str = "", limit_bytes: int = 4900) -> str:
+    """Keyword-first opening line → blurb → chapters → sources footer → photo/licence line → extra → hashtags.
 
-    Over the byte limit, source lines are dropped from the end first (chapters carry more value).
+    No link to the channel's own site or code (Gian, 2026-10-11). Over the byte limit, source lines
+    are dropped from the end first (chapters carry more value).
     """
     p = profile(category)
     h = max(1, int(hours))
@@ -100,8 +157,8 @@ def build_description(*, subject: str, category: str, hours: int, blurb: str = "
     head = "\n\n".join(x for x in [opening + (" " + _clean(blurb) if blurb else ""),
                                    ("Chapters\n" + "\n".join(chapter_lines(chapters or []))) if chapter_lines(chapters or []) else ""] if x)
     tail_parts = []
-    if credits_url:
-        tail_parts.append(f"Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay — credits and licences: {credits_url}")
+    if photos:
+        tail_parts.append(_clean(photos))
     if extra:
         tail_parts.append(_clean(extra))
     tail_parts.append(" ".join(hashtags(subject, category)))
@@ -134,7 +191,7 @@ def build_tags(subject: str, category: str, extra: list[str] | None = None, *, l
 def playlist_description(category: str) -> str:
     p = profile(category)
     return (f"Calm, slow {p.phrase.lower()} narrated to help you fall asleep — one long, gentle video at a time. "
-            "Narration is AI-generated; facts are drawn from Wikipedia and the sources listed on each video.")
+            "Facts are drawn from Wikipedia and the sources listed on each video.")
 
 
 def publish_slot(now: datetime, hour: int, minute: int, *, tz: str = "UTC", max_wait_hours: float = 12.0) -> datetime | None:

@@ -116,14 +116,18 @@ METADATA_PROMPT = """You write YouTube metadata for a calm "facts to fall asleep
 Topic: {{topic}}. Video length: about {{hours}} hour(s). First 600 characters of the narration:
 {{opening}}
 
+What the video covers, chapter by chapter:
+{{headings}}
+
 Return JSON:
 {
   "title": "<at most 95 characters, pattern: Calm Facts About <Topic> to Fall Asleep To (<N> Hours); no clickbait, no emojis>",
+  "title_hook": "<2-6 words, Title Case: a calm, evocative name for what THIS video lingers on, built from its chapters, e.g. 'The Silent Rings of Saturn', 'Life Along the Ancient Nile', 'Under the Rainforest Canopy', 'Inside a Working Steam Engine'. Concrete and specific; include the subject's name (or its usual short form) when it reads naturally; no clickbait, no questions, no exclamation marks, no numbers, no emojis.>",
   "description": "<2-3 calm sentences describing the video. No hashtags, no emojis.>",
   "tags": ["<8-12 lowercase tags: sleep, facts, the topic, calm, relaxation, bedtime, and related words>"]
 }"""
 
-DESCRIPTION_FOOTER = """Narration is AI-generated; facts are drawn from the public sources below.
+DESCRIPTION_FOOTER = """Facts in this video are drawn from the public sources below.
 
 Sources (Wikipedia, CC BY-SA 4.0):
 {{sources}}"""

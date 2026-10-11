@@ -16,7 +16,7 @@ def _cfg(tmp_path, **kw):
     (tmp_path / "ledger.json").write_text("[]")
     return Config(minutes=kw.pop("minutes", 180), work_dir=str(tmp_path / "work"), topics_path=str(tmp_path / "topics.yml"),
                   ledger_path=str(tmp_path / "ledger.json"), openai_api_key="sk", yt_client_id="a", yt_client_secret="b",
-                  yt_refresh_token="c", images_min=2, images_fail_below=1, credits_dir=str(tmp_path / "docs" / "credits"), **kw)
+                  yt_refresh_token="c", images_min=2, images_fail_below=1, **kw)
 
 
 def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None):
@@ -73,6 +73,7 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uplo
     def assemble(reel, narration, out, **kw):
         calls.append(f"assemble:{Path(narration).name}"); Path(out).write_bytes(b"final"); return out
     monkeypatch.setattr(pipeline.render, "assemble", assemble)
+    monkeypatch.setattr(pipeline.render, "sample_frames", lambda video, out_dir, times, **kw: calls.append("frames") or [])
     monkeypatch.setattr(pipeline.thumbnail, "make", lambda imgs, out, **kw: (Path(out).write_bytes(b"t"), out)[1])
     def up(yt, path, body, thumb, **kw):
         calls.append("upload"); uploads.append(body); return "vid123"
@@ -89,15 +90,16 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "vision", "render", "assemble:soundtrack.mp3",
-                     "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
+                     "frames", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
     assert rows[0]["title"] == "1 Hour of Calm Facts to Fall Asleep To | Whales" and rows[0]["image_sources"]["commons"] == 3
-    assert rows[0]["credits"].endswith("/credits/" + next((tmp_path / "work").iterdir()).name + ".html")
-    page = next((tmp_path / "docs" / "credits").iterdir()).read_text()
-    assert "https://youtu.be/vid123" in page and "Wikimedia Commons (3)" in page
+    assert rows[0]["title_variant"] == 0 and "credits" not in rows[0]
     body = pipeline._UPLOADS[0]
-    assert body["snippet"]["categoryId"] == "27" and body["snippet"]["description"].startswith("Fall asleep to 1 hour of calm facts: Whales.")
+    desc = body["snippet"]["description"]
+    assert body["snippet"]["categoryId"] == "27" and desc.startswith("Fall asleep to 1 hour of calm facts: Whales.")
+    assert "github" not in desc.lower() and "AI-generated" not in desc
+    assert "Licences: https://creativecommons.org/licenses/" in desc
 
 
 def test_rerun_skips_completed_stages(tmp_path, monkeypatch):
@@ -108,7 +110,7 @@ def test_rerun_skips_completed_stages(tmp_path, monkeypatch):
     calls.clear()
     (tmp_path / "ledger.json").write_text("[]")  # pretend upload failed last time; artifacts remain
     pipeline.run(cfg)
-    assert calls == ["preflight", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
+    assert calls == ["preflight", "frames", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
 
 
 def test_skip_upload_writes_no_ledger(tmp_path, monkeypatch):
@@ -237,7 +239,6 @@ def test_rejected_upload_fails_without_ledger(tmp_path, monkeypatch, capsys):
     assert pipeline.run(_cfg(tmp_path)) == 1
     assert json.loads((tmp_path / "ledger.json").read_text()) == []              # topic stays unused → made again
     assert not any(c.startswith("playlist") for c in calls)
-    assert not (tmp_path / "docs" / "credits").exists()
     assert "did not accept the upload: rejected (length)" in capsys.readouterr().out
 
 

@@ -112,12 +112,28 @@ def test_sections_blurb_and_footer_are_kept():
     llm = FakeLLM(words_per_segment=600, movements=4)
     s = generate_script(llm, topic="Whales", corpus=None, **KW)
     assert [x["heading"] for x in s.sections][:2] == ["Part 100", "Part 101"] and len(s.sections) == s.movements
-    assert s.blurb == "d" and s.footer.startswith("Narration is AI-generated")
+    assert s.blurb == "d" and s.footer.startswith("Facts in this video are drawn from") and "AI-generated" not in s.footer
     again = Script.from_dict(s.to_dict())
-    assert again.sections == s.sections and again.blurb == "d"
+    assert again.sections == s.sections and again.blurb == "d" and again.title_hook == s.title_hook
     old = Script.from_dict({"title": "T", "description": "Blurb here.\n\nNarration is AI-generated; facts...", "tags": [],
                             "body": "b", "word_count": 1, "movements": 1})
     assert old.blurb == "Blurb here." and old.footer.startswith("Narration is AI-generated") and old.sections == []
+    new = Script.from_dict({"title": "T", "description": "Blurb.\n\nFacts in this video are drawn from the public sources below.",
+                            "tags": [], "body": "b", "word_count": 1, "movements": 1})
+    assert new.blurb == "Blurb." and new.footer.startswith("Facts in this video")
+
+
+def test_metadata_title_hook_is_kept_and_sees_the_chapters():
+    class HookLLM(FakeLLM):
+        def generate_json(self, prompt, **kw):
+            if "title_hook" in prompt:
+                self.meta_prompt = prompt
+                return {"title": "T", "description": "d", "tags": [], "title_hook": "The Silent Rings of Saturn"}
+            return super().generate_json(prompt, **kw)
+    llm = HookLLM(words_per_segment=600, movements=4)
+    s = generate_script(llm, topic="Saturn", corpus=None, **KW)
+    assert s.title_hook == "The Silent Rings of Saturn"
+    assert "- Part 100" in llm.meta_prompt                     # chapter headings reach the metadata model
 
 
 
