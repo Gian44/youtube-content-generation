@@ -292,3 +292,13 @@ def test_abandoned_ledger_rows_do_not_count_as_published(tmp_path, monkeypatch):
     assert "research:Whales" in calls and "topicgen" not in calls       # the seed is made again
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[-1]["topic"] == "Whales" and rows[-1]["title_variant"] == 0     # rotations ignore the abandoned row
+
+
+def test_seed_category_drives_title_and_playlist(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    cfg = _cfg(tmp_path)
+    (tmp_path / "topics.yml").write_text("topics:\n  - name: Whales\n    category: oceans & rivers\n    queries: [whale]\n")
+    assert pipeline.run(cfg) == 0
+    assert "playlist:Ocean Facts to Fall Asleep To" in calls
+    assert json.loads((tmp_path / "ledger.json").read_text())[0]["category"] == "oceans & rivers"

@@ -11,6 +11,8 @@ import yaml
 class Topic:
     name: str
     queries: list[str]
+    category: str = ""      # one of the file's categories → title phrase, playlist, hashtag
+    wiki_title: str = ""    # English Wikipedia article, when it differs from the name
 
 
 def _load(path: str) -> dict:
@@ -22,7 +24,8 @@ def load_topics(path: str) -> list[Topic]:
     """Optional seed topics (may be empty when the file only has categories)."""
     out = []
     for t in _load(path).get("topics") or []:
-        out.append(Topic(name=str(t["name"]).strip(), queries=[str(q) for q in (t.get("queries") or [])]))
+        out.append(Topic(name=str(t["name"]).strip(), queries=[str(q) for q in (t.get("queries") or [])],
+                         category=str(t.get("category") or "").strip(), wiki_title=str(t.get("wiki_title") or "").strip()))
     return out
 
 

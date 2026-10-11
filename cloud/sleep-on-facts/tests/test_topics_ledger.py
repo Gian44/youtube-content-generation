@@ -27,7 +27,8 @@ def test_repo_topics_file_is_valid():
     seeds = load_topics("topics.yml")               # usually empty (subjects are generated daily); seeds go first
     assert all(t.name.strip() and t.queries and all(isinstance(q, str) and q for q in t.queries) for t in seeds)
     assert len({t.name.lower() for t in seeds}) == len(seeds)
-    assert len(load_categories("topics.yml")) == 8
+    cats = load_categories("topics.yml")
+    assert len(cats) == 8 and all(t.category in cats for t in seeds)      # seeds name one of the categories
 
 
 def test_unused_seed_then_none(tmp_path):

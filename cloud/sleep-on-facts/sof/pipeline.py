@@ -71,9 +71,10 @@ def run(cfg: Config) -> int:
     if cfg.topic:
         name = cfg.topic.strip()
         seed = next((t for t in seeds if t.name.lower() == name.lower()), None)
-        queries = seed.queries if seed else []
+        if seed:
+            queries, category, wiki_title = seed.queries, seed.category, seed.wiki_title or None
     elif (seed := topics.unused_seed(seeds, rows)) is not None:
-        name, queries = seed.name, seed.queries
+        name, queries, category, wiki_title = seed.name, seed.queries, seed.category, seed.wiki_title or None
     else:
         pick = topicgen.choose(llm, categories=topics.load_categories(cfg.topics_path), ledger=rows, model=cfg.fast_model)
         name, wiki_title, category = pick.topic, pick.wiki_title, pick.category
