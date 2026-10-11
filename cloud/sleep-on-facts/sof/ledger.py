@@ -31,18 +31,21 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], check=check, capture_output=True, text=True)
 
 
-def git_commit_and_push(path: str, entry: dict, *, attempts: int = 3, run=None) -> None:
+def git_commit_and_push(path: str, entry: dict, *, attempts: int = 3, run=None, extra_paths: list[str] | None = None) -> None:
     """Used in the workflow; fails loudly so the run goes red if the ledger can't be saved.
 
     The video is already public by the time this runs, so losing the row would make the topic
     picker repeat the subject tomorrow. If someone pushed meanwhile — including a conflicting
     edit of ledger.json — we take the remote ledger, re-append this entry on top, and push again.
+    ``extra_paths`` (e.g. the video's photo-credits page) are committed alongside and restored
+    after the hard reset that conflict recovery needs.
     """
     git = run or _git
+    extras = {p: open(p, "rb").read() for p in (extra_paths or []) if os.path.exists(p)}
     git("config", "user.name", "sleep-on-facts-bot")
     git("config", "user.email", "actions@users.noreply.github.com")
     for attempt in range(attempts):
-        git("add", path)
+        git("add", path, *extras.keys())
         git("commit", "-m", commit_message(entry))
         if git("pull", "--rebase", check=False).returncode != 0:
             git("rebase", "--abort", check=False)
@@ -53,6 +56,10 @@ def git_commit_and_push(path: str, entry: dict, *, attempts: int = 3, run=None) 
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(rows, f, indent=2, ensure_ascii=False)
                 f.write("\n")
+            for p, data in extras.items():
+                os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+                with open(p, "wb") as f:
+                    f.write(data)
             continue
         if git("push", check=False).returncode == 0:
             return

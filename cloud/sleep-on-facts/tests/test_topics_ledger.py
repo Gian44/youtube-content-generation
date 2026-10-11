@@ -69,3 +69,28 @@ def test_ledger_push_reapplies_entry_after_conflict(tmp_path, monkeypatch):
     rows = json.loads(p.read_text())
     assert [r["video_id"] for r in rows] == ["a", "z", "b"]   # remote kept, ours re-appended
     assert ("push",) in calls and sum(1 for c in calls if c[0] == "commit") == 2
+
+
+def test_ledger_push_keeps_extra_files_through_conflict(tmp_path):
+    from sof import ledger as L
+    p = tmp_path / "ledger.json"; p.write_text("[]")
+    page = tmp_path / "docs" / "credits" / "x.html"; page.parent.mkdir(parents=True); page.write_text("credits")
+    entry = {"date": "2026-10-12", "topic": "Saturn", "video_id": "v"}
+    L.append_entry(str(p), entry)
+    calls = []
+
+    class R:
+        def __init__(self, rc): self.returncode = rc
+
+    def fake_git(*args, check=True):
+        calls.append(args)
+        if args[0] == "pull" and sum(1 for c in calls if c[0] == "pull") == 1:
+            return R(1)
+        if args[:2] == ("reset", "--hard"):
+            page.unlink(); p.write_text("[]")             # the hard reset wipes our uncommitted page
+        return R(0)
+
+    L.git_commit_and_push(str(p), entry, run=fake_git, extra_paths=[str(page)])
+    assert page.read_text() == "credits"
+    adds = [c for c in calls if c[0] == "add"]
+    assert len(adds) == 2 and all(str(page) in c for c in adds)

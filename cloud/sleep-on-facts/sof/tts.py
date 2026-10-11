@@ -51,6 +51,36 @@ def chunk_text(text: str, limit: int) -> list[str]:
     return chunks
 
 
+def chunk_sections(sections: list[dict], limit: int) -> tuple[list[str], list[int]]:
+    """Chunk each movement separately so chunk boundaries coincide with movement boundaries.
+    Returns (chunks, owner) where ``owner[i]`` is the section index of chunk i."""
+    chunks: list[str] = []
+    owner: list[int] = []
+    for si, sec in enumerate(sections):
+        for ch in chunk_text(str(sec.get("body") or ""), limit):
+            chunks.append(ch)
+            owner.append(si)
+    return chunks, owner
+
+
+def section_starts(chunk_paths: list[str], owner: list[int], n_sections: int, *, duration=None) -> list[float]:
+    """Start time (s) of each section in the concatenated narration, from the chunk durations.
+    Sections that produced no chunk inherit the next start (they are dropped as chapters later)."""
+    duration = duration or duration_seconds
+    starts: list[float | None] = [None] * n_sections
+    t = 0.0
+    for path, si in zip(chunk_paths, owner):
+        if starts[si] is None:
+            starts[si] = t
+        t += duration(path)
+    out: list[float] = []
+    nxt = t
+    for v in reversed(starts):
+        nxt = v if v is not None else nxt
+        out.append(nxt)
+    return list(reversed(out))
+
+
 def synthesize(chunks: list[str], out_dir: str, *, api_key: str, model: str, voice: str, speed: float,
                instructions: str | None = None, transport=None, retries: int = 4, sleep=time.sleep) -> list[str]:
     Path(out_dir).mkdir(parents=True, exist_ok=True)

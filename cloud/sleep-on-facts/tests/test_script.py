@@ -102,3 +102,15 @@ def test_repeated_movement_is_rewritten_once():
     s = generate_script(llm, topic="W", corpus=None, **{**KW, "target_words": 2000})
     assert sum("previous draft repeated" in c for c in llm.calls) >= 1
     assert "fresh1" in s.body
+
+
+def test_sections_blurb_and_footer_are_kept():
+    llm = FakeLLM(words_per_segment=600, movements=4)
+    s = generate_script(llm, topic="Whales", corpus=None, **KW)
+    assert [x["heading"] for x in s.sections][:2] == ["Part 100", "Part 101"] and len(s.sections) == s.movements
+    assert s.blurb == "d" and s.footer.startswith("Narration is AI-generated")
+    again = Script.from_dict(s.to_dict())
+    assert again.sections == s.sections and again.blurb == "d"
+    old = Script.from_dict({"title": "T", "description": "Blurb here.\n\nNarration is AI-generated; facts...", "tags": [],
+                            "body": "b", "word_count": 1, "movements": 1})
+    assert old.blurb == "Blurb here." and old.footer.startswith("Narration is AI-generated") and old.sections == []

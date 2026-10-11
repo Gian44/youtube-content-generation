@@ -32,3 +32,21 @@ def test_compose_is_1280x720_jpeg_and_fits_long_titles(tmp_path):
         assert im.size == (1280, 720) and im.format == "JPEG"
     out1 = thumbnail.compose(src, topic="Whales", hours=1, out=str(tmp_path / "t1.jpg"))
     assert (tmp_path / "t1.jpg").stat().st_size > 20_000
+
+
+def test_make_uses_subject_candidates_and_chooser(tmp_path):
+    scenery = _photo(tmp_path / "scenery.jpg", 95, contrast=True, dark_left=True)     # best by heuristic
+    subj_a = _photo(tmp_path / "a.jpg", 95)
+    subj_b = _photo(tmp_path / "b.jpg", 90)
+    seen = {}
+
+    def chooser(paths):
+        seen["paths"] = paths
+        return subj_b
+
+    out = thumbnail.make([scenery, subj_a, subj_b], topic="Saturn", hours=3, out=str(tmp_path / "t.jpg"),
+                         candidates=[subj_a, subj_b], choose=chooser)
+    assert seen["paths"] == [subj_a, subj_b] and out.endswith("t.jpg")
+    # chooser failing → heuristic, still only among subject candidates
+    thumbnail.make([scenery, subj_a], topic="Saturn", hours=3, out=str(tmp_path / "t2.jpg"), candidates=[subj_a],
+                   choose=lambda p: None)

@@ -47,3 +47,11 @@ def test_request_body_switches_fields_by_model():
     new = request_body("hi", model="gpt-4o-mini-tts", voice="ash", speed=0.9, instructions="calm")
     assert old["speed"] == 0.9 and "instructions" not in old
     assert new["instructions"] == "calm" and "speed" not in new
+
+
+def test_sections_chunk_separately_and_give_chapter_starts():
+    from sof import tts
+    secs = [{"heading": "A", "body": "One. Two. Three."}, {"heading": "B", "body": ""}, {"heading": "C", "body": "Four five. Six."}]
+    chunks, owner = tts.chunk_sections(secs, 10)
+    assert chunks == ["One. Two.", "Three.", "Four five.", "Six."] and owner == [0, 0, 2, 2]
+    assert tts.section_starts(["a", "b", "c", "d"], owner, 3, duration=lambda p: 2.5) == [0.0, 5.0, 5.0]

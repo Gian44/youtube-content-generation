@@ -2,7 +2,9 @@ name: sleep-on-facts daily
 
 on:
   schedule:
-    - cron: "0 18 * * *"   # daily 02:00 Asia/Manila (smoke runs reviewed 2026-10-07)
+    # 15:17 UTC (23:17 Manila). GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour
+    # minute helps; the video is uploaded private and YouTube publishes it at 8:30 PM US Eastern.
+    - cron: "17 15 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -64,7 +66,7 @@ jobs:
           if [ -n "$IN_TOPIC" ]; then ARGS+=(--topic "$IN_TOPIC"); fi
           if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
           python run.py "${ARGS[@]}"
-      - name: Keep small run artifacts (script, thumbnail, credits)
+      - name: Keep small run artifacts (script, thumbnail, credits, chapters, photo labels)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -73,5 +75,8 @@ jobs:
             cloud/sleep-on-facts/work/**/script.json
             cloud/sleep-on-facts/work/**/thumb.jpg
             cloud/sleep-on-facts/work/**/credits.json
+            cloud/sleep-on-facts/work/**/chapters.json
+            cloud/sleep-on-facts/work/**/image_labels.json
+            docs/credits/*.html
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 30

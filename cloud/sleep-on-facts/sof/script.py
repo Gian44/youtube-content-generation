@@ -36,19 +36,36 @@ class Script:
     sources: list[str] = field(default_factory=list)
     image_keywords: list[str] = field(default_factory=list)
     setting_queries: list[str] = field(default_factory=list)
+    sections: list[dict] = field(default_factory=list)   # [{"heading", "body"}] — one per movement, for chapters
+    blurb: str = ""                                       # 2-3 sentence summary (metadata model)
+    footer: str = ""                                      # AI disclosure + Wikipedia sources
 
     def to_dict(self) -> dict:
         return {
             "title": self.title, "description": self.description, "tags": self.tags, "body": self.body,
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
             "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
+            "sections": self.sections, "blurb": self.blurb, "footer": self.footer,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Script":
-        return cls(**{k: d[k] for k in ("title", "description", "tags", "body", "word_count", "movements")},
-                   image_queries=list(d.get("image_queries") or []), sources=list(d.get("sources") or []),
-                   image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []))
+        sc = cls(**{k: d[k] for k in ("title", "description", "tags", "body", "word_count", "movements")},
+                 image_queries=list(d.get("image_queries") or []), sources=list(d.get("sources") or []),
+                 image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []),
+                 sections=[x for x in (d.get("sections") or []) if isinstance(x, dict)],
+                 blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""))
+        if not sc.blurb and not sc.footer:
+            sc.blurb, sc.footer = split_description(sc.description)
+        return sc
+
+
+def split_description(description: str) -> tuple[str, str]:
+    """(blurb, footer) from an older combined description: the footer starts at the AI-disclosure line."""
+    i = (description or "").find("Narration is AI-generated")
+    if i < 0:
+        return (description or "").strip(), ""
+    return description[:i].strip(), description[i:].strip()
 
 
 def _fill(template: str, **kw) -> str:
@@ -183,7 +200,8 @@ def generate_script(
         _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600]), max_tokens=600,
         model=fast_model,
     )
-    description = (str(meta.get("description") or "").strip() + "\n\n" + sources_footer(corpus)).strip()
+    blurb, footer = str(meta.get("description") or "").strip(), sources_footer(corpus)
+    description = (blurb + "\n\n" + footer).strip()
     return Script(
         title=str(meta.get("title") or f"Calm Facts About {topic} to Fall Asleep To")[:100],
         description=description,
@@ -195,4 +213,7 @@ def generate_script(
         sources=list(corpus.sources) if corpus else [],
         image_keywords=[str(k).lower() for k in (first.get("image_keywords") or [])] or [w for w in topic.lower().split() if len(w) > 3],
         setting_queries=[str(q) for q in (first.get("image_setting_queries") or [])],
+        sections=[{"heading": h, "body": b} for h, b in zip(covered, bodies)],
+        blurb=blurb,
+        footer=footer,
     )

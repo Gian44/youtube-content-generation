@@ -192,5 +192,34 @@ def compose(photo: str, *, topic: str, hours: int, out: str, tagline: str = "Cal
     return out
 
 
-def make(image_paths: list[str], *, topic: str, hours: int, out: str) -> str:
-    return compose(pick_photo(image_paths), topic=topic, hours=hours, out=out)
+def _aspect(path: str) -> float:
+    from PIL import Image
+
+    try:
+        with Image.open(path) as im:
+            return im.width / max(1, im.height)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates: list[str] | None = None,
+         choose=None, max_choices: int = 16) -> str:
+    """Compose the thumbnail from the best photo.
+
+    ``candidates`` — photos verified to show the subject itself (vision-labelled); the thumbnail is
+    never taken from scenery when those exist. ``choose(paths) -> path | None`` picks the most iconic
+    one (a vision call); the mood/contrast heuristic is the fallback. Wide photos are preferred
+    because the template crops to 16:9.
+    """
+    pool = [p for p in (candidates or []) if p] or list(image_paths)
+    wide = [p for p in pool if _aspect(p) >= 1.3] or pool
+    best = None
+    if choose is not None:
+        try:
+            best = choose(wide[:max_choices])
+        except Exception as exc:  # noqa: BLE001
+            log.warning("thumbnail chooser failed: %s", exc)
+    if not best:
+        best = pick_photo(wide)
+    log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
+    return compose(best, topic=topic, hours=hours, out=out)

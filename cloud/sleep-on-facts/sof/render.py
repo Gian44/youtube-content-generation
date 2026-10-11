@@ -30,19 +30,35 @@ def run(cmd: list[str], timeout: int) -> None:
 
 ZOOM_END = 1.06     # very slow push-in: 1.00 → 1.06 over the clip (sleep audience; smaller steps too)
 CANVAS = 4          # pre-cover at 4× the output so zoompan's whole-pixel rounding is ¼ of an output pixel
+CONTAIN_BELOW = 1.3  # narrower than this (e.g. portrait/square) → shown whole, not cropped
 
 
-def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = CANVAS) -> str:
-    """Resize+centre-crop ``src`` once (Pillow, Lanczos) to ``scale``× the output frame.
+def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = CANVAS, dim: float = 1.0,
+                contain_below: float = CONTAIN_BELOW) -> str:
+    """Prepare one photo at ``scale``× the output frame (Pillow, Lanczos) — done once per image, not
+    per frame inside ffmpeg, so a 150-clip reel stays affordable.
 
-    Done once per image, not per frame inside ffmpeg, so a 150-clip reel stays affordable.
+    * Landscape photos (aspect ≥ ``contain_below``) fill the frame (centre crop).
+    * Portrait/square photos (statues, seals, tall buildings) are shown WHOLE on a blurred, darkened
+      fill of themselves, documentary-style, instead of losing their top and bottom to the crop.
+    * ``dim`` < 1 darkens the frame (night-friendly: a phone shouldn't light up the bedroom).
     """
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
     tw, th = int(width * scale), int(height * scale)
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im).convert("RGB")
-        ImageOps.fit(im, (tw, th), method=Image.LANCZOS, centering=(0.5, 0.5)).save(dst, "JPEG", quality=94, subsampling=0)
+        if im.width / max(1, im.height) >= contain_below:
+            out = ImageOps.fit(im, (tw, th), method=Image.LANCZOS, centering=(0.5, 0.5))
+        else:
+            small = ImageOps.fit(im, (max(16, tw // 16), max(9, th // 16)), method=Image.BILINEAR)
+            bg = small.filter(ImageFilter.GaussianBlur(4)).resize((tw, th), Image.BILINEAR)
+            out = ImageEnhance.Brightness(bg).enhance(0.45)
+            fg = ImageOps.contain(im, (tw, th), method=Image.LANCZOS)
+            out.paste(fg, ((tw - fg.width) // 2, (th - fg.height) // 2))
+        if dim < 1.0:
+            out = ImageEnhance.Brightness(out).enhance(max(0.2, dim))
+        out.save(dst, "JPEG", quality=94, subsampling=0)
     return dst
 
 
@@ -100,14 +116,15 @@ def plan_batches(n: int, size: int) -> list[tuple[int, int]]:
 
 # ---------------------------------------------------------------- orchestration
 
-def _render_clips(images: list[str], tmp: Path, *, dwell, crossfade, width, height, fps, workers: int | None) -> list[str]:
+def _render_clips(images: list[str], tmp: Path, *, dwell, crossfade, width, height, fps, workers: int | None,
+                  dim: float = 1.0) -> list[str]:
     n = max(1, min(workers or max(2, (os.cpu_count() or 2) - 1), len(images)))
     results: list[str | None] = [None] * len(images)
 
     def one(idx: int, img: str):
         clip = str(tmp / f"clip_{idx:04d}.mp4")
         try:
-            covered = cover_image(img, str(tmp / f"cover_{idx:04d}.jpg"), width=width, height=height)
+            covered = cover_image(img, str(tmp / f"cover_{idx:04d}.jpg"), width=width, height=height, dim=dim)
         except Exception as exc:  # noqa: BLE001 — a corrupt download must not kill the reel
             return idx, None, f"cover failed: {exc}"
         r = subprocess.run(ken_burns_cmd(covered, clip, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps),
@@ -136,12 +153,13 @@ def _concat_copy(clips: list[str], tmp: Path, name: str) -> str:
 
 
 def build_reel(images: list[str], tmp_dir: str, *, dwell: float, crossfade: float, width: int, height: int, fps: int,
-               batch: int, workers: int | None = None) -> str:
+               batch: int, workers: int | None = None, dim: float = 1.0) -> str:
     """Return the path of one crossfaded reel built from ``images`` (hard-cut concat as fallback)."""
     tmp = Path(tmp_dir)
     tmp.mkdir(parents=True, exist_ok=True)
     clip_dur = dwell + crossfade
-    clips = _render_clips(images, tmp, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps, workers=workers)
+    clips = _render_clips(images, tmp, dwell=dwell, crossfade=crossfade, width=width, height=height, fps=fps, workers=workers,
+                          dim=dim)
     if not clips:
         raise RuntimeError("no slideshow clips could be rendered")
     if len(clips) == 1:

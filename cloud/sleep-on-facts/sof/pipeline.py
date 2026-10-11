@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import images, ledger, music, render, research, script, thumbnail, topicgen, topics, tts, upload
+from sof import credits, images, ledger, music, render, research, script, seo, thumbnail, topicgen, topics, tts, upload
 from sof.config import Config
 from sof.llm import LLM
 
@@ -101,17 +101,26 @@ def run(cfg: Config) -> int:
         script_path.write_text(json.dumps(sc.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"script: {sc.word_count} words, {sc.movements} movements · {sc.title}", flush=True)
 
-    # 3. TTS.
+    # 3. TTS — synthesised movement by movement so chapter start times are exact.
     _stage("tts")
     narration = work / "narration.mp3"
+    chapters_path = work / "chapters.json"
     chars = len(sc.body)
-    if not narration.exists():
-        chunks = tts.chunk_text(sc.body, cfg.tts_chunk_chars)
+    secs = [x for x in sc.sections if str(x.get("body") or "").strip()] or [{"heading": "", "body": sc.body}]
+    if not narration.exists() or not chapters_path.exists():
+        chunks, owner = tts.chunk_sections(secs, cfg.tts_chunk_chars)
         parts = tts.synthesize(chunks, str(work / "tts"), api_key=cfg.openai_api_key, model=cfg.tts_model,
                                voice=cfg.tts_voice, speed=cfg.tts_speed, instructions=cfg.tts_instructions)
-        tts.assemble(parts, str(work))
+        if not narration.exists():
+            tts.assemble(parts, str(work))
+        starts = tts.section_starts(parts, owner, len(secs), duration=tts.duration_seconds)
+        chapters_path.write_text(json.dumps([{"start": round(st, 2), "title": str(x.get("heading") or "")}
+                                             for st, x in zip(starts, secs)], indent=1, ensure_ascii=False), encoding="utf-8")
+    chapters = json.loads(chapters_path.read_text(encoding="utf-8"))
     duration = tts.duration_seconds(str(narration))
-    print(f"narration: {duration / 60:.1f} min · est. TTS cost ${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)
+    hours = max(1, round(duration / 3600))
+    print(f"narration: {duration / 60:.1f} min · {len(chapters)} chapters · est. TTS cost "
+          f"${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)
 
     # 3b. Faint ambient bed under the voice (synthesised, licence-free).
     soundtrack = narration
@@ -123,34 +132,42 @@ def run(cfg: Config) -> int:
         soundtrack = mixed
         print(f"soundtrack: bed at {cfg.music_lufs:g} LUFS under narration", flush=True)
 
-    # 4. Images.
+    # 4. Images: Commons (the article's own photos, then its category), NASA for space topics, then
+    # name-gated stock; a vision pass labels every download subject / setting / reject.
     _stage("images")
     img_dir = work / "images"
+    picked_path = work / "image_labels.json"
     # Never fetch more images than the narration can show (plus a margin); 3 h → the full 150,
     # a 3-minute smoke → ~15, so the reel build stays proportional to the video.
     showable = int(duration // max(1.0, cfg.dwell_seconds)) + 6
     target = max(cfg.images_fail_below, min(cfg.images_target, showable))
-    minimum = min(cfg.images_min, target)
-    existing = sorted(str(p) for p in img_dir.glob("*.jpg")) if img_dir.exists() else []
-    if len(existing) >= minimum:
-        image_paths = existing
+    article = corpus.title if corpus else wiki_title
+    space = images.is_space_topic(category, corpus.lead if corpus else "")
+    seo_category = category or (seo.SPACE_CATEGORY if space else "")
+    if picked_path.exists():
+        picked = json.loads(picked_path.read_text(encoding="utf-8"))
+        labels, image_paths = picked["labels"], picked["reel"]
     else:
-        # Subject shots first (caption must mention a subject keyword), setting shots as a minority,
-        # generic calm imagery only up to the hard floor. Ask for ~40 % more than needed: CDN 5xx,
-        # tiny files, duplicates and the vision check all eat into the count.
-        urls = images.collect_urls(list(queries) + list(sc.image_queries), target=int(target * 1.4) + 5,
-                                   pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
-                                   keywords=sc.image_keywords, setting_queries=sc.setting_queries,
-                                   generic_floor=cfg.images_fail_below)
-        image_paths = images.download_all(urls, str(img_dir), want=int(target * 1.25) + 2)
-        if cfg.images_vision_check:
-            image_paths = images.verify_relevance(image_paths, subject=name, api_key=cfg.openai_api_key,
-                                                  model=cfg.images_vision_model, keep_min=cfg.images_fail_below)
-        image_paths = image_paths[:target]
+        terms = images.name_terms(name, article or "", sc.image_keywords)
+        use_nasa = cfg.images_nasa == "on" or (cfg.images_nasa == "auto" and space)
+        urls = images.gather_urls(topic=name, wiki_title=article, terms=terms, queries=list(queries) + list(sc.image_queries),
+                                  setting_queries=sc.setting_queries, target=int(target * 1.4) + 5,
+                                  pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
+                                  use_commons=cfg.images_commons, use_nasa=use_nasa, generic_floor=cfg.images_fail_below)
+        downloaded = images.download_all(urls, str(img_dir), want=int(target * 1.25) + 2)
+        labels = (images.classify(downloaded, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+                  if cfg.images_vision_check else {p: "unknown" for p in downloaded})
+        image_paths = images.select_reel(downloaded, labels, target=target, floor=cfg.images_fail_below,
+                                         setting_share=cfg.images_setting_share)
+        picked_path.write_text(json.dumps({"terms": terms, "nasa": use_nasa, "labels": labels, "reel": image_paths},
+                                          indent=1, ensure_ascii=False), encoding="utf-8")
     if len(image_paths) < cfg.images_fail_below:
         print(f"✗ only {len(image_paths)} images; need at least {cfg.images_fail_below}", flush=True)
         return EXIT_IMAGES
-    print(f"images: {len(image_paths)}", flush=True)
+    used = _used_credits(img_dir, image_paths)
+    by_source = {s: sum(1 for u in used if u.get("source") == s) for s in ("commons", "nasa", "pexels", "pixabay")}
+    print(f"images: {len(image_paths)} · " + ", ".join(f"{k} {v}" for k, v in by_source.items() if v)
+          + f" · subject {sum(1 for p in image_paths if labels.get(p) == 'subject')}", flush=True)
 
     # 5. Render.
     _stage("render")
@@ -160,26 +177,52 @@ def run(cfg: Config) -> int:
         if not reel.exists():
             built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
                                       crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
-                                      fps=cfg.fps, batch=cfg.xfade_batch)
+                                      fps=cfg.fps, batch=cfg.xfade_batch, dim=cfg.video_dim)
             os.replace(built, reel)
         render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
-        thumbnail.make(image_paths, topic=name, hours=max(1, round(cfg.minutes / 60)), out=str(thumb))
+        subject_shots = [p for p in image_paths if labels.get(p) == "subject"]
+        chooser = None
+        if cfg.images_vision_check and cfg.openai_api_key:
+            def chooser(paths):
+                return images.pick_iconic(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+        thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser)
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
 
-    # 6. Upload + ledger.
+    # 6. Upload (scheduled for the evening slot) + playlist + credits page + ledger.
     if cfg.skip_upload:
         print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
         return EXIT_OK
     _stage("upload")
-    body = upload.video_body(title=sc.title, description=sc.description, tags=sc.tags, privacy=cfg.privacy)
+    title = seo.build_title(name, seo_category, hours)
+    credits_file = Path(cfg.credits_dir) / f"{run_id}.html"
+    credits_url = f"{cfg.site_url.rstrip('/')}/credits/{run_id}.html"
+    description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=sc.blurb,
+                                        chapters=chapters, footer=sc.footer or sc.description, credits_url=credits_url)
+    tags = seo.build_tags(name, seo_category, sc.tags)
+    publish_at = None
+    if cfg.schedule_publish and not cfg.is_smoke and cfg.privacy == "public":
+        slot = seo.publish_slot(datetime.now(timezone.utc), cfg.publish_hour, cfg.publish_minute, tz=cfg.publish_tz)
+        publish_at = seo.rfc3339(slot) if slot else None
+    body = upload.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy, publish_at=publish_at)
     video_id = upload.upload_video(yt, str(final), body, str(thumb))
+    print(f"uploaded {video_id}: {title} · " + (f"scheduled for {publish_at}" if publish_at else cfg.privacy), flush=True)
+    credits.write_page(str(credits_file), title=title, video_url=f"https://youtu.be/{video_id}", items=used)
+    if cfg.playlists and not cfg.is_smoke:
+        try:
+            prof = seo.profile(seo_category)
+            playlist_id = upload.ensure_playlist(yt, prof.playlist, seo.playlist_description(seo_category))
+            upload.add_to_playlist(yt, playlist_id, video_id)
+            print(f"playlist: {prof.playlist}", flush=True)
+        except Exception as exc:  # noqa: BLE001 — never fail a published video over a playlist
+            print(f"! playlist step failed: {exc}", flush=True)
     entry = {
         "date": today, "topic": name, "category": category, "wiki_title": (corpus.title if corpus else wiki_title),
-        "video_id": video_id, "title": sc.title, "privacy": cfg.privacy,
+        "video_id": video_id, "title": title, "privacy": cfg.privacy, "publish_at": publish_at,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
+        "image_sources": by_source, "credits": credits_url,
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
         "run_url": _run_url(),
     }
@@ -188,9 +231,17 @@ def run(cfg: Config) -> int:
         return EXIT_OK
     ledger.append_entry(cfg.ledger_path, entry)
     if os.environ.get("GITHUB_ACTIONS"):
-        ledger.git_commit_and_push(cfg.ledger_path, entry)
+        ledger.git_commit_and_push(cfg.ledger_path, entry, extra_paths=[str(credits_file)])
     print(f"✓ uploaded https://youtu.be/{video_id} · {(time.time() - t0) / 60:.1f} min total", flush=True)
     return EXIT_OK
+
+
+def _used_credits(img_dir: Path, image_paths: list[str]) -> list[dict]:
+    """Credit rows (source, author, licence, page) for exactly the photos in the reel, in reel order."""
+    f = img_dir / "credits.json"
+    rows = json.loads(f.read_text(encoding="utf-8")) if f.exists() else []
+    by_file = {r.get("file"): r for r in rows}
+    return [by_file[Path(p).name] for p in image_paths if Path(p).name in by_file]
 
 
 def _run_url() -> str:

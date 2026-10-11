@@ -34,15 +34,71 @@ def health(yt) -> str:
     return (items[0].get("snippet") or {}).get("title") or items[0].get("id", "?")
 
 
-def video_body(*, title: str, description: str, tags: list[str], privacy: str) -> dict:
+CATEGORY_EDUCATION = "27"
+
+
+def video_body(*, title: str, description: str, tags: list[str], privacy: str, publish_at: str | None = None) -> dict:
+    """``publish_at`` (RFC 3339, UTC) uploads the video private and lets YouTube publish it at that time."""
+    status = {"privacyStatus": "private" if publish_at else privacy, "selfDeclaredMadeForKids": False}
+    if publish_at:
+        status["publishAt"] = publish_at
     return {
         "snippet": {"title": title[:100], "description": description[:4900], "tags": tags[:30],
-                    "categoryId": "24", "defaultLanguage": "en"},
+                    "categoryId": CATEGORY_EDUCATION, "defaultLanguage": "en", "defaultAudioLanguage": "en"},
         # No altered/synthetic-content label: YouTube requires it for realistic depictions of real people,
         # events or places, or AI music as the main focus — not for a TTS narrator reading an AI-assisted
-        # script over real stock photos ("production assistance" / voice-over in its own examples).
-        "status": {"privacyStatus": privacy, "selfDeclaredMadeForKids": False},
+        # script over real photos ("production assistance" / voice-over in its own examples).
+        "status": status,
     }
+
+
+def ensure_playlist(yt, title: str, description: str = "") -> str:
+    """ID of the channel's playlist called ``title`` (case-insensitive), creating it public if missing."""
+    req = yt.playlists().list(part="snippet", mine=True, maxResults=50)
+    while req is not None:
+        resp = req.execute()
+        for it in resp.get("items") or []:
+            if str((it.get("snippet") or {}).get("title") or "").strip().lower() == title.strip().lower():
+                return it["id"]
+        req = yt.playlists().list_next(req, resp)
+    body = {"snippet": {"title": title[:150], "description": description[:5000], "defaultLanguage": "en"},
+            "status": {"privacyStatus": "public"}}
+    created = yt.playlists().insert(part="snippet,status", body=body).execute()
+    log.info("created playlist %r (%s)", title, created.get("id"))
+    return created["id"]
+
+
+def add_to_playlist(yt, playlist_id: str, video_id: str, *, attempts: int = 4, sleep=time.sleep) -> None:
+    """Add ``video_id`` unless it is already in the playlist. A playlist created seconds ago can
+    answer 404 for a while (eventual consistency), so listing is best-effort and the insert retries."""
+    from googleapiclient.errors import HttpError
+
+    try:
+        req = yt.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=50)
+        while req is not None:
+            resp = req.execute()
+            if any(((it.get("snippet") or {}).get("resourceId") or {}).get("videoId") == video_id for it in resp.get("items") or []):
+                return
+            req = yt.playlistItems().list_next(req, resp)
+    except HttpError as exc:
+        if getattr(exc.resp, "status", None) != 404:
+            raise
+    body = {"snippet": {"playlistId": playlist_id, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}
+    for attempt in range(attempts):
+        try:
+            yt.playlistItems().insert(part="snippet", body=body).execute()
+            return
+        except HttpError as exc:
+            if getattr(exc.resp, "status", None) != 404 or attempt == attempts - 1:
+                raise
+            sleep(5 * (attempt + 1))
+
+
+def update_snippet(yt, video_id: str, *, title: str, description: str, tags: list[str]) -> None:
+    """Replace title/description/tags (and set Education + English) on an existing video."""
+    yt.videos().update(part="snippet", body={"id": video_id, "snippet": {
+        "title": title[:100], "description": description[:4900], "tags": tags[:30], "categoryId": CATEGORY_EDUCATION,
+        "defaultLanguage": "en", "defaultAudioLanguage": "en"}}).execute()
 
 
 def upload_video(yt, video_path: str, body: dict, thumb_path: str | None, *, chunk_mb: int = 8, sleep=time.sleep) -> str:

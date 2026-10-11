@@ -1,10 +1,52 @@
-from sof.upload import video_body, upload_video, health
+from sof.upload import video_body, upload_video, health, ensure_playlist, add_to_playlist
 
 
 def test_video_body():
     b = video_body(title="T", description="D", tags=["a"], privacy="public")
-    assert b["snippet"]["categoryId"] == "24" and b["status"]["privacyStatus"] == "public"
+    assert b["snippet"]["categoryId"] == "27" and b["status"]["privacyStatus"] == "public"      # Education
+    assert b["snippet"]["defaultAudioLanguage"] == "en" and "publishAt" not in b["status"]
     assert b["status"]["selfDeclaredMadeForKids"] is False and "containsSyntheticMedia" not in b["status"]
+
+
+def test_video_body_scheduled_is_private_with_publish_at():
+    b = video_body(title="T", description="D", tags=[], privacy="public", publish_at="2026-10-12T00:30:00Z")
+    assert b["status"]["privacyStatus"] == "private" and b["status"]["publishAt"] == "2026-10-12T00:30:00Z"
+
+
+class FakePlaylists:
+    """Just enough of the YouTube client for playlists()/playlistItems()."""
+    def __init__(self, existing=None, items=None):
+        self.existing, self.items, self.inserted, self._op = existing or [], items or [], [], None
+
+    def playlists(self): self._kind = "pl"; return self
+    def playlistItems(self): self._kind = "pi"; return self
+    def list(self, **kw): self._op = ("list", self._kind); return self
+    def list_next(self, req, resp): return None
+    def insert(self, **kw): self._op = ("insert", self._kind); self.inserted.append((self._kind, kw)); return self
+
+    def execute(self):
+        if self._op == ("list", "pl"):
+            return {"items": [{"id": i, "snippet": {"title": t}} for i, t in self.existing]}
+        if self._op == ("list", "pi"):
+            return {"items": [{"snippet": {"resourceId": {"videoId": v}}} for v in self.items]}
+        return {"id": "PLnew"}
+
+
+def test_ensure_playlist_reuses_or_creates():
+    yt = FakePlaylists(existing=[("PL1", "Space Facts to Fall Asleep To")])
+    assert ensure_playlist(yt, "space facts to fall asleep to") == "PL1" and not yt.inserted
+    yt = FakePlaylists()
+    assert ensure_playlist(yt, "History for Sleep", "d") == "PLnew"
+    kind, kw = yt.inserted[0]
+    assert kind == "pl" and kw["body"]["status"]["privacyStatus"] == "public"
+
+
+def test_add_to_playlist_is_idempotent():
+    yt = FakePlaylists(items=["vid1"])
+    add_to_playlist(yt, "PL1", "vid1")
+    assert not yt.inserted
+    add_to_playlist(yt, "PL1", "vid2")
+    assert yt.inserted[0][1]["body"]["snippet"]["resourceId"]["videoId"] == "vid2"
 
 
 class FakeYT:
@@ -50,3 +92,27 @@ def test_upload_retries_dropped_connections(tmp_path):
     assert upload_video(FlakyYT(), str(f), video_body(title="T", description="D", tags=[], privacy="public"), None,
                         sleep=slept.append) == "vid456"
     assert FlakyYT.calls == 3 and slept == [2, 4]
+
+
+def test_add_to_new_playlist_tolerates_404_then_retries():
+    from googleapiclient.errors import HttpError
+
+    class Resp(dict):
+        status = 404
+        reason = "Not Found"
+
+    class NewPlaylistYT(FakePlaylists):
+        inserts = 0
+
+        def execute(self):
+            if self._op == ("list", "pi"):
+                raise HttpError(Resp(), b"playlistNotFound")
+            if self._op == ("insert", "pi"):
+                NewPlaylistYT.inserts += 1
+                if NewPlaylistYT.inserts == 1:
+                    raise HttpError(Resp(), b"playlistNotFound")
+            return {"id": "x"}
+
+    slept = []
+    add_to_playlist(NewPlaylistYT(), "PLnew", "vid9", sleep=slept.append)
+    assert NewPlaylistYT.inserts == 2 and slept == [5]

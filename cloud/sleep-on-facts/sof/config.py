@@ -48,8 +48,11 @@ class Config:
     images_target: int = 150
     images_min: int = 100
     images_fail_below: int = 30
-    images_vision_check: bool = True            # gpt-4o-mini looks at each photo and drops off-topic ones (~$0.02/video)
+    images_vision_check: bool = True            # gpt-4o-mini labels each photo subject/setting/reject (~$0.01/video)
     images_vision_model: str = "gpt-4o-mini"
+    images_commons: bool = True                 # Wikimedia Commons: the article's own photos + its Commons category
+    images_nasa: str = "auto"                   # "auto" = space topics only, "on", "off"
+    images_setting_share: float = 0.3           # at most this share of the reel may be setting/scenery shots
     # render
     width: int = 1920
     height: int = 1080
@@ -57,6 +60,15 @@ class Config:
     dwell_seconds: float = 20.0
     crossfade_seconds: float = 1.5
     xfade_batch: int = 20
+    video_dim: float = 0.75         # photos shown at 75 % brightness — night-friendly (Gian, 2026-10-11)
+    # discovery
+    publish_tz: str = "America/New_York"   # scheduled publish slot: 8:30 PM US Eastern, all year (DST-aware)
+    publish_hour: int = 20
+    publish_minute: int = 30
+    schedule_publish: bool = True   # upload private + publishAt; a run that is >12 h from the slot publishes at once
+    playlists: bool = True          # add each video to its category playlist (created on first use)
+    site_url: str = "https://gian44.github.io/youtube-content-generation"
+    credits_dir: str = "../../docs/credits"   # repo-root docs/ (GitHub Pages), relative to cloud/sleep-on-facts
     # secrets
     openai_api_key: str = ""
     gemini_api_key: str = ""

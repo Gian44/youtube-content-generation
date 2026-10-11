@@ -60,7 +60,7 @@ Output as JSON:
   ],
   "image_search_queries": ["..."], // 10-15 stock-photo searches that show THE SUBJECT ITSELF (e.g. "octopus underwater close up", "octopus tentacles reef")
   "image_setting_queries": ["..."], // 4-6 searches for its natural setting/places only (e.g. "coral reef underwater", "deep ocean floor") — used sparingly
-  "image_keywords": ["..."]        // 4-8 lowercase words a photo's caption must contain to count as the subject (e.g. "octopus", "cephalopod", "tentacle")
+  "image_keywords": ["..."]        // 3-8 lowercase NAMES that identify this subject and nothing else: its own name and spelling variants, proper names of its famous parts, sites, people or missions (Saturn: "saturn", "cassini", "titan"; Indus Valley Civilisation: "indus", "harappa", "mohenjo-daro"). NEVER generic words such as "planet", "rings", "ruins", "archaeological", "forest", "river", "engine"
 }"""
 
 SEGMENT_PROMPT = """You are narrating a calm "facts to fall asleep to" video about ONE topic.
