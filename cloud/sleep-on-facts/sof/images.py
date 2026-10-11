@@ -599,7 +599,8 @@ CLASSIFY_PROMPT = (
     '- "setting": it shows the real place or environment where {subject} is found, with no other main subject.\n'
     '- "reject": anything else — a different thing of the same kind (another planet, another ruin, another species), '
     "a vehicle, rocket or product merely named after it, people posing, text or document pages, maps, diagrams, "
-    "charts, logos, or unrelated scenes.\n"
+    "charts, logos, multi-panel scientific figures, side-by-side comparisons, flat map projections, "
+    "or unrelated scenes. This is a calm, beautiful video: prefer clear, natural-looking views.\n"
     'Return JSON {{"subject": [1-based indices], "setting": [...], "reject": [...]}} and nothing else.'
 )
 
