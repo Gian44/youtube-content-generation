@@ -111,5 +111,35 @@
     },
     "cost_estimate_usd": 3.69,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38168658408"
+  },
+  {
+    "date": "2026-10-12",
+    "topic": "Venice",
+    "category": "cities, islands & landscapes",
+    "wiki_title": "Venice",
+    "video_id": "kdYKy-Fz3Ts",
+    "title": "Venice Between Water and Stone | Drift Off to Sleep with 3 Hours of Gentle Geography Facts",
+    "privacy": "public",
+    "publish_at": "2026-10-13T00:30:00Z",
+    "duration_seconds": 11027,
+    "words": 27972,
+    "images": 150,
+    "image_sources": {
+      "commons": 40,
+      "nasa": 0,
+      "pexels": 110,
+      "pixabay": 0
+    },
+    "story_format": "day",
+    "title_variant": 6,
+    "timeline": {
+      "slots": 552,
+      "thing_slots": 207,
+      "things_shown": 34,
+      "distinct_photos": 317,
+      "lag_median": 3.77
+    },
+    "cost_estimate_usd": 3.72,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38317100946"
   }
 ]
