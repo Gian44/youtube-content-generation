@@ -84,6 +84,12 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uplo
     monkeypatch.setattr(pipeline.upload, "ensure_playlist", lambda yt, title, desc="": (calls.append(f"playlist:{title}"), "PL")[1])
     monkeypatch.setattr(pipeline.upload, "add_to_playlist", lambda yt, pl, vid: None)
     monkeypatch.setattr(pipeline.ledger, "git_commit_and_push", lambda *a, **k: calls.append("git"))
+    def make_short(cfg, *, work, topic, reel, **kw):
+        calls.append("short"); p = Path(work) / "short.mp4"; p.write_bytes(b"s")
+        return {"path": str(p), "hook_title": f"{topic} Fact", "section": 0, "seconds": 48.0, "photos": reel[:1], "narration": "n"}
+    monkeypatch.setattr(pipeline.shorts, "make", make_short)
+    monkeypatch.setattr(pipeline.shorts, "upload_short", lambda yt, cfg, *, meta, long_video_id, **kw: (
+        calls.append(f"short-upload:{long_video_id}"), ("short1", meta["hook_title"] + " #Shorts"))[1])
 
 
 def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
@@ -91,11 +97,12 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     _fakes(monkeypatch, calls)
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert calls == ["preflight", "research:Whales", "script", "tts", "music", "images", "vision", "render", "assemble:soundtrack.mp3",
-                     "frames", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
+                     "frames", "short", "upload", "status", "playlist:Calm Facts to Fall Asleep To", "short-upload:vid123"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
     assert rows[0]["title"] == "1 Hour of Calm Facts to Fall Asleep To | Whales" and rows[0]["image_sources"]["commons"] == 3
     assert rows[0]["title_variant"] == 0 and "credits" not in rows[0]
+    assert rows[0]["short"] == {"video_id": "short1", "title": "Whales Fact #Shorts", "seconds": 48.0}
     body = pipeline._UPLOADS[0]
     desc = body["snippet"]["description"]
     assert body["snippet"]["categoryId"] == "27" and desc.startswith("Fall asleep to 1 hour of calm facts: Whales.")
@@ -111,7 +118,23 @@ def test_rerun_skips_completed_stages(tmp_path, monkeypatch):
     calls.clear()
     (tmp_path / "ledger.json").write_text("[]")  # pretend upload failed last time; artifacts remain
     pipeline.run(cfg)
-    assert calls == ["preflight", "frames", "upload", "status", "playlist:Calm Facts to Fall Asleep To"]
+    assert calls == ["preflight", "frames", "short", "upload", "status", "playlist:Calm Facts to Fall Asleep To", "short-upload:vid123"]
+
+
+def test_short_failure_never_fails_the_long_video(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    monkeypatch.setattr(pipeline.shorts, "make", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no photos")))
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert rows[0]["video_id"] == "vid123" and rows[0]["short"] is None and "short-upload:vid123" not in calls
+
+
+def test_no_shorts_flag(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls)
+    assert pipeline.run(_cfg(tmp_path, shorts_enabled=False)) == 0
+    assert "short" not in calls
 
 
 def test_skip_upload_writes_no_ledger(tmp_path, monkeypatch):

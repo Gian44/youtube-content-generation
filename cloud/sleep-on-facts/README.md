@@ -14,7 +14,11 @@ topic (generated daily from topics.yml categories, verified on Wikipedia) → re
     dimmed to 75 %, portraits shown whole on a blurred fill → smooth 4× zoompan reel, looped under the audio
   → thumbnail from a vision-picked subject photo
   → YouTube upload, private + scheduled for 8:30 PM US Eastern; search-style title, chapters, Education
-    category, hashtags; added to its category playlist → credits page (docs/credits/) + ledger.json committed
+    category, hashtags; added to its category playlist
+  → Shorts teaser (sof/shorts.py): the video's single most surprising fact, ~50 s, same narrator a touch
+    brighter, 1080×1920 over the run's own photos with burned-in captions, uploaded to go live one hour
+    after the long video and linking to it (Shorts are the one surface a new channel gets reach on)
+  → ledger.json committed (with the Short's id under "short")
 ```
 
 Design: `../../docs/superpowers/specs/2026-10-06-sleep-on-facts-cloud-pipeline-design.md`.
@@ -33,11 +37,14 @@ gh workflow run sleep-daily.yml -f minutes=180
 # render only, no YouTube
 gh workflow run sleep-daily.yml -f minutes=180 -f skip_upload=true
 
+# no Shorts teaser for this run (locally: --no-shorts)
+gh workflow run sleep-daily.yml -f minutes=180 -f shorts=false
+
 # watch
 gh run list --workflow sleep-daily.yml --limit 3 && gh run watch
 ```
 
-The daily cron (`17 15 * * *` UTC = 23:17 Asia/Manila; GitHub starts it 3–5 h late) uploads the
+The cron (`17 15 * * 1,3,5` UTC — Mon/Wed/Fri, 23:17 Asia/Manila; GitHub starts it 3–5 h late) uploads the
 video private and YouTube publishes it at 20:30 America/New_York. A run more than 12 h from that
 slot (e.g. a manual daytime run) publishes immediately. Comment out the `schedule:` block to pause;
 `workflow_dispatch` still works for manual runs.
@@ -51,7 +58,7 @@ Locally (needs ffmpeg + the env vars below): `python run.py --minutes 3 --skip-u
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
 
-## Cost per video (≈ $3.70)
+## Cost per video (≈ $3.75 incl. the Short)
 
 OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning ≈ $0.03 + `gpt-4o-mini` photo labels + thumbnail pick ≈ $0.02;
 Wikimedia Commons/NASA/Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script

@@ -18,8 +18,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import (captions, images, ledger, music, render, research, script, seo, thumbnail, timeline, topicgen, topics, tts,
-                 upload, visuals)
+from sof import (captions, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
+                 topics, tts, upload, visuals)
 from sof.config import Config
 from sof.llm import LLM
 from sof.prompts import STORY_FORMATS, STORY_ORDER
@@ -257,6 +257,23 @@ def run(cfg: Config) -> int:
     except Exception as exc:  # noqa: BLE001
         log.warning("sample frames skipped: %s", exc)
 
+    # 5b. Shorts teaser: the most surprising fact of this video, vertical, captioned, pointing at it.
+    short_meta = None
+    if cfg.shorts_enabled:
+        _stage("short")
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8")).get("plan") if plan_path.exists() else None
+            creds = _slot_captions(list(set([p for p in image_paths] + [str(r.get("image")) for r in (plan or []) if r.get("image")])),
+                                   used, img_dir, work / "entities")
+            short_meta = shorts.make(cfg, llm=llm, work=work, topic=name, sections=secs, plan=plan, reel=image_paths,
+                                     labels=labels, credits=creds)
+            print(f"short: {short_meta['seconds']:.0f} s · {len(short_meta['photos'])} photos · \"{short_meta['hook_title']}\"",
+                  flush=True)
+        except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the long video over it
+            log.exception("short failed")
+            print(f"! short skipped ({exc})", flush=True)
+            short_meta = None
+
     # 6. Upload (scheduled for the evening slot) + playlist + ledger.
     if cfg.skip_upload:
         print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
@@ -294,13 +311,26 @@ def run(cfg: Config) -> int:
             print(f"playlist: {prof.playlist}", flush=True)
         except Exception as exc:  # noqa: BLE001 — never fail a published video over a playlist
             print(f"! playlist step failed: {exc}", flush=True)
+    short_entry = None
+    if short_meta:
+        try:
+            rows_for_credit = [r for r in used if (img_dir / str(r.get("file"))).resolve() in {Path(p).resolve() for p in short_meta["photos"]}]
+            rows_for_credit += [r for p, r in visuals.credits_by_path(str(work / "entities")).items()
+                                if Path(p).resolve() in {Path(q).resolve() for q in short_meta["photos"]}]
+            sid, stitle = shorts.upload_short(yt, cfg, meta=short_meta, long_video_id=video_id, long_publish_at=publish_at,
+                                              topic=name, category=seo_category, hours=hours, credit_rows=rows_for_credit)
+            short_entry = {"video_id": sid, "title": stitle, "seconds": short_meta["seconds"]}
+            print(f"short uploaded https://youtu.be/{sid}: {stitle}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("short upload failed")
+            print(f"! short upload failed ({exc}); long video is unaffected", flush=True)
     entry = {
         "date": today, "topic": name, "category": category, "wiki_title": (corpus.title if corpus else wiki_title),
         "video_id": video_id, "title": title, "privacy": cfg.privacy, "publish_at": publish_at,
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
         "image_sources": by_source, "story_format": sc.story_format, "title_variant": variant,
-        "timeline": _timeline_stats(plan_path),
-        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80, 2),
+        "timeline": _timeline_stats(plan_path), "short": short_entry,
+        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80 + (0.03 if short_entry else 0), 2),
         "run_url": _run_url(),
     }
     if cfg.is_smoke:

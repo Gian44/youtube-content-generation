@@ -8,5 +8,6 @@ from sof.pipeline import run
 if __name__ == "__main__":
     ns = parse_args()
     cfg = Config.from_env(minutes=ns.minutes, topic=ns.topic, privacy=ns.privacy,
-                          skip_upload=ns.skip_upload, work_dir=ns.work_dir)
+                          skip_upload=ns.skip_upload, work_dir=ns.work_dir,
+                          shorts_enabled=False if ns.no_shorts else None)
     sys.exit(run(cfg))

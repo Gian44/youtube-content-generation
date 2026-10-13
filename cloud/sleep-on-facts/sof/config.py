@@ -78,6 +78,19 @@ class Config:
     timeline_recall: float = 150.0      # filler may recall a thing named this recently; later, neutral subject photos
     timeline_canvas: float = 3.0        # zoom canvas for the timeline renderer: 3× measured as smooth as 4× at ~0.7× CPU
     timeline_photo_budget: float = 900.0  # seconds for fetching per-thing photos; later things go without
+    # Shorts teaser (sof/shorts.py): one ~50 s vertical clip per long video, scheduled just after it goes live
+    shorts_enabled: bool = True
+    shorts_words: int = 115            # ≈ 45–50 s at the narrator's pace, before the fixed closing line
+    shorts_photos: int = 6
+    shorts_width: int = 1080
+    shorts_height: int = 1920
+    shorts_fps: int = 30
+    shorts_delay_minutes: int = 60     # the Short's link must never point at a still-private video
+    shorts_brand: str = "Sleep On Facts"
+    shorts_tts_instructions: str = (
+        "You are the narrator of a calm facts channel, recording a short teaser. Warm, low, unhurried, but "
+        "awake and curious — a little brighter than a bedtime read. Clear diction, natural pauses, no hype."
+    )
     # secrets
     openai_api_key: str = ""
     gemini_api_key: str = ""
@@ -121,4 +134,5 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--privacy", choices=["public", "unlisted", "private"], default=None)
     p.add_argument("--skip-upload", action="store_true")
     p.add_argument("--work-dir", default="work")
+    p.add_argument("--no-shorts", action="store_true", help="skip the Shorts teaser for this run")
     return p.parse_args(argv)

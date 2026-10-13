@@ -2,9 +2,11 @@ name: sleep-on-facts daily
 
 on:
   schedule:
-    # 15:17 UTC (23:17 Manila). GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour
-    # minute helps; the video is uploaded private and YouTube publishes it at 8:30 PM US Eastern.
-    - cron: "17 15 * * *"
+    # Mon/Wed/Fri 15:17 UTC (23:17 Manila) — three long videos a week while the channel has no reach
+    # (Gian, 2026-10-13). GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour minute
+    # helps; the video is uploaded private and YouTube publishes it at 8:30 PM US Eastern, with its
+    # Shorts teaser an hour later.
+    - cron: "17 15 * * 1,3,5"
   workflow_dispatch:
     inputs:
       minutes:
@@ -19,6 +21,9 @@ on:
       skip_upload:
         description: "true = render only, no YouTube"
         default: "false"
+      shorts:
+        description: "false = no Shorts teaser for this run"
+        default: "true"
 
 concurrency:
   group: sleep-daily
@@ -60,13 +65,15 @@ jobs:
           IN_TOPIC: ${{ github.event.inputs.topic || '' }}
           IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
           IN_SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || 'false' }}
+          IN_SHORTS: ${{ github.event.inputs.shorts || 'true' }}
         run: |
           set -e
           ARGS=(--minutes "$IN_MINUTES" --privacy "$IN_PRIVACY")
           if [ -n "$IN_TOPIC" ]; then ARGS+=(--topic "$IN_TOPIC"); fi
           if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
+          if [ "$IN_SHORTS" = "false" ]; then ARGS+=(--no-shorts); fi
           python run.py "${ARGS[@]}"
-      - name: Keep small run artifacts (script, thumbnail, credits, chapters, photo labels, timeline, stills)
+      - name: Keep small run artifacts (script, thumbnail, credits, chapters, photo labels, timeline, stills, the Short)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -79,5 +86,7 @@ jobs:
             cloud/sleep-on-facts/work/**/image_labels.json
             cloud/sleep-on-facts/work/**/timeline.json
             cloud/sleep-on-facts/work/**/frames/*.jpg
+            cloud/sleep-on-facts/work/**/short.json
+            cloud/sleep-on-facts/work/**/short.mp4
           if-no-files-found: ignore
           retention-days: 30
