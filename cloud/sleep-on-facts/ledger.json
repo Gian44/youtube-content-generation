@@ -141,5 +141,40 @@
     },
     "cost_estimate_usd": 3.72,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38317100946"
+  },
+  {
+    "date": "2026-10-15",
+    "topic": "Rice",
+    "category": "food, farming & plants",
+    "wiki_title": "Rice",
+    "video_id": "luVnl5HvZt0",
+    "title": "3 Hours of Calm Facts to Fall Asleep To | Rice",
+    "privacy": "public",
+    "publish_at": null,
+    "duration_seconds": 10305,
+    "words": 26683,
+    "images": 134,
+    "image_sources": {
+      "commons": 134,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "parts",
+    "title_variant": 0,
+    "timeline": {
+      "slots": 516,
+      "thing_slots": 141,
+      "things_shown": 35,
+      "distinct_photos": 258,
+      "lag_median": 1.41
+    },
+    "short": {
+      "video_id": "2WtZrjuHndc",
+      "title": "Eight Hundred Million Tonnes Of Paddy #Shorts",
+      "seconds": 34.4
+    },
+    "cost_estimate_usd": 3.57,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38699029649"
   }
 ]
