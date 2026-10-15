@@ -35,6 +35,19 @@ def test_synthesize_retries_then_fails(tmp_path):
         raise AssertionError("expected failure")
 
 
+def test_synthesize_retries_on_timeout(tmp_path):
+    n = []
+
+    def handler(req):
+        n.append(1)
+        if len(n) == 1:
+            raise httpx.ReadTimeout("stalled", request=req)
+        return httpx.Response(200, content=b"ID3mp3")
+    paths = synthesize(["one."], str(tmp_path), api_key="sk", model="tts-1", voice="onyx", speed=0.9,
+                       transport=httpx.MockTransport(handler), sleep=lambda s: None)
+    assert len(n) == 2 and (tmp_path / "0000.mp3").exists() and len(paths) == 1
+
+
 def test_commands_and_cost():
     assert concat_cmd("l.txt", "o.mp3")[:4] == ["ffmpeg", "-y", "-f", "concat"]
     assert "loudnorm=I=-18" in " ".join(loudnorm_cmd("i.mp3", "o.mp3"))

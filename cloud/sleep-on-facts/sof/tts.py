@@ -93,7 +93,15 @@ def synthesize(chunks: list[str], out_dir: str, *, api_key: str, model: str, voi
                 continue
             delay = 2.0
             for attempt in range(retries + 1):
-                r = c.post(URL, json=request_body(chunk, model=model, voice=voice, speed=speed, instructions=instructions))
+                try:
+                    r = c.post(URL, json=request_body(chunk, model=model, voice=voice, speed=speed, instructions=instructions))
+                except httpx.TransportError as exc:  # read timeout, dropped connection: retry, don't kill a 3-h run
+                    if attempt == retries:
+                        raise RuntimeError(f"TTS chunk {i} failed after {retries + 1} attempts: {exc!r}") from exc
+                    log.warning("tts chunk %d: %r, retrying in %.0f s", i + 1, exc, delay)
+                    sleep(delay)
+                    delay *= 2
+                    continue
                 if r.status_code == 200 and r.content:
                     p.write_bytes(r.content)
                     break
