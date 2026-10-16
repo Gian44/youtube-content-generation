@@ -176,5 +176,40 @@
     },
     "cost_estimate_usd": 3.57,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38699029649"
+  },
+  {
+    "date": "2026-10-16",
+    "topic": "Paper",
+    "category": "inventions, crafts & ideas",
+    "wiki_title": "Paper",
+    "video_id": "rF7f7YCYFL0",
+    "title": "The Quiet Making of Paper | 3 Hours of Calm History to Fall Asleep To",
+    "privacy": "public",
+    "publish_at": "2026-10-17T00:30:00Z",
+    "duration_seconds": 10661,
+    "words": 27712,
+    "images": 105,
+    "image_sources": {
+      "commons": 75,
+      "nasa": 0,
+      "pexels": 30,
+      "pixabay": 0
+    },
+    "story_format": "journey",
+    "title_variant": 1,
+    "timeline": {
+      "slots": 534,
+      "thing_slots": 124,
+      "things_shown": 21,
+      "distinct_photos": 194,
+      "lag_median": 2.73
+    },
+    "short": {
+      "video_id": "ewTeEpWGWfY",
+      "title": "Paper's Name Comes From A Nile Sedge #Shorts",
+      "seconds": 27.3
+    },
+    "cost_estimate_usd": 3.67,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38950350049"
   }
 ]
