@@ -20,7 +20,7 @@ def _cfg(tmp_path, **kw):
                   photo_timeline=kw.pop("photo_timeline", False), **kw)
 
 
-def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None):
+def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None, n_shorts=1):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr(pipeline.upload, "upload_state", lambda yt, ids: {i: (earlier or {}).get(i, ("processed", "")) for i in ids})
     monkeypatch.setattr(pipeline.upload, "wait_until_accepted", lambda yt, vid, **kw: (calls.append("status"), accepted)[1])
@@ -84,12 +84,17 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uplo
     monkeypatch.setattr(pipeline.upload, "ensure_playlist", lambda yt, title, desc="": (calls.append(f"playlist:{title}"), "PL")[1])
     monkeypatch.setattr(pipeline.upload, "add_to_playlist", lambda yt, pl, vid: None)
     monkeypatch.setattr(pipeline.ledger, "git_commit_and_push", lambda *a, **k: calls.append("git"))
-    def make_short(cfg, *, work, topic, reel, **kw):
-        calls.append("short"); p = Path(work) / "short.mp4"; p.write_bytes(b"s")
-        return {"path": str(p), "hook_title": f"{topic} Fact", "section": 0, "seconds": 48.0, "photos": reel[:1], "narration": "n"}
-    monkeypatch.setattr(pipeline.shorts, "make", make_short)
-    monkeypatch.setattr(pipeline.shorts, "upload_short", lambda yt, cfg, *, meta, long_video_id, **kw: (
-        calls.append(f"short-upload:{long_video_id}"), ("short1", meta["hook_title"] + " #Shorts"))[1])
+    def make_shorts(cfg, *, work, topic, reel, count, **kw):
+        calls.append("short"); out = []
+        for i in range(n_shorts):
+            p = Path(work) / f"short{i}.mp4"; p.write_bytes(b"s")
+            out.append({"path": str(p), "hook_title": f"{topic} Fact{'' if i == 0 else i + 1}", "section": i, "seconds": 48.0,
+                        "photos": reel[:1], "narration": "n", "index": i})
+        return out
+    monkeypatch.setattr(pipeline.shorts, "make_all", make_shorts)
+    monkeypatch.setattr(pipeline.shorts, "upload_short", lambda yt, cfg, *, meta, long_video_id, index=0, **kw: (
+        calls.append(f"short-upload:{long_video_id}"),
+        (f"short{index + 1}", meta["hook_title"] + " #Shorts", None if index == 0 else f"2026-10-2{index}T01:30:00Z"))[1])
 
 
 def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
@@ -102,7 +107,8 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
     assert rows[0]["title"] == "1 Hour of Calm Facts to Fall Asleep To | Whales" and rows[0]["image_sources"]["commons"] == 3
     assert rows[0]["title_variant"] == 0 and "credits" not in rows[0]
-    assert rows[0]["short"] == {"video_id": "short1", "title": "Whales Fact #Shorts", "seconds": 48.0}
+    assert rows[0]["short"] == {"video_id": "short1", "title": "Whales Fact #Shorts", "seconds": 48.0, "publish_at": None}
+    assert rows[0]["shorts"] == [rows[0]["short"]]
     body = pipeline._UPLOADS[0]
     desc = body["snippet"]["description"]
     assert body["snippet"]["categoryId"] == "27" and desc.startswith("Fall asleep to 1 hour of calm facts: Whales.")
@@ -124,10 +130,35 @@ def test_rerun_skips_completed_stages(tmp_path, monkeypatch):
 def test_short_failure_never_fails_the_long_video(tmp_path, monkeypatch):
     calls = []
     _fakes(monkeypatch, calls)
-    monkeypatch.setattr(pipeline.shorts, "make", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no photos")))
+    monkeypatch.setattr(pipeline.shorts, "make_all", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("no photos")))
     assert pipeline.run(_cfg(tmp_path)) == 0
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["short"] is None and "short-upload:vid123" not in calls
+    assert rows[0]["shorts"] == []
+
+
+def test_three_shorts_are_uploaded_and_recorded(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls, n_shorts=3)
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    assert calls.count("short") == 1 and calls.count("short-upload:vid123") == 3
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert [s["video_id"] for s in rows[0]["shorts"]] == ["short1", "short2", "short3"]
+    assert [s["publish_at"] for s in rows[0]["shorts"]] == [None, "2026-10-21T01:30:00Z", "2026-10-22T01:30:00Z"]
+    assert rows[0]["short"]["video_id"] == "short1"
+
+
+def test_one_short_upload_failing_keeps_the_others(tmp_path, monkeypatch):
+    calls = []
+    _fakes(monkeypatch, calls, n_shorts=3)
+    def up(yt, cfg, *, meta, long_video_id, index=0, **kw):
+        if index == 1:
+            raise RuntimeError("quota")
+        return f"short{index + 1}", meta["hook_title"], None
+    monkeypatch.setattr(pipeline.shorts, "upload_short", up)
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert [s["video_id"] for s in rows[0]["shorts"]] == ["short1", "short3"]
 
 
 def test_no_shorts_flag(tmp_path, monkeypatch):

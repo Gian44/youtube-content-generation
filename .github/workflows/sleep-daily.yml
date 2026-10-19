@@ -5,7 +5,7 @@ on:
     # Mon/Wed/Fri 15:17 UTC (23:17 Manila) — three long videos a week while the channel has no reach
     # (Gian, 2026-10-13). GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour minute
     # helps; the video is uploaded private and YouTube publishes it at 8:30 PM US Eastern, with its
-    # Shorts teaser an hour later.
+    # first Shorts teaser an hour later and two more on the following days (2026-10-19).
     - cron: "17 15 * * 1,3,5"
   workflow_dispatch:
     inputs:
@@ -22,7 +22,7 @@ on:
         description: "true = render only, no YouTube"
         default: "false"
       shorts:
-        description: "false = no Shorts teaser for this run"
+        description: "false = no Shorts teasers for this run"
         default: "true"
 
 concurrency:
@@ -73,7 +73,7 @@ jobs:
           if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
           if [ "$IN_SHORTS" = "false" ]; then ARGS+=(--no-shorts); fi
           python run.py "${ARGS[@]}"
-      - name: Keep small run artifacts (script, thumbnail, credits, chapters, photo labels, timeline, stills, the Short)
+      - name: Keep small run artifacts (script, thumbnail, credits, chapters, photo labels, timeline, stills, the Shorts)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -86,7 +86,7 @@ jobs:
             cloud/sleep-on-facts/work/**/image_labels.json
             cloud/sleep-on-facts/work/**/timeline.json
             cloud/sleep-on-facts/work/**/frames/*.jpg
-            cloud/sleep-on-facts/work/**/short.json
-            cloud/sleep-on-facts/work/**/short.mp4
+            cloud/sleep-on-facts/work/**/short*.json
+            cloud/sleep-on-facts/work/**/short*.mp4
           if-no-files-found: ignore
           retention-days: 30

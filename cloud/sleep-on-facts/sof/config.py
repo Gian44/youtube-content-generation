@@ -78,8 +78,11 @@ class Config:
     timeline_recall: float = 150.0      # filler may recall a thing named this recently; later, neutral subject photos
     timeline_canvas: float = 3.0        # zoom canvas for the timeline renderer: 3× measured as smooth as 4× at ~0.7× CPU
     timeline_photo_budget: float = 900.0  # seconds for fetching per-thing photos; later things go without
-    # Shorts teaser (sof/shorts.py): one ~50 s vertical clip per long video, scheduled just after it goes live
+    # Shorts teasers (sof/shorts.py): ~50 s vertical clips per long video; the first an hour after it goes
+    # live, the rest one a day after that (2026-10-19: Shorts out-reach the long videos ~6×)
     shorts_enabled: bool = True
+    shorts_count: int = 3
+    shorts_spacing_hours: float = 24.0
     shorts_words: int = 115            # ≈ 45–50 s at the narrator's pace, before the fixed closing line
     shorts_photos: int = 6
     shorts_width: int = 1080

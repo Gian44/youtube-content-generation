@@ -15,10 +15,11 @@ topic (generated daily from topics.yml categories, verified on Wikipedia) → re
   → thumbnail from a vision-picked subject photo
   → YouTube upload, private + scheduled for 8:30 PM US Eastern; search-style title, chapters, Education
     category, hashtags; added to its category playlist
-  → Shorts teaser (sof/shorts.py): the video's single most surprising fact, ~50 s, same narrator a touch
-    brighter, 1080×1920 over the run's own photos with burned-in captions, uploaded to go live one hour
-    after the long video and linking to it (Shorts are the one surface a new channel gets reach on)
-  → ledger.json committed (with the Short's id under "short")
+  → 3 Shorts teasers (sof/shorts.py): three different facts from three different chapters, ~50 s each,
+    same narrator a touch brighter, 1080×1920 over the run's own photos with burned-in captions; the first
+    goes live one hour after the long video, the others one and two days later, all linking to it
+    (Shorts are the one surface a new channel gets reach on)
+  → ledger.json committed (Shorts under "shorts"; the first also under "short")
 ```
 
 Design: `../../docs/superpowers/specs/2026-10-06-sleep-on-facts-cloud-pipeline-design.md`.
@@ -37,7 +38,7 @@ gh workflow run sleep-daily.yml -f minutes=180
 # render only, no YouTube
 gh workflow run sleep-daily.yml -f minutes=180 -f skip_upload=true
 
-# no Shorts teaser for this run (locally: --no-shorts)
+# no Shorts teasers for this run (locally: --no-shorts)
 gh workflow run sleep-daily.yml -f minutes=180 -f shorts=false
 
 # watch

@@ -81,12 +81,21 @@ def test_short_metadata():
     assert "shorts" in tags and "venice" in tags
     assert shorts.short_publish_at("2026-10-13T00:30:00Z", delay_minutes=60) == "2026-10-13T01:30:00Z"
     assert shorts.short_publish_at(None, delay_minutes=60) is None
+    # one Short a day after the first
+    assert shorts.short_publish_at("2026-10-13T00:30:00Z", delay_minutes=60, index=1) == "2026-10-14T01:30:00Z"
+    assert shorts.short_publish_at("2026-10-13T00:30:00Z", delay_minutes=60, index=2, spacing_hours=24) == "2026-10-15T01:30:00Z"
+    # long video published at once (manual rerun): first Short at once, the rest a day apart from now
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 19, 9, 41, 27, tzinfo=timezone.utc)
+    assert shorts.short_publish_at(None, delay_minutes=60, index=0, now=now) is None
+    assert shorts.short_publish_at(None, delay_minutes=60, index=2, now=now) == "2026-10-21T09:41:00Z"
 
 
 def test_config_and_cli_flags():
     from sof.config import parse_args
     cfg = Config()
     assert cfg.shorts_enabled and cfg.shorts_height == 1920 and cfg.shorts_delay_minutes == 60
+    assert cfg.shorts_count == 3 and cfg.shorts_spacing_hours == 24
     assert parse_args(["--no-shorts"]).no_shorts and not parse_args([]).no_shorts
 
 
@@ -131,7 +140,7 @@ def test_upload_short_schedules_after_the_long_video():
     upload.upload_video = fake_upload
     try:
         cfg = Config(privacy="public", shorts_delay_minutes=60)
-        vid, title = shorts.upload_short(YT(), cfg, meta={"hook_title": "Venice Stands on Logs", "path": "/w/short.mp4"},
+        vid, title, at = shorts.upload_short(YT(), cfg, meta={"hook_title": "Venice Stands on Logs", "path": "/w/short.mp4"},
                                          long_video_id="LONG1", long_publish_at="2026-10-13T00:30:00Z", topic="Venice",
                                          category="cities", hours=3,
                                          credit_rows=[{"source": "commons", "license": "CC BY-SA 4.0", "artist": "Ann"}])
@@ -139,5 +148,85 @@ def test_upload_short_schedules_after_the_long_video():
         upload.upload_video = orig
     assert vid == "SHORT1" and title.endswith("#Shorts") and seen["thumb"] is None
     st = seen["body"]["status"]
-    assert st["privacyStatus"] == "private" and st["publishAt"] == "2026-10-13T01:30:00Z"
+    assert st["privacyStatus"] == "private" and st["publishAt"] == "2026-10-13T01:30:00Z" == at
     assert "https://youtu.be/LONG1" in seen["body"]["snippet"]["description"] and "Ann" in seen["body"]["snippet"]["description"]
+
+
+THREE = [{"heading": "The Lagoon", "body": "The city sits on 118 islands. " * 20},
+         {"heading": "Wooden Foundations", "body": "Millions of alder logs hold the city up. " * 20},
+         {"heading": "Glass", "body": "Murano glassmakers were not allowed to leave. " * 20}]
+LONG = "This sentence is here to give the narration enough words to pass the floor. " * 3
+
+
+def test_write_shorts_returns_distinct_chapters_titles_and_closing_lines():
+    llm = FakeLLM({"shorts": [
+        {"section": 1, "hook_title": "Venice Stands on Millions of Logs", "narration": "Logs hold Venice up. " + LONG},
+        {"section": 1, "hook_title": "Another Log Fact", "narration": "Same chapter again. " + LONG},      # dropped: same chapter
+        {"section": 0, "hook_title": "Shocking Secret", "narration": "Venice has 118 islands. " + LONG},   # clickbait → fallback
+        {"section": 2, "hook_title": "Murano Kept Its Glassmakers", "narration": "Too thin."},          # dropped: thin
+        {"section": 2, "hook_title": "Murano Kept Its Glassmakers", "narration": "Glassmakers stayed. " + LONG},
+        {"section": 0, "hook_title": "Extra", "narration": "Beyond the count. " + LONG}]})
+    out = shorts.write_shorts(llm, topic="Venice", sections=THREE, words=60, model="fast", count=3)
+    assert [o["section"] for o in out] == [1, 0, 2]
+    assert out[1]["hook_title"] == "A Quiet Fact About Venice"            # second fallback title, not a repeat of the first
+    assert [o["narration"].endswith(c) for o, c in zip(out, shorts.CTA_LINES)] == [True, True, True]
+    assert "Write 3 different Shorts" in llm.calls[0][0] and llm.calls[0][1]["model"] == "fast"
+
+
+def test_write_shorts_raises_when_nothing_usable_and_count_one_uses_single_prompt():
+    with pytest.raises(RuntimeError):
+        shorts.write_shorts(FakeLLM({"shorts": [{"section": 0, "narration": "Thin."}]}), topic="X", sections=THREE,
+                            words=60, model="m", count=3)
+    one = shorts.write_shorts(FakeLLM({"section": 2, "hook_title": "Murano Kept Its Glassmakers", "narration": LONG}),
+                              topic="Venice", sections=THREE, words=60, model="m", count=1)
+    assert len(one) == 1 and one[0]["section"] == 2 and one[0]["narration"].endswith(shorts.CTA_LINE)
+
+
+def test_choose_photos_avoids_photos_of_earlier_shorts(tmp_path):
+    files = []
+    for n in "abc":
+        f = tmp_path / f"{n}.jpg"; f.write_bytes(b"x"); files.append(str(f))
+    out = shorts.choose_photos(section=0, plan=None, reel=files, labels={}, want=2, avoid={files[0]})
+    assert out == [files[1], files[2]]
+    assert shorts.choose_photos(section=0, plan=None, reel=files, labels={}, want=3, avoid=set(files[:2])) == [files[2], files[0], files[1]]
+
+
+def test_make_all_writes_once_and_renders_each_short_under_its_own_name(tmp_path, monkeypatch):
+    cfg = Config(openai_api_key="k")
+    llm = FakeLLM({"shorts": [{"section": i, "hook_title": f"Fact Number {w} About Venice", "narration": LONG}
+                              for i, w in enumerate(("One", "Two", "Three"))]})
+    photos = []
+    for n in "abcdef":
+        f = tmp_path / f"{n}.jpg"; f.write_bytes(b"x"); photos.append(str(f))
+    built = []
+    monkeypatch.setattr(shorts.tts, "synthesize", lambda texts, out_dir, **k: [str(Path(out_dir) / "p.mp3")])
+    monkeypatch.setattr(shorts.render, "run", lambda cmd, t: Path(cmd[-1]).write_bytes(b"a"))
+    monkeypatch.setattr(shorts.tts, "duration_seconds", lambda path: 47.0)
+    def fake_build(*, photos, work, name, **k):
+        built.append((name, list(photos))); p = work / f"{name}.mp4"; p.write_bytes(b"v"); return str(p)
+    monkeypatch.setattr(shorts, "build_video", fake_build)
+    cfg.shorts_photos = 2
+    metas = shorts.make_all(cfg, llm=llm, work=tmp_path, topic="Venice", sections=THREE, plan=None, reel=photos,
+                            labels={}, credits={}, count=3)
+    assert [m["index"] for m in metas] == [0, 1, 2] and [n for n, _ in built] == ["short", "short2", "short3"]
+    assert [Path(m["path"]).name for m in metas] == ["short.mp4", "short2.mp4", "short3.mp4"]
+    assert len({p for _, ps in built for p in ps}) == 6                   # no photo repeated across the three
+    assert (tmp_path / "shorts.json").exists() and (tmp_path / "short3.json").exists()
+    # rerun: nothing is written or rendered again
+    llm.calls.clear(); built.clear()
+    again = shorts.make_all(cfg, llm=llm, work=tmp_path, topic="Venice", sections=THREE, plan=None, reel=photos,
+                            labels={}, credits={}, count=3)
+    assert llm.calls == [] and built == [] and [m["hook_title"] for m in again] == [m["hook_title"] for m in metas]
+
+
+def test_make_all_skips_a_failing_short(tmp_path, monkeypatch):
+    cfg = Config(openai_api_key="k")
+    (tmp_path / "shorts.json").write_text(json.dumps([{"section": i, "hook_title": f"T{i}", "narration": "N."} for i in range(3)]))
+    def make(cfg, *, index, item, **kw):
+        if index == 1:
+            raise RuntimeError("tts down")
+        return {**item, "index": index, "photos": [f"p{index}"], "path": f"s{index}.mp4", "seconds": 40.0}
+    monkeypatch.setattr(shorts, "make", make)
+    metas = shorts.make_all(cfg, llm=None, work=tmp_path, topic="V", sections=THREE, plan=None, reel=[], labels={},
+                            credits={}, count=3)
+    assert [m["index"] for m in metas] == [0, 2]
