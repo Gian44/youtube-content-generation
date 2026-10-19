@@ -230,3 +230,33 @@ def test_make_all_skips_a_failing_short(tmp_path, monkeypatch):
     metas = shorts.make_all(cfg, llm=None, work=tmp_path, topic="V", sections=THREE, plan=None, reel=[], labels={},
                             credits={}, count=3)
     assert [m["index"] for m in metas] == [0, 2]
+
+
+def test_credit_text_is_compact():
+    assert shorts.credit_text(["Photo: Ann · CC BY 4.0 · Wikimedia Commons", "Photo: Bo · CC BY-SA 3.0 · Wikimedia Commons"]) == \
+        "Photos via Wikimedia Commons: Ann (CC BY 4.0), Bo (CC BY-SA 3.0)"
+    assert shorts.credit_text(["Photo: Cy · CC0"]) == "Photos: Cy · CC0"
+    assert shorts.credit_text([]) == ""
+
+
+def test_credit_png_wraps_inside_the_frame(tmp_path):
+    from PIL import Image
+    text = shorts.credit_text([f"Photo: Photographer Number {i} · CC BY-SA 4.0 · Wikimedia Commons" for i in range(6)])
+    out = shorts.credit_png(text, str(tmp_path / "c.png"), width=1080, height=1920)
+    with Image.open(out) as im:
+        box = im.getbbox()
+    assert box is not None and box[2] <= 1080 * 0.96 and box[3] < 1920 * 0.93      # wrapped, not run off the edge
+    long = shorts.credit_text([f"Photo: {'Very Long Name ' * 4}{i} · CC BY-SA 4.0 · Wikimedia Commons" for i in range(12)])
+    out2 = shorts.credit_png(long, str(tmp_path / "c2.png"), width=1080, height=1920)
+    with Image.open(out2) as im:
+        assert im.getbbox()[3] < 1920 * 0.93
+
+
+def test_cover_vertical_keeps_portrait_photos_below_the_title(tmp_path):
+    from PIL import Image
+    src = tmp_path / "tall.jpg"; Image.new("RGB", (800, 1600), (250, 250, 250)).save(src)
+    out = shorts.cover_vertical(str(src), str(tmp_path / "c.jpg"), width=540, height=960, scale=2.0)
+    with Image.open(out) as im:
+        col = [im.getpixel((540, y))[0] for y in range(0, im.height, 8)]
+    bright = [i * 8 for i, v in enumerate(col) if v > 200]
+    assert min(bright) / 1920 >= 0.27 and max(bright) / 1920 <= 0.73

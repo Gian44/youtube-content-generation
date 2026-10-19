@@ -303,17 +303,50 @@ def title_png(title: str, brand: str, out: str, *, width: int, height: int) -> s
     return out
 
 
-def credit_png(text: str, out: str, *, width: int, height: int) -> str:
-    """Small credit line above the bottom Shorts UI (bottom-left of the safe area)."""
+_CREDIT_LINE = re.compile(r"^Photo: (.+?) · (.+?) · Wikimedia Commons$")
+
+
+def credit_text(lines: list[str]) -> str:
+    """The Short's photo credits as one compact run of text: ``Photos via Wikimedia Commons: Ann (CC BY 4.0),
+    Bo (CC BY-SA 3.0)`` — the per-photo ``Photo: … · Wikimedia Commons`` captions repeated the source."""
+    parts, all_commons = [], True
+    for line in lines:
+        m = _CREDIT_LINE.match(line.strip())
+        if m:
+            parts.append(f"{m.group(1)} ({m.group(2)})")
+        else:
+            all_commons = False
+            parts.append(line.strip().removeprefix("Photo: "))
+    if not parts:
+        return ""
+    return ("Photos via Wikimedia Commons: " if all_commons else "Photos: ") + ", ".join(parts)
+
+
+def credit_png(text: str, out: str, *, width: int, height: int, max_lines: int = 3) -> str:
+    """Small credit block above the bottom Shorts UI, wrapped to the frame (2026-10-19: one long line ran off
+    the right edge); the font shrinks a step before the block is cut, and a cut block ends with "…" (the
+    Short's description carries every credit in full)."""
     from PIL import Image, ImageDraw
 
-    size = max(20, round(height * 0.014))
-    font = _font(size, bold=False)
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    x, y = round(width * 0.05), round(height * 0.885)
-    d.text((x + 1, y + 1), text, font=font, fill=(0, 0, 0, 160))
-    d.text((x, y), text, font=font, fill=(255, 255, 255, 150))
+    max_w = int(width * 0.90)
+    for frac in (0.014, 0.0125, 0.011):
+        size = max(18, round(height * frac))
+        font = _font(size, bold=False)
+        lines = _wrap(d, text, font, max_w)
+        if len(lines) <= max_lines:
+            break
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        while last and d.textlength(last + " …", font=font) > max_w:
+            last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+        lines[-1] = last.rstrip(" ,;") + " …"
+    x, y, lh = round(width * 0.05), round(height * 0.865), round(size * 1.25)
+    for i, line in enumerate(lines):
+        d.text((x + 1, y + i * lh + 1), line, font=font, fill=(0, 0, 0, 160))
+        d.text((x, y + i * lh), line, font=font, fill=(255, 255, 255, 150))
     im.save(out, "PNG")
     return out
 
@@ -329,8 +362,10 @@ def cover_vertical(src: str, dst: str, *, width: int, height: int, scale: float 
         im = ImageOps.exif_transpose(im).convert("RGB")
         small = ImageOps.fit(im, (max(16, tw // 12), max(16, th // 12)), method=Image.BILINEAR)
         bg = ImageEnhance.Brightness(small.filter(ImageFilter.GaussianBlur(3)).resize((tw, th), Image.BILINEAR)).enhance(0.5)
-        fg = ImageOps.contain(im, (int(tw * 0.96), int(th * 0.52)), method=Image.LANCZOS)
-        bg.paste(fg, ((tw - fg.width) // 2, int(th * 0.44) - fg.height // 2))     # photo sits above the captions
+        # Photo between the title band (ends ≈ 23 % down) and the captions (≈ 74 %), with room for the 8 %
+        # push-in: 2026-10-19 a portrait photo at 52 % height centred at 44 % ran under the title.
+        fg = ImageOps.contain(im, (int(tw * 0.96), int(th * 0.44)), method=Image.LANCZOS)
+        bg.paste(fg, ((tw - fg.width) // 2, int(th * 0.50) - fg.height // 2))
         bg.save(dst, "JPEG", quality=92, subsampling=0)
     return dst
 
@@ -398,7 +433,7 @@ def build_video(*, photos: list[str], narration: str, audio: str, work: Path, ti
     pngs = [caption_png(text, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, text) in enumerate(cues)]
     tpng = title_png(title, brand, str(tmp / "title.png"), width=width, height=height)
     lines = sorted({credits[p] for p in photos if credits.get(p)})
-    cpng = credit_png(" · ".join(lines)[:140], str(tmp / "credit.png"), width=width, height=height) if lines else None
+    cpng = credit_png(credit_text(lines), str(tmp / "credit.png"), width=width, height=height) if lines else None
     out = str(work / f"{name}.mp4")
     render.run(overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=cpng,
                            duration=duration, fps=fps), 900)
