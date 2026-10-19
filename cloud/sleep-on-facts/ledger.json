@@ -211,5 +211,61 @@
     },
     "cost_estimate_usd": 3.67,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38950350049"
+  },
+  {
+    "date": "2026-10-19",
+    "topic": "Honey Bees",
+    "category": "nature & animals",
+    "wiki_title": "Honey bee",
+    "video_id": "FgJfSo3az0s",
+    "title": "Honey Bees | 3 Hours of Calm Nature Facts for Deep Sleep",
+    "privacy": "public",
+    "publish_at": "2026-10-20T00:30:00Z",
+    "duration_seconds": 10324,
+    "words": 26832,
+    "images": 150,
+    "image_sources": {
+      "commons": 150,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "story",
+    "title_variant": 2,
+    "timeline": {
+      "slots": 517,
+      "thing_slots": 140,
+      "things_shown": 17,
+      "distinct_photos": 230,
+      "lag_median": 5.38
+    },
+    "short": {
+      "video_id": "7ff1v2HZK5s",
+      "title": "Males Begin Without Sperm #Shorts",
+      "seconds": 23.1,
+      "publish_at": "2026-10-20T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "7ff1v2HZK5s",
+        "title": "Males Begin Without Sperm #Shorts",
+        "seconds": 23.1,
+        "publish_at": "2026-10-20T01:30:00Z"
+      },
+      {
+        "video_id": "40EpE-MSUyQ",
+        "title": "A Hive Starts With Little Wax #Shorts",
+        "seconds": 21.6,
+        "publish_at": "2026-10-21T01:30:00Z"
+      },
+      {
+        "video_id": "9CtpFqfq0U8",
+        "title": "Workers Carry The Barbed Sting #Shorts",
+        "seconds": 28.1,
+        "publish_at": "2026-10-22T01:30:00Z"
+      }
+    ],
+    "cost_estimate_usd": 3.63,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/39320788241"
   }
 ]
