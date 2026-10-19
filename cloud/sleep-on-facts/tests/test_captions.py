@@ -62,3 +62,15 @@ def test_caption_runs_switch_fonts_for_cjk_and_never_draw_boxes():
                                                                             (" Taro · CC BY 3.0", False)]
     assert render.caption_runs("Photo: 山田 Taro", cjk=False) == [("Photo: ", False), (" Taro", False)]
     assert render.caption_runs("Photo: Σταῦρος · CC BY 2.0", cjk=True) == [("Photo: Σταῦρος · CC BY 2.0", False)]
+
+
+
+def test_commons_talk_contribs_suffix_is_dropped():
+    from sof import captions
+    row = {"source": "commons", "license": "CC BY-SA 3.0",
+           "artist": '<a href="//commons.wikimedia.org/wiki/User:Waugsberg">Waugsberg</a> (<a href="x">talk</a> · <a href="y">contribs</a>)'}
+    assert captions.caption_text(row) == "Photo: Waugsberg · CC BY-SA 3.0 · Wikimedia Commons"
+    row["artist"] = "Waugsberg ( talk · contribs"
+    assert captions.caption_text(row) == "Photo: Waugsberg · CC BY-SA 3.0 · Wikimedia Commons"
+    row["artist"] = "Jane Doe (photographer)"
+    assert captions.caption_text(row) == "Photo: Jane Doe (photographer) · CC BY-SA 3.0 · Wikimedia Commons"

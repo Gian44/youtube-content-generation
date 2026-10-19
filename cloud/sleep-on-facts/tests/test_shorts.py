@@ -236,6 +236,9 @@ def test_credit_text_is_compact():
     assert shorts.credit_text(["Photo: Ann · CC BY 4.0 · Wikimedia Commons", "Photo: Bo · CC BY-SA 3.0 · Wikimedia Commons"]) == \
         "Photos via Wikimedia Commons: Ann (CC BY 4.0), Bo (CC BY-SA 3.0)"
     assert shorts.credit_text(["Photo: Cy · CC0"]) == "Photos: Cy · CC0"
+    assert shorts.credit_text(["Photo: Ann · CC BY 4.0 · Wikimedia Commons", "Photo: Ann · CC BY 4.0 · Wikimedia Commons",
+                               "Photo: Bo · x · CC BY-SA 3.0 · Wikimedia Commons"]) == \
+        "Photos via Wikimedia Commons: Ann (CC BY 4.0), Bo · x (CC BY-SA 3.0)"
     assert shorts.credit_text([]) == ""
 
 

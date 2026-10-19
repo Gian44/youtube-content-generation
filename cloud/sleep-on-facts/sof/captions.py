@@ -22,6 +22,8 @@ def needs_credit(row: dict) -> bool:
 
 
 _ASSUMED = re.compile(r"No machine-readable author provided\.?\s*(.+?)\s+assumed\b.*", re.I | re.S)
+# Commons user links "Name (talk · contribs)" lose their tags and come out as "Name ( talk · contribs )"
+_TALK = re.compile(r"\(\s*talk\b[^()]*(?:\)|$)", re.I)
 
 
 def _clean(s: object) -> str:
@@ -29,6 +31,7 @@ def _clean(s: object) -> str:
     m = _ASSUMED.match(t)                # Commons boilerplate: "No machine-readable author provided. X assumed (…)"
     if m:
         t = m.group(1).strip(" .,;")
+    t = re.sub(r"\s+", " ", _TALK.sub(" ", t)).strip(" .,;")
     return re.sub(r"^No machine-readable author provided\.?$", "", t, flags=re.I).strip()
 
 
@@ -46,7 +49,15 @@ _DRAWABLE = re.compile("[\u0020-\u06ff\u10a0-\u10ff\u1e00-\u1fff\u2000-\u2bff\u3
 
 
 def _drawable(s: str) -> str:
-    return re.sub(r"\s+", " ", "".join(ch for ch in s if _DRAWABLE.match(ch))).strip(" .,;()")
+    t = re.sub(r"\s+", " ", "".join(ch for ch in s if _DRAWABLE.match(ch))).strip(" .,;")
+    # drop only unbalanced edge brackets: "Jane Doe (photographer)" keeps its ")"
+    while t.endswith(")") and t.count(")") > t.count("("):
+        t = t[:-1].rstrip(" .,;")
+    while t.startswith("(") and t.count("(") > t.count(")"):
+        t = t[1:].lstrip(" .,;")
+    if t.startswith("(") and t.endswith(")") and t.count("(") == 1:
+        t = t[1:-1].strip(" .,;")
+    return t
 
 
 def caption_text(row: dict) -> str:

@@ -303,7 +303,7 @@ def title_png(title: str, brand: str, out: str, *, width: int, height: int) -> s
     return out
 
 
-_CREDIT_LINE = re.compile(r"^Photo: (.+?) · (.+?) · Wikimedia Commons$")
+_CREDIT_LINE = re.compile(r"^Photo: (.+) · (.+?) · Wikimedia Commons$")
 
 
 def credit_text(lines: list[str]) -> str:
@@ -313,10 +313,12 @@ def credit_text(lines: list[str]) -> str:
     for line in lines:
         m = _CREDIT_LINE.match(line.strip())
         if m:
-            parts.append(f"{m.group(1)} ({m.group(2)})")
+            part = f"{m.group(1)} ({m.group(2)})"
         else:
             all_commons = False
-            parts.append(line.strip().removeprefix("Photo: "))
+            part = line.strip().removeprefix("Photo: ")
+        if part not in parts:                    # two photos by the same author under the same licence
+            parts.append(part)
     if not parts:
         return ""
     return ("Photos via Wikimedia Commons: " if all_commons else "Photos: ") + ", ".join(parts)
