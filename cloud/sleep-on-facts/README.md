@@ -6,7 +6,12 @@ uploaded to the Sleep On Facts YouTube channel. No desktop app, no database, no 
 ```
 topic (generated daily from topics.yml categories, verified on Wikipedia) → research (full Wikipedia article
   + ~15 linked articles, chunked; per-movement retrieval) → script (gpt-5.6-terra writes from the notes,
-  gpt-5.6-luna plans; repetition guard; sources in description) → narration (gpt-4o-mini-tts, echo)
+  gpt-5.6-luna plans; repetition guard; sources in description)
+  → no-AI-slop pass per movement (sof/noslop.py: the narrator voice + style rules sit in the writer prompt;
+    a regex lint then scores the prose for the written tics of AI text — "not X but Y", colon reveals,
+    fake-profound kickers, recap paragraphs, puffery, mood words — and only the flagged paragraphs go
+    back to gpt-5.6-luna for a targeted rewrite, at most `slop_rounds`=2 times; score → ledger "slop")
+  → narration (gpt-4o-mini-tts, echo)
   → faint synthesised ambient bed mixed under the voice (numpy + ffmpeg, licence-free)
   → photos of the subject itself: Wikimedia Commons (the article's own photos, then its Commons
     category), NASA for space topics, then Pexels/Pixabay only if the caption NAMES the subject;
@@ -61,7 +66,7 @@ OAuth refresh token (re-authorize with the StoryFactory CLI
 
 ## Cost per video (≈ $3.75 incl. the Short)
 
-OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning ≈ $0.03 + `gpt-4o-mini` photo labels + thumbnail pick ≈ $0.02;
+OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning + no-slop rewrites ≈ $0.03–0.3 + `gpt-4o-mini` photo labels + thumbnail pick ≈ $0.02;
 Wikimedia Commons/NASA/Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script
 exceeds 1.3× the word target, and before everything if the YouTube token is dead.
 
@@ -71,7 +76,8 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 | --- | --- |
 | `topics.yml` | categories that rotate daily (fewest past videos first); optional seed topics |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
-| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, tts, music, images, render, thumbnail, seo, credits, upload, ledger, pipeline`) |
+| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, render, thumbnail, seo, credits, upload, ledger, pipeline`) |
+| `sof/noslop.py` | the no-AI-slop lint + targeted rewrite + the prompt text of the rules; rules ported from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) (MIT) and adapted for spoken narration. Vendored verbatim into `apps/worker/storyfactory/services/noslop.py` (a worker test keeps the two identical) |
 | `../../docs/credits/` | one photo-credits page per video (GitHub Pages), linked from its description — required for CC BY/BY-SA photos |
 | `tests/` | unit tests (mocked HTTP) + one real-ffmpeg render test |
 

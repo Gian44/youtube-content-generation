@@ -27,7 +27,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sof import captions as cap_mod
-from sof import render, seo, tts
+from sof import noslop, render, seo, tts
 from sof.llm import LLM
 
 log = logging.getLogger("sof.shorts")
@@ -49,6 +49,8 @@ Rules:
 - Calm but awake: this is the channel's narrator speaking a little brighter than at bedtime.
 - Do NOT write a sign-off or mention the long video; that line is added separately.
 - Every sentence must be a complete sentence ending in a period.
+- End on the fact's most concrete detail, not on a line that says why it matters or what it means.
+{{style}}
 
 Return JSON:
 {"section": <index of the chapter the fact comes from>,
@@ -73,6 +75,8 @@ Rules for every Short:
 - Calm but awake: this is the channel's narrator speaking a little brighter than at bedtime.
 - Do NOT write a sign-off or mention the long video; that line is added separately.
 - Every sentence must be a complete sentence ending in a period.
+- End on the fact's most concrete detail, not on a line that says why it matters or what it means.
+{{style}}
 Across the {{count}} Shorts: each comes from a DIFFERENT chapter and tells a DIFFERENT fact with a
 different hook shape (e.g. a number, a place, a person, a process). Best Short first.
 
@@ -85,9 +89,22 @@ CTA_LINE = "The full three-hour version is on the channel. Put it on tonight, an
 CTA_LINES = (CTA_LINE,
              "There is a three-hour version of this on the channel, made for falling asleep to.",
              "The long, slow version is on the channel. Three hours of it, for when you want to drift off.")
-FALLBACK_TITLES = ("One Strange Fact About {s}", "A Quiet Fact About {s}", "What Few People Know About {s}")
+FALLBACK_TITLES = ("One Strange Fact About {s}", "A Quiet Fact About {s}", "A Small Fact About {s}")
 HOOK_BANNED = re.compile(r"[!?#@\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|mind|blow\w*|you won't)\b", re.I)
 _SENT = re.compile(r"(?<=[.!?])\s+")
+STYLE_BLOCK = noslop.style_block("sleep", voice=False)      # the Shorts narrator is brighter; the rules are the same
+
+
+def despop(llm: LLM, narration: str, *, model: str, rounds: int = 1) -> str:
+    """One targeted rewrite of a Short's narration if the lint flags it (never raises, never empties it)."""
+    text = str(narration or "")
+    if not text.strip() or rounds <= 0:
+        return text
+    res = noslop.polish(text, rewrite=lambda p: llm.generate_json(p, max_tokens=600, temperature=0.2, model=model),
+                        mode="sleep", rounds=rounds, extra="This is a 50-second spoken teaser; keep it a single paragraph.")
+    if res.rewritten:
+        log.info("noslop short: %s → %s", res.before.summary(), res.after.summary())
+    return res.text or text
 
 
 # ---------------------------------------------------------------- 1. the fact (LLM)
@@ -126,9 +143,9 @@ def clean_hook_title(title: str, topic: str, *, fallback: int = 0) -> str:
 def write_short(llm: LLM, *, topic: str, sections: list[dict], words: int, model: str) -> dict:
     """``{"section", "hook_title", "narration"}`` — narration ends with CTA_LINE."""
     prompt = (SHORT_PROMPT.replace("{{topic}}", topic).replace("{{words}}", str(words))
-              .replace("{{chapters}}", chapter_digest(sections)))
+              .replace("{{chapters}}", chapter_digest(sections)).replace("{{style}}", STYLE_BLOCK))
     data = llm.generate_json(prompt, max_tokens=800, temperature=0.8, model=model)
-    body = clean_narration(data.get("narration", ""), max_words=words)
+    body = clean_narration(despop(llm, data.get("narration", ""), model=model), max_words=words)
     if len(body.split()) < 20:
         raise RuntimeError("short narration too thin")
     try:
@@ -147,7 +164,7 @@ def write_shorts(llm: LLM, *, topic: str, sections: list[dict], words: int, mode
     if count <= 1:
         return [write_short(llm, topic=topic, sections=sections, words=words, model=model)]
     prompt = (SHORTS_PROMPT.replace("{{topic}}", topic).replace("{{words}}", str(words)).replace("{{count}}", str(count))
-              .replace("{{chapters}}", chapter_digest(sections)))
+              .replace("{{chapters}}", chapter_digest(sections)).replace("{{style}}", STYLE_BLOCK))
     data = llm.generate_json(prompt, max_tokens=700 * count, temperature=0.8, model=model)
     raw = data.get("shorts") if isinstance(data, dict) else data
     out: list[dict] = []
@@ -156,7 +173,7 @@ def write_shorts(llm: LLM, *, topic: str, sections: list[dict], words: int, mode
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
             continue
-        body = clean_narration(item.get("narration", ""), max_words=words)
+        body = clean_narration(despop(llm, item.get("narration", ""), model=model), max_words=words)
         if len(body.split()) < 20:
             continue
         try:

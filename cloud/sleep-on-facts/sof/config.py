@@ -27,6 +27,7 @@ class Config:
         default_factory=lambda: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
     )
     num_movements: int = 16
+    slop_rounds: int = 2                    # noslop: targeted rewrites of flagged paragraphs per movement (0 = lint only)
     segment_max_tokens: int = 3200
     max_segments: int = 40
     fill_ratio: float = 0.9

@@ -12,9 +12,15 @@ from storyfactory.content_defaults import DEFAULT_CATEGORY_HINTS, DEFAULT_VOICE_
 from storyfactory.db.engine import get_session
 from storyfactory.db.models import Story, PromptTemplate, DailyBatch
 from storyfactory.logger import get_logger
+from storyfactory.services import noslop
 from storyfactory.services.ai_provider import generate_text, AIProvider
 
 log = get_logger("story_generator")
+
+# The no-AI-slop rules travel with the code, not the DB: seeded prompt rows are insert-if-absent, so a
+# live install keeps its old templates. They are injected into whatever template resolves (global or
+# per-channel override) right before the output spec.
+STYLE_BLOCK = noslop.style_block("fiction")
 
 # Re-exported for backward compatibility; channel config overrides these.
 VOICE_PERSONAS = DEFAULT_VOICE_PERSONAS
@@ -28,6 +34,51 @@ def _channel_personas() -> list[str]:
 def _channel_hint(category: str) -> str:
     hints = effective_config("category_hints", DEFAULT_CATEGORY_HINTS) or DEFAULT_CATEGORY_HINTS
     return hints.get(category, "")
+
+
+def _styled(prompt: str) -> str:
+    return noslop.inject(prompt, STYLE_BLOCK)
+
+
+def _noslop_rounds() -> int:
+    try:
+        return max(0, int(effective_config("noslop_rounds", 1) or 0))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _parse_json(raw: str) -> dict:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        return json.loads(raw[start:end]) if 0 <= start < end else {}
+
+
+def despop(story_data: dict, *, dry_run: bool) -> dict:
+    """Lint the story body; if it carries AI patterns, send only the flagged paragraphs back for one
+    targeted rewrite (``noslop_rounds`` in channel config, default 1; 0 = lint only). The score is
+    recorded under ``story_data["noslop"]``. Never raises; the story is never lost to its editor."""
+    body = str(story_data.get("body") or "")
+    if not body.strip():
+        return story_data
+    rounds = 0 if dry_run else _noslop_rounds()
+
+    def rewrite(prompt: str) -> dict:
+        return _parse_json(generate_text(prompt=prompt, provider=AIProvider.OPENAI, temperature=0.2,
+                                         max_tokens=1400, response_format="json"))
+
+    res = noslop.polish(body, rewrite=rewrite, mode="fiction", rounds=rounds,
+                        extra="This is a first-person story told aloud; keep the narrator's voice and every plot beat.")
+    if res.text and res.text != body:
+        story_data["body"] = res.text
+        story_data["word_count"] = len(res.text.split())
+        hook = str(story_data.get("hook") or "").strip()
+        if hook and hook not in res.text:
+            story_data["hook"] = noslop.sentences(noslop.paragraphs(res.text)[0])[0]
+    story_data["noslop"] = res.to_dict()
+    log.info("noslop", before=res.before.summary(), after=res.after.summary(), rewritten=res.rewritten)
+    return story_data
 
 
 def _resolve_prompt(session, name: str, channel_id: str | None) -> PromptTemplate | None:
@@ -73,7 +124,7 @@ def generate_short_stories(batch: DailyBatch, count: int) -> list[Story]:
             persona = random.choice(personas)
             hints = _channel_hint(batch.category)
 
-            prompt = template.template.replace(
+            prompt = _styled(template.template.replace(
                 "{{category}}", batch.category
             ).replace(
                 "{{persona}}", persona
@@ -81,7 +132,7 @@ def generate_short_stories(batch: DailyBatch, count: int) -> list[Story]:
                 "{{topic_hints}}", hints
             ).replace(
                 "{{used_hooks}}", json.dumps(used_hooks[-5:]) if used_hooks else "[]"
-            )
+            ))
 
             log.info("generating_short_story", batch_id=batch.id, index=i, persona=persona)
 
@@ -107,6 +158,7 @@ def generate_short_stories(batch: DailyBatch, count: int) -> list[Story]:
                     else:
                         log.error("failed_to_parse_story", raw=raw_output[:200])
                         continue
+            story_data = despop(story_data, dry_run=settings.dry_run)
 
             # Create originality hash
             content_hash = hashlib.sha256(
@@ -173,13 +225,13 @@ def generate_long_form_stories(batch: DailyBatch, count: int) -> list[Story]:
             persona = random.choice(personas)
             hints = _channel_hint(batch.category)
 
-            prompt = template.template.replace(
+            prompt = _styled(template.template.replace(
                 "{{category}}", batch.category
             ).replace(
                 "{{persona}}", persona
             ).replace(
                 "{{topic_hints}}", hints
-            )
+            ))
 
             log.info("generating_long_form_story", batch_id=batch.id, index=i)
 
@@ -203,6 +255,7 @@ def generate_long_form_stories(batch: DailyBatch, count: int) -> list[Story]:
                     else:
                         log.error("failed_to_parse_long_story", raw=raw_output[:200])
                         continue
+            story_data = despop(story_data, dry_run=settings.dry_run)
 
             content_hash = hashlib.sha256(
                 story_data.get("body", "").encode()

@@ -98,14 +98,17 @@ HARD RULES:
 - Keep it restful. Pass over destruction, disease, conflict, politics and alarming statistics
   in a sentence at most, even if the notes dwell on them; choose the notes that describe,
   explain and evoke.
-- Calm, slow, unhurried tone. Vary sentence length. Mostly plain, concrete words.
+- Unhurried pace. Vary sentence length. Mostly plain, concrete words.
 - Continuous PROSE only. No headings, bullets, lists or numbering.
 - BANNED: "did you know", "fun fact", "interestingly", "it is worth noting", "in conclusion",
-  "imagine", "picture this", "let's", "we", "you" (except at most one quiet aside per
-  movement), rhetorical questions, exclamation marks, "welcome back", calls to action.
+  "imagine", "picture this", "let's", "we", "you", rhetorical questions, exclamation marks,
+  "welcome back", calls to action.
 - Do not restate the topic's definition; the listener already knows what the video is about.
 - Begin mid-flow as a natural continuation, with a plain concrete fact — not a metaphor,
   not a scene-setting flourish ("In the slow grammar of the sea…").
+- End the movement on its last fact. No closing paragraph that sums the movement up.
+
+{{style}}
 
 Output as JSON:
 {
@@ -123,7 +126,7 @@ Return JSON:
 {
   "title": "<at most 95 characters, pattern: Calm Facts About <Topic> to Fall Asleep To (<N> Hours); no clickbait, no emojis>",
   "title_hook": "<2-6 words, Title Case: a calm, evocative name for what THIS video lingers on, built from its chapters, e.g. 'The Silent Rings of Saturn', 'Life Along the Ancient Nile', 'Under the Rainforest Canopy', 'Inside a Working Steam Engine'. Concrete and specific; include the subject's name (or its usual short form) when it reads naturally; no clickbait, no questions, no exclamation marks, no numbers, no emojis.>",
-  "description": "<2-3 calm sentences describing the video. No hashtags, no emojis.>",
+  "description": "<2-3 plain sentences saying what the video covers, named concretely (places, creatures, crafts, years). No hashtags, no emojis, no questions, no 'not X but Y', no colon reveals, no words like remarkable, journey, tapestry, testament.>",
   "tags": ["<8-12 lowercase tags: sleep, facts, the topic, calm, relaxation, bedtime, and related words>"]
 }"""
 
@@ -181,12 +184,15 @@ What the video covered, movement by movement (heading — opening lines):
 
 Write the closing segment, about {{target_words}} words:
 - Begin exactly with: "Three quiet things to keep from tonight."
-- Then three short paragraphs, one per thing: a single gentle, memorable, TRUE fact drawn from
-  the material above, said simply and slowly, followed by one calm, quiet reflection on it.
-  Word each reflection differently: never start two sentences the same way, and never use a
-  stock phrase such as "it is lovely to remember". No new facts beyond the material above.
-- End with one soft line wishing the listener a good night's sleep. No calls to action, no
+- Then three short paragraphs, one per thing: a single memorable, TRUE fact drawn from the
+  material above, said simply, followed by one or two plain sentences that stay with that fact
+  (where it is, what it is made of, what it does), not a moral or a metaphor drawn from it.
+  Never start two paragraphs the same way; never use a stock phrase such as "it is lovely to
+  remember". No new facts beyond the material above.
+- End with one short line wishing the listener a good night's sleep. No calls to action, no
   "subscribe", no questions, no exclamation marks.
+
+{{style}}
 
 Output as JSON:
 {"body": "..."}"""

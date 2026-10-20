@@ -263,3 +263,49 @@ def test_cover_vertical_keeps_portrait_photos_below_the_title(tmp_path):
         col = [im.getpixel((540, y))[0] for y in range(0, im.height, 8)]
     bright = [i * 8 for i, v in enumerate(col) if v > 200]
     assert min(bright) / 1920 >= 0.27 and max(bright) / 1920 <= 0.73
+
+
+# ---------------------------------------------------------------- noslop
+
+def test_short_prompts_carry_the_style_rules_and_fallback_titles_are_not_faux_insight():
+    from sof import noslop
+    llm = FakeLLM({"section": 0, "hook_title": "x", "narration": "The city sits on 118 islands. " * 6})
+    shorts.write_short(llm, topic="Venice", sections=SECTIONS, words=40, model="fast")
+    assert "STYLE RULES" in llm.calls[0][0] and "{{style}}" not in llm.calls[0][0]
+    assert "THE NARRATOR" not in llm.calls[0][0]            # the Shorts voice is brighter; only the rules apply
+    for t in shorts.FALLBACK_TITLES:
+        assert not noslop.lint(t.format(s="Venice"), mode="sleep").hard
+
+
+def test_short_narration_is_rewritten_once_when_the_lint_flags_it():
+    sloppy = ("Venice is not a city. It is a miracle. The posts were driven into the mud in the 1400s. "
+              "Without oxygen the wood hardened. Here's the thing: it still stands.")
+    clean = ("Venice rests on wooden posts driven into the mud in the 1400s. Without oxygen the wood hardened. "
+             "The city still stands on them today.")
+
+    class LLM(FakeLLM):
+        def generate_json(self, prompt, **kw):
+            self.calls.append((prompt, kw))
+            if "PARAGRAPH id=0" in prompt:
+                return {"paragraphs": [{"id": 0, "text": clean}]}
+            return self.data
+
+    llm = LLM({"section": 0, "hook_title": "Venice Stands on Wooden Posts", "narration": sloppy})
+    out = shorts.write_short(llm, topic="Venice", sections=SECTIONS, words=60, model="fast")
+    assert out["narration"].startswith("Venice rests on wooden posts") and "miracle" not in out["narration"]
+    assert len(llm.calls) == 2 and llm.calls[1][1]["temperature"] == 0.2 and llm.calls[1][1]["model"] == "fast"
+    assert "binary_contrast" in llm.calls[1][0] and "throat_clearing" in llm.calls[1][0]
+
+
+def test_short_narration_survives_a_failing_editor():
+    sloppy = "Venice is not a city. It is a miracle. The posts were driven into the mud in the 1400s. The wood hardened."
+
+    class LLM(FakeLLM):
+        def generate_json(self, prompt, **kw):
+            if "PARAGRAPH id=0" in prompt:
+                raise RuntimeError("editor down")
+            return self.data
+
+    out = shorts.write_short(LLM({"section": 0, "hook_title": "t", "narration": sloppy}), topic="Venice",
+                             sections=SECTIONS, words=60, model="fast")
+    assert out["narration"].startswith("Venice is not a city.")

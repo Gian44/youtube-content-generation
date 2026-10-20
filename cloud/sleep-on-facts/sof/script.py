@@ -4,6 +4,11 @@ Two passes: one outline call plans "movements" from the article's real section s
 expansion call per movement writes prose from the chunks retrieved for that movement's heading
 and beats. A cross-movement n-gram check catches the model repeating itself and asks once for a
 rewrite. The loop keeps requesting fresh movements until the word count approaches the target.
+
+Every movement then goes through ``noslop``: the style rules are in the writer prompt, a regex lint
+scores what came back, and only the flagged paragraphs are sent to the cheap model for a targeted
+rewrite (at most ``slop_rounds`` times). The before/after score travels with the Script to the
+ledger. Nothing in that step can fail the video.
 """
 
 from __future__ import annotations
@@ -12,13 +17,15 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sof import research
+from sof import noslop, research
 from sof.prompts import (CLOSING_HEADING, CLOSING_PROMPT, DESCRIPTION_FOOTER, METADATA_PROMPT, OPENING_LINE,
                          OUTLINE_PROMPT, SEGMENT_PROMPT, STORY_FORMATS)
 
 log = logging.getLogger("sof.script")
 _MAX_SEG, _TAIL, _MAX_REFILLS = 1500, 400, 8
 REPEAT_NGRAM, REPEAT_LIMIT = 8, 0.12          # >12 % of a movement's 8-grams already heard → rewrite once
+SIGNATURE_LINES = ("Three quiet things to keep", "night's sleep", "night’s sleep")   # exempt from the lint
+STYLE_BLOCK = noslop.style_block("sleep")
 
 
 class ScriptTooLong(RuntimeError):
@@ -42,6 +49,7 @@ class Script:
     footer: str = ""                                      # "Facts … drawn from" + Wikipedia sources
     story_format: str = ""                                # key of prompts.STORY_FORMATS used for this video
     title_hook: str = ""                                  # 2-6 word evocative phrase for the title (metadata model)
+    slop: dict = field(default_factory=dict)              # noslop.merge_stats(...) over the movements: before/after findings
 
     def to_dict(self) -> dict:
         return {
@@ -49,7 +57,7 @@ class Script:
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
             "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
             "sections": self.sections, "blurb": self.blurb, "footer": self.footer, "story_format": self.story_format,
-            "title_hook": self.title_hook,
+            "title_hook": self.title_hook, "slop": self.slop,
         }
 
     @classmethod
@@ -59,7 +67,8 @@ class Script:
                  image_keywords=list(d.get("image_keywords") or []), setting_queries=list(d.get("setting_queries") or []),
                  sections=[x for x in (d.get("sections") or []) if isinstance(x, dict)],
                  blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""),
-                 story_format=str(d.get("story_format") or ""), title_hook=str(d.get("title_hook") or ""))
+                 story_format=str(d.get("story_format") or ""), title_hook=str(d.get("title_hook") or ""),
+                 slop=dict(d.get("slop") or {}))
         if not sc.blurb and not sc.footer:
             sc.blurb, sc.footer = split_description(sc.description)
         return sc
@@ -124,6 +133,7 @@ def generate_script(
     hints: str = "",
     story_format: str = "journey",
     closing_words: int = 180,
+    slop_rounds: int = 2,
 ) -> Script:
     fmt = STORY_FORMATS.get(story_format) or STORY_FORMATS["journey"]
     # Scale the plan to the target so a 3-minute smoke run does not get 16×600-word movements.
@@ -133,6 +143,7 @@ def generate_script(
     covered: list[str] = []
     seen_headings: set[str] = set()
     heard: set[tuple[str, ...]] = set()
+    slop_parts: list[dict] = []
     tail = ""
     lead = (corpus.lead if corpus else hints) or "(no notes available)"
     sections = "\n".join(f"- {s}" for s in (corpus.sections if corpus else [])) or "(none)"
@@ -149,6 +160,19 @@ def generate_script(
     def write(prompt: str) -> str:
         return str(llm.generate_json(prompt, max_tokens=segment_max_tokens, model=writer_model).get("body") or "").strip()
 
+    def edit(prompt: str) -> dict:
+        """The targeted rewrite of flagged paragraphs runs on the cheap model at temperature 0."""
+        return llm.generate_json(prompt, max_tokens=segment_max_tokens, temperature=0.2, model=fast_model)
+
+    def despop(body: str, heading: str, *, rounds: int = slop_rounds) -> str:
+        """Lint + targeted rewrite; logs the score; never raises."""
+        res = noslop.polish(body, rewrite=edit, mode="sleep", rounds=max(0, rounds), exempt=SIGNATURE_LINES,
+                            extra=f"The script is a calm bedtime narration about {topic}; keep that register.")
+        slop_parts.append(res.to_dict())
+        log.info("noslop %r: %s → %s (%d paragraphs rewritten in %d round%s)", heading, res.before.summary(),
+                 res.after.summary(), res.rewritten, res.rounds, "" if res.rounds == 1 else "s")
+        return res.text or body
+
     def expand(m: dict) -> None:
         nonlocal tail, heard
         heading = str(m.get("heading") or f"Part {len(bodies) + 1}")
@@ -160,6 +184,7 @@ def generate_script(
         prompt = _fill(
             SEGMENT_PROMPT, topic=topic, movement_heading=heading, movement_beats=beats, notes=notes,
             running_summary=summary, previous_tail=tail or "(this is the very beginning)", target_words=per_words,
+            style=STYLE_BLOCK,
         )
         try:
             body = write(prompt)
@@ -174,6 +199,7 @@ def generate_script(
             log.warning("segment failed (%s): %s", heading, exc)
             return
         if body:
+            body = despop(body, heading)
             bodies.append(body)
             covered.append(heading)
             heard |= _ngrams(body)
@@ -220,9 +246,9 @@ def generate_script(
     # the same closing segment, "Three quiet things to keep", written from what this video covered.
     try:
         lines = "\n".join(f"- {h} — {_first_sentences(b)}" for h, b in zip(covered, bodies))
-        closing = write(_fill(CLOSING_PROMPT, topic=topic, covered=lines, target_words=closing_words))
+        closing = write(_fill(CLOSING_PROMPT, topic=topic, covered=lines, target_words=closing_words, style=STYLE_BLOCK))
         if closing:
-            bodies.append(closing)
+            bodies.append(despop(closing, CLOSING_HEADING, rounds=min(1, slop_rounds)))
             covered.append(CLOSING_HEADING)
     except Exception as exc:  # noqa: BLE001 — a missing outro must not cost the video
         log.warning("closing segment failed: %s", exc)
@@ -230,7 +256,10 @@ def generate_script(
     bodies[0] = f"{opening}\n\n{bodies[0]}"
     body = "\n\n".join(bodies)
     words = len(body.split())
+    slop = noslop.merge_stats(slop_parts)
     log.info("script: %d words in %d movements (%d refills), target %d", words, len(bodies), refills, target_words)
+    if slop:
+        log.info("noslop: %d findings before → %d after, %d paragraphs rewritten", slop["before"], slop["after"], slop["rewritten"])
 
     meta = llm.generate_json(
         _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600],
@@ -238,6 +267,8 @@ def generate_script(
         model=fast_model,
     )
     blurb, footer = str(meta.get("description") or "").strip(), sources_footer(corpus)
+    if blurb and slop_rounds > 0:
+        blurb = noslop.polish(blurb, rewrite=edit, mode="sleep", rounds=1).text or blurb
     description = (blurb + "\n\n" + footer).strip()
     return Script(
         title=str(meta.get("title") or f"Calm Facts About {topic} to Fall Asleep To")[:100],
@@ -255,4 +286,5 @@ def generate_script(
         footer=footer,
         story_format=story_format if story_format in STORY_FORMATS else "journey",
         title_hook=str(meta.get("title_hook") or "").strip(),
+        slop=slop,
     )

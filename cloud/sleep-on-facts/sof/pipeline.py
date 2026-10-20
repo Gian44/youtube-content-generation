@@ -113,9 +113,13 @@ def run(cfg: Config) -> int:
             max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio, max_words_ratio=cfg.max_words_ratio,
             segment_max_tokens=cfg.segment_max_tokens, writer_model=cfg.script_model, fast_model=cfg.fast_model,
             story_format=STORY_ORDER[len(rows) % len(STORY_ORDER)],      # rotates one shape per published video
+            slop_rounds=cfg.slop_rounds,
         )
         script_path.write_text(json.dumps(sc.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"script: {sc.word_count} words, {sc.movements} movements · shape: {sc.story_format or 'n/a'}", flush=True)
+    if sc.slop:
+        print(f"noslop: {sc.slop.get('before', 0)} AI-pattern findings → {sc.slop.get('after', 0)} after "
+              f"{sc.slop.get('rewritten', 0)} paragraph rewrites · left: {sc.slop.get('remaining') or 'none'}", flush=True)
 
     # 3. TTS — synthesised movement by movement so chapter start times are exact.
     _stage("tts")
@@ -333,7 +337,7 @@ def run(cfg: Config) -> int:
         "duration_seconds": round(duration), "words": sc.word_count, "images": len(image_paths),
         "image_sources": by_source, "story_format": sc.story_format, "title_variant": variant,
         "timeline": _timeline_stats(plan_path), "short": short_entries[0] if short_entries else None,
-        "shorts": short_entries,
+        "shorts": short_entries, "slop": sc.slop or None,
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80 + 0.03 * len(short_entries), 2),
         "run_url": _run_url(),
     }
