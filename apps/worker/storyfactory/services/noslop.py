@@ -195,10 +195,10 @@ _KICKER_OPENER = re.compile(
 _KICKER_TAIL = re.compile(
     r"\b(?:onward|onwards|again|season\s+after\s+season|season\s+by\s+season|cell\s+by\s+cell|one\s+by\s+one|"
     r"day\s+by\s+day|year\s+by\s+year|night\s+after\s+night|at\s+a\s+time|hand\s+to\s+hand|to\s+the\s+other|all\s+along|"
-    r"all\s+the\s+same|still|ever|forever|the\s+world|of\s+time|through\s+time|story|memory|trace|home|life|rest|sleep|"
+    r"all\s+the\s+same|still|ever|forever|the\s+world|through\s+time|story|memory|trace|home|life|rest|sleep|"
     r"the\s+night|silence|the\s+dark|the\s+light|the\s+same|as\s+one|as\s+before|as\s+always|as\s+ever|at\s+last|to\s+come|"
     r"and\s+on|and\s+over|begins?\s+again|goes\s+on|lives\s+on|carries\s+on|carried\s+on|continues?|endures?|remains?|waits?|"
-    r"waiting|holding|carrying|becoming|bloom|origins?|body|craft|use|seasons?|winter|summer|dawn|dusk|together)[.\"”)]*$", re.I)
+    r"waiting|holding|carrying|becoming|bloom|seasons?|together)[.\"”)]*$", re.I)
 _KICKER_SHAPE = [
     re.compile(r"\bmore\s+than\s+(?:a|an|the|just|only|simply|merely)\s+[^.;?!]{1,50}?[:,;]\s", re.I),   # "more than a X: a Y"
     re.compile(r"\bas\s+if\b", re.I),
@@ -395,9 +395,10 @@ def _kicker(last: str, n_sents: int, *, is_last_para: bool, mode: str = "sleep")
     opener, tail = bool(_KICKER_OPENER.match(last)), bool(_KICKER_TAIL.search(last))
     if opener and tail:
         return True
-    if opener and words >= 18:
+    factual = bool(re.search(r"\d", last))                     # a number marks a fact, not a flourish
+    if opener and words >= 18 and not factual:
         return True
-    if tail and (words >= 22 or is_last_para):
+    if tail and (words >= 22 or is_last_para) and not factual:
         return True
     if mode == "sleep" and is_last_para and _MOOD.search(last):
         return True                                             # the movement signs off by naming its own mood
