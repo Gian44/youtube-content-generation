@@ -78,3 +78,6 @@ client_secret*.apps.googleusercontent.com.json
 *.wav
 *.ass
 !apps/worker/templates/**
+
+# graphify knowledge-graph output (local, machine-specific)
+graphify-out/
