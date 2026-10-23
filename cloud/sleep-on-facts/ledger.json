@@ -334,5 +334,71 @@
     },
     "cost_estimate_usd": 3.72,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/39660736223"
+  },
+  {
+    "date": "2026-10-23",
+    "topic": "Pacific Ocean",
+    "category": "oceans & rivers",
+    "wiki_title": "Pacific Ocean",
+    "video_id": "HmwYrILNpDo",
+    "title": "The Quiet Pacific Ocean | 3-Hour Ocean Documentary for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-10-24T00:30:00Z",
+    "duration_seconds": 11029,
+    "words": 27739,
+    "images": 150,
+    "image_sources": {
+      "commons": 65,
+      "nasa": 0,
+      "pexels": 25,
+      "pixabay": 60
+    },
+    "story_format": "parts",
+    "title_variant": 4,
+    "timeline": {
+      "slots": 552,
+      "thing_slots": 142,
+      "things_shown": 24,
+      "distinct_photos": 248,
+      "lag_median": 3.37
+    },
+    "short": {
+      "video_id": "DbMgw089vyQ",
+      "title": "The Pacific Exceeds All Land #Shorts",
+      "seconds": 25.7,
+      "publish_at": "2026-10-24T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "DbMgw089vyQ",
+        "title": "The Pacific Exceeds All Land #Shorts",
+        "seconds": 25.7,
+        "publish_at": "2026-10-24T01:30:00Z"
+      },
+      {
+        "video_id": "Idd0hTjyP8g",
+        "title": "Four Kilometers Below The Surface #Shorts",
+        "seconds": 25.5,
+        "publish_at": "2026-10-25T01:30:00Z"
+      },
+      {
+        "video_id": "lXA7H7YEUs0",
+        "title": "Mountains That Never Reach The Surface #Shorts",
+        "seconds": 25.8,
+        "publish_at": "2026-10-26T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 32,
+      "after": 5,
+      "paragraphs": 321,
+      "rewritten": 26,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 5
+      }
+    },
+    "cost_estimate_usd": 3.8,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40010439805"
   }
 ]
