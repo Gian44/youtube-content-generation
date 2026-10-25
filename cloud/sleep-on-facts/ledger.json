@@ -435,5 +435,87 @@
       "title_before": "The Quiet Pacific Ocean | 3-Hour Ocean Documentary for Sleep",
       "thumb_text": "HALF THE OCEAN"
     }
+  },
+  {
+    "date": "2026-10-25",
+    "topic": "Mariana Trench",
+    "category": "oceans & the deep sea",
+    "wiki_title": "Mariana Trench",
+    "video_id": "pkDpPwjFDYY",
+    "title": "How Life Survives at the Mariana Trench Floor | 2.5 Hours of Ocean Facts to Fall Asleep To",
+    "privacy": "public",
+    "publish_at": "2026-10-26T00:30:00Z",
+    "duration_seconds": 8675,
+    "words": 20607,
+    "images": 30,
+    "image_sources": {
+      "commons": 28,
+      "nasa": 0,
+      "pexels": 2,
+      "pixabay": 0
+    },
+    "story_format": "journey",
+    "title_variant": 0,
+    "timeline": {
+      "slots": 434,
+      "thing_slots": 93,
+      "things_shown": 15,
+      "distinct_photos": 92,
+      "lag_median": 2.02
+    },
+    "short": {
+      "video_id": "KD_Abiv5wNI",
+      "title": "Mariana Trench Dips 2,087 Meters Farther Than Everest Rises #Shorts",
+      "seconds": 42.6,
+      "publish_at": "2026-10-26T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "KD_Abiv5wNI",
+        "title": "Mariana Trench Dips 2,087 Meters Farther Than Everest Rises #Shorts",
+        "seconds": 42.6,
+        "publish_at": "2026-10-26T01:30:00Z"
+      },
+      {
+        "video_id": "IVVjcqHEaUw",
+        "title": "Mariana Trench Water Presses 15,750 Pounds per Square Inch #Shorts",
+        "seconds": 29.5,
+        "publish_at": "2026-10-27T01:30:00Z"
+      },
+      {
+        "video_id": "xUudWTqiNDk",
+        "title": "Mariana Trench Holds Single Cells at 10.6 Km #Shorts",
+        "seconds": 27.9,
+        "publish_at": "2026-10-28T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 58,
+      "after": 9,
+      "paragraphs": 305,
+      "rewritten": 44,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 5,
+        "robotic_rhythm": 1,
+        "summary_ending": 1,
+        "fragmentation": 1,
+        "metadiscourse": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 70,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 58,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40221291621"
   }
 ]
