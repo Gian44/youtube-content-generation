@@ -243,7 +243,7 @@
     "category": "nature & animals",
     "wiki_title": "Honey bee",
     "video_id": "FgJfSo3az0s",
-    "title": "Honey Bees | 3 Hours of Calm Nature Facts for Deep Sleep",
+    "title": "How Honey Bees Turn Flowers Into Winter Stores | 3 Hours of Nature Facts to Fall Asleep To",
     "privacy": "public",
     "publish_at": "2026-10-20T00:30:00Z",
     "duration_seconds": 10324,
@@ -291,7 +291,12 @@
       }
     ],
     "cost_estimate_usd": 3.63,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/39320788241"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/39320788241",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "Honey Bees | 3 Hours of Calm Nature Facts for Deep Sleep",
+      "thumb_text": "FLOWERS INTO WINTER FOOD"
+    }
   },
   {
     "date": "2026-10-21",
