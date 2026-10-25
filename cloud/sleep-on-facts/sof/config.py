@@ -41,7 +41,7 @@ class Config:
     max_words_ratio: float = 1.3
     # tts — which voice: "kokoro" (free, open-weights, runs on the runner; default since 2026-10-25 when the
     # OpenAI keys ran out of credits) or "openai" (gpt-4o-mini-tts echo below). Env TTS_BACKEND overrides.
-    tts_backend: str = "pocket"               # 2026-10-25 evening: our designed voice "C · Velvet low London"
+    tts_backend: str = "pocket"               # 2026-10-25 evening: our designed voice "F · Mellow Australian"
     pocket_voice: str = str(Path(__file__).resolve().parents[1] / "brand" / "voice" / "narrator.wav")
     pocket_workers: int = 2                   # processes; Pocket TTS uses ~2 cores each (runner has 4)
     pocket_threads: int = 2

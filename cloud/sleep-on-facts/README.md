@@ -83,8 +83,8 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 ## The voice and the photo checks (2026-10-25, after the OpenAI keys ran out of credits)
 
 - **Voice (since the evening of 2026-10-25): our own designed narrator** — `brand/voice/narrator.wav`, an original
-  voice designed from a text description with Qwen3-TTS VoiceDesign on Gian's PC (he picked "C · Velvet low
-  London"; see `brand/voice/README.md`), spoken nightly by **Kyutai Pocket TTS** on the runner CPU (2 worker
+  voice designed from a text description with Qwen3-TTS VoiceDesign on Gian's PC (he picked "F · Mellow
+  Australian"; see `brand/voice/README.md`), spoken nightly by **Kyutai Pocket TTS** on the runner CPU (2 worker
   processes × 2 threads; ~2.3× real time per process measured on Gian's laptop). The model is gated on Hugging
   Face: secret `HF_TOKEN` (Gian's read token, account granted access); weights cached. If Pocket TTS cannot load,
   the whole narration falls back to Kokoro below. Never clone a real person's or a product's voice here
