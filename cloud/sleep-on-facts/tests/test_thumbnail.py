@@ -108,3 +108,20 @@ def test_make_drops_picks_the_confirm_step_rejects(tmp_path):
     out = thumbnail.make([a, b], topic="X", hours=3, out=str(tmp_path / "u.jpg"), candidates=[a, b],
                          choose=lambda ps: ps[0], confirm=lambda p: None)          # check unavailable → keep the pick
     assert thumbnail.source_of(out) == a
+    out = thumbnail.make([a, b], topic="X", hours=3, out=str(tmp_path / "v.jpg"), candidates=[a, b],
+                         choose=lambda ps: ps[0], confirm=lambda p: {"ok": p != a, "where": "left"})
+    assert thumbnail.source_of(out) == b
+
+
+def test_a_subject_on_the_left_is_moved_out_from_under_the_title(tmp_path):
+    from PIL import ImageStat
+    src = tmp_path / "wide.jpg"
+    im = Image.new("RGB", (1600, 900), (20, 20, 20))
+    ImageDraw.Draw(im).rectangle((60, 300, 400, 700), fill=(250, 250, 250))       # bright "bee" on the left
+    im.save(src)
+    left = thumbnail.compose(str(src), topic="Bees", hours=3, out=str(tmp_path / "l.jpg"), subject_side="left")
+    plain = thumbnail.compose(str(src), topic="Bees", hours=3, out=str(tmp_path / "p.jpg"))
+    def right_half(path):
+        with Image.open(path) as t:
+            return ImageStat.Stat(t.convert("L").crop((700, 150, 1280, 600))).mean[0]
+    assert right_half(left) > right_half(plain) + 20

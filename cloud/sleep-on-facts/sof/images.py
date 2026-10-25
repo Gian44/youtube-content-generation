@@ -722,28 +722,32 @@ def pick_iconic(paths: list[str], *, subject: str, api_key: str, model: str = "g
 
 CONFIRM_PROMPT = (
     "This image is about to become the thumbnail of a YouTube video about {subject}, seen as a tile about 170 "
-    "pixels wide. Answer two things: (1) is {subject} itself the main, LARGE, clearly visible subject — not tiny, "
-    "not hidden, not only implied by its surroundings (flowers without the bee, a river without the rainforest "
-    "around it is fine only if the subject is the river)? (2) is the image free of printed captions, scanned text, "
-    "watermarks and labels? Return JSON {{\"ok\": <true only if both are yes>, \"why\": \"<5 words>\"}}."
+    "pixels wide. Answer: (1) is {subject} itself the main, LARGE, clearly visible subject — not tiny, not hidden, "
+    "not only implied by its surroundings? (2) is the image free of printed captions, scanned text, watermarks "
+    "and labels? (3) where in the frame is {subject}: left, center or right? Return JSON "
+    "{{\"ok\": <true only if (1) and (2) are yes>, \"where\": \"left|center|right\", \"why\": \"<5 words>\"}}."
 )
 
 
-def confirm_thumbnail(path: str, *, subject: str, api_key: str, model: str = "gpt-4o-mini", transport=None) -> bool | None:
-    """True/False from the vision model; None when it could not be asked (no key, API error) — callers keep the pick."""
+def confirm_thumbnail(path: str, *, subject: str, api_key: str, model: str = "gpt-4o-mini", transport=None) -> dict | None:
+    """{"ok": bool, "where": "left|center|right"} from the vision model (high detail: a bee on a flower is
+    easy to miss at 512 px); None when it could not be asked (no key, API error) — callers keep the pick."""
     if not api_key or not path:
         return None
     content = [{"type": "text", "text": CONFIRM_PROMPT.format(subject=subject)},
-               {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64_small(path)}", "detail": "low"}}]
+               {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{_b64_small(path, max_side=1024)}",
+                                                   "detail": "high"}}]
     try:
         with httpx.Client(timeout=60.0, transport=transport, headers={"Authorization": f"Bearer {api_key}"}) as c:
             r = c.post(VISION_URL, json={"model": model, "messages": [{"role": "user", "content": content}],
-                                         "response_format": {"type": "json_object"}, "max_tokens": 40})
+                                         "response_format": {"type": "json_object"}, "max_tokens": 60})
             r.raise_for_status()
             data = json.loads(r.json()["choices"][0]["message"]["content"])
-        ok = bool(data.get("ok"))
-        log.info("thumbnail check %s: %s (%s)", Path(path).name, "ok" if ok else "rejected", data.get("why"))
-        return ok
+        where = str(data.get("where") or "center").lower()
+        out = {"ok": bool(data.get("ok")), "where": where if where in ("left", "center", "right") else "center"}
+        log.info("thumbnail check %s: %s, subject %s (%s)", Path(path).name, "ok" if out["ok"] else "rejected",
+                 out["where"], data.get("why"))
+        return out
     except Exception as exc:  # noqa: BLE001
         log.warning("thumbnail check failed (%s); keeping the pick", exc)
         return None

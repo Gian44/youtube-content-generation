@@ -83,12 +83,18 @@ def pick_photo(paths: list[str]) -> str:
 
 # ------------------------------------------------------------------ composition
 
-def _cover(im, w: int, h: int):
+def _cover(im, w: int, h: int, *, subject_side: str = ""):
     """Wide photos fill the frame. Square/portrait ones (a planet's full disk, a statue) are shown whole
-    on the RIGHT, over a blurred, darkened fill of themselves, leaving the left for the title."""
+    on the RIGHT, over a blurred, darkened fill of themselves, leaving the left for the title.
+
+    ``subject_side="left"`` (from the vision check): the title would sit on the subject (2026-10-25: the
+    Honey Bees bee was under "HONEY BEES"), so the photo is mirrored. The vision check has already
+    confirmed it carries no text, so nothing reads backwards."""
     from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
     im = im.convert("RGB")
+    if subject_side == "left":
+        im = ImageOps.mirror(im)
     if im.width / max(1, im.height) >= 1.3:
         return ImageOps.fit(im, (w, h), method=Image.LANCZOS, centering=(0.5, 0.45))
     bg = ImageOps.fit(im, (max(16, w // 16), max(9, h // 16)), method=Image.BILINEAR).filter(ImageFilter.GaussianBlur(3))
@@ -192,11 +198,11 @@ def clean_thumb_text(text: str, topic: str = "") -> str:
 
 
 def compose(photo: str, *, topic: str, hours: int, out: str, tagline: str = "Calm facts to fall asleep to",
-            brand: str = "SLEEP ON FACTS", hook: str = "") -> str:
+            brand: str = "SLEEP ON FACTS", hook: str = "", subject_side: str = "") -> str:
     from PIL import Image, ImageDraw
 
     with Image.open(photo) as src:
-        base = _scrim(_cool(_cover(src, W, H)))
+        base = _scrim(_cool(_cover(src, W, H, subject_side=subject_side)))
     frame = base.copy()
     d = ImageDraw.Draw(frame)
     hook = clean_thumb_text(hook, topic)
@@ -264,15 +270,15 @@ def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates
     never taken from scenery when those exist. ``choose(paths) -> path | None`` picks the most iconic
     one (a vision call) among up to ``max_choices`` (wide first, then square/portrait, which
     ``_cover`` shows whole); the mood/contrast heuristic over wide photos is the fallback.
-    ``confirm(path) -> bool | None`` double-checks the pick (subject large, no printed text); a False
-    drops that photo and asks again, up to ``attempts`` times (2026-10-25: the Honey Bees thumbnail
-    showed flowers, an Indus one a scanned caption).
+    ``confirm(path) -> {"ok", "where"} | bool | None`` double-checks the pick (subject large, no printed
+    text); not ok drops that photo and asks again, up to ``attempts`` times (2026-10-25: an Indus pick
+    had a scanned caption); "where" = left moves the subject out from under the title.
     """
     pool = [p for p in (candidates or []) if p] or list(image_paths)
     wide = [p for p in pool if _aspect(p) >= 1.3]
     # Offer both shapes (wide first): the most recognisable view of a planet or a statue is often square.
     offer = (wide + [p for p in pool if p not in wide])[:max_choices]
-    best = None
+    best, side = None, ""
     for _ in range(max(1, attempts)):
         pick = None
         if choose is not None and offer:
@@ -282,16 +288,18 @@ def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates
                 log.warning("thumbnail chooser failed: %s", exc)
         if not pick:
             break
-        if confirm is not None and confirm(pick) is False:
+        verdict = confirm(pick) if confirm is not None else None
+        ok = verdict.get("ok") if isinstance(verdict, dict) else verdict
+        if ok is False:
             offer = [p for p in offer if p != pick]
             continue
-        best = pick
+        best, side = pick, (verdict.get("where", "") if isinstance(verdict, dict) else "")
         break
     if not best:
         rest = [p for p in (wide or pool) if p in offer] or offer or wide or pool
         best = pick_photo(rest)
     log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
-    result = compose(best, topic=topic, hours=hours, out=out, hook=hook)
+    result = compose(best, topic=topic, hours=hours, out=out, hook=hook, subject_side=side)
     Path(_source_file(out)).write_text(str(best), encoding="utf-8")      # for the description's photo credit
     return result
 

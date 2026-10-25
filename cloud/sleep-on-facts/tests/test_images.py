@@ -274,10 +274,12 @@ def test_confirm_thumbnail_reads_the_verdict_and_tolerates_errors(tmp_path):
     p = tmp_path / "x.jpg"
     Image.new("RGB", (64, 36), (90, 90, 90)).save(p)
 
-    def answer(ok):
-        return httpx.MockTransport(lambda req: httpx.Response(200, json={"choices": [{"message": {"content": _json.dumps({"ok": ok, "why": "w"})}}]}))
-    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(True)) is True
-    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(False)) is False
+    def answer(ok, where="left"):
+        body = {"ok": ok, "where": where, "why": "w"}
+        return httpx.MockTransport(lambda req: httpx.Response(200, json={"choices": [{"message": {"content": _json.dumps(body)}}]}))
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(True)) == {"ok": True, "where": "left"}
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(False, "middle")) == \
+        {"ok": False, "where": "center"}
     boom = httpx.MockTransport(lambda req: httpx.Response(500))
     assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=boom) is None
     assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="") is None
