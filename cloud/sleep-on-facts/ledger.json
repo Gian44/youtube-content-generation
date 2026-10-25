@@ -32,13 +32,18 @@
     "category": "history & ancient civilisations",
     "wiki_title": "Indus Valley Civilisation",
     "video_id": "TypcP9WqAow",
-    "title": "Calm Facts About the Indus Valley Civilization to Fall Asleep To (3 Hours)",
+    "title": "The Indus Valley Civilization Built Cities With Drains | 3-Hour History Documentary for Sleep",
     "privacy": "public",
     "duration_seconds": 11232,
     "words": 27716,
     "images": 77,
     "cost_estimate_usd": 3.79,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37696685698"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/37696685698",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "Fall Asleep Learning About the Indus Valley Civilization | 3 Hours of Calm History",
+      "thumb_text": "CITIES WITH DRAINS"
+    }
   },
   {
     "date": "2026-10-08",
@@ -88,7 +93,7 @@
     "category": "history & ancient civilisations",
     "wiki_title": "Ancient Egypt",
     "video_id": "pRn0Uhn7_Ik",
-    "title": "Bedtime History: Life Along Ancient Egypt's Nile (3 Hours to Fall Asleep To)",
+    "title": "Ancient Egypt Lasted for Three Thousand Years | 3-Hour History Documentary for Sleep",
     "privacy": "public",
     "publish_at": "2026-10-12T00:30:00Z",
     "duration_seconds": 10897,
@@ -110,7 +115,12 @@
       "lag_median": 3.16
     },
     "cost_estimate_usd": 3.69,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38168658408"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38168658408",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "Bedtime History: Life Along Ancient Egypt's Nile (3 Hours to Fall Asleep To)",
+      "thumb_text": "THREE THOUSAND YEARS"
+    }
   },
   {
     "date": "2026-10-12",
@@ -118,7 +128,7 @@
     "category": "cities, islands & landscapes",
     "wiki_title": "Venice",
     "video_id": "kdYKy-Fz3Ts",
-    "title": "Venice Between Water and Stone | Drift Off to Sleep with 3 Hours of Gentle Geography Facts",
+    "title": "How Venice Became a City on Water | Fall Asleep to 3 Hours of Geography Facts",
     "privacy": "public",
     "publish_at": "2026-10-13T00:30:00Z",
     "duration_seconds": 11027,
@@ -140,7 +150,12 @@
       "lag_median": 3.77
     },
     "cost_estimate_usd": 3.72,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38317100946"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38317100946",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "Venice Between Water and Stone | Drift Off to Sleep with 3 Hours of Gentle Geography Facts",
+      "thumb_text": "CITY ON WATER"
+    }
   },
   {
     "date": "2026-10-15",
@@ -183,7 +198,7 @@
     "category": "inventions, crafts & ideas",
     "wiki_title": "Paper",
     "video_id": "rF7f7YCYFL0",
-    "title": "The Quiet Making of Paper | 3 Hours of Calm History to Fall Asleep To",
+    "title": "How Paper Was Made Before Machines | 3 Hours of History to Fall Asleep To",
     "privacy": "public",
     "publish_at": "2026-10-17T00:30:00Z",
     "duration_seconds": 10661,
@@ -210,7 +225,12 @@
       "seconds": 27.3
     },
     "cost_estimate_usd": 3.67,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38950350049"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/38950350049",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "The Quiet Making of Paper | 3 Hours of Calm History to Fall Asleep To",
+      "thumb_text": "MADE BY HAND"
+    }
   },
   {
     "date": "2026-10-19",
@@ -341,7 +361,7 @@
     "category": "oceans & rivers",
     "wiki_title": "Pacific Ocean",
     "video_id": "HmwYrILNpDo",
-    "title": "The Quiet Pacific Ocean | 3-Hour Ocean Documentary for Sleep",
+    "title": "The Pacific Holds Half The Ocean Water | Ocean Facts for Sleep (3 Hours)",
     "privacy": "public",
     "publish_at": "2026-10-24T00:30:00Z",
     "duration_seconds": 11029,
@@ -399,6 +419,11 @@
       }
     },
     "cost_estimate_usd": 3.8,
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40010439805"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40010439805",
+    "repackaged": {
+      "date": "2026-10-25",
+      "title_before": "The Quiet Pacific Ocean | 3-Hour Ocean Documentary for Sleep",
+      "thumb_text": "HALF THE OCEAN"
+    }
   }
 ]
