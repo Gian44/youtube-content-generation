@@ -12,7 +12,7 @@ SMOKE_MAX_MINUTES = 10  # at/below this the run is a smoke test: always unlisted
 
 @dataclass
 class Config:
-    minutes: int = 180
+    minutes: int = 150                  # 2026-10-25: ~2.5 h (the niche's leaders run 2h15–2h50; was 180)
     topic: str | None = None
     privacy: str = "public"
     skip_upload: bool = False
@@ -61,7 +61,14 @@ class Config:
     dwell_seconds: float = 20.0
     crossfade_seconds: float = 1.5
     xfade_batch: int = 20
-    video_dim: float = 0.75         # photos shown at 75 % brightness — night-friendly (Gian, 2026-10-11)
+    video_dim: float = 0.95         # 2026-10-25: brighter, closer to the vivid look of the niche's leaders (was 0.75)
+    # moving footage between the photos (sof/footage.py): Pexels + Pixabay video, vision-checked preview frames
+    footage_enabled: bool = True
+    footage_every: int = 3              # every 3rd filler slot (no named thing on screen) shows a clip
+    footage_want: int = 30              # clips per video (each used at most 3 times, never close together)
+    footage_candidates: int = 80
+    footage_slow: float = 1.5           # clips play at 1/1.5 speed: drifting, not busy
+    footage_budget: float = 600.0       # seconds for searching, checking and downloading clips
     # discovery
     publish_tz: str = "America/New_York"   # scheduled publish slot: 8:30 PM US Eastern, all year (DST-aware)
     publish_hour: int = 20
@@ -133,7 +140,7 @@ class Config:
 
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Sleep On Facts cloud pipeline")
-    p.add_argument("--minutes", type=int, default=180, help="target narration length (<=10 = smoke, unlisted)")
+    p.add_argument("--minutes", type=int, default=150, help="target narration length (<=10 = smoke, unlisted)")
     p.add_argument("--topic", default=None, help="force a topic by name")
     p.add_argument("--privacy", choices=["public", "unlisted", "private"], default=None)
     p.add_argument("--skip-upload", action="store_true")

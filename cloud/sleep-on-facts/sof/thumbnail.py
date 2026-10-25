@@ -191,13 +191,13 @@ def clean_thumb_text(text: str, topic: str = "") -> str:
 
     t = re.sub(r"\s+", " ", str(text or "")).strip(" .,:;-–—'‘’\"").upper()
     if not t or not 1 <= len(t.split()) <= 5 or len(t) > 26 or _HOOK_BANNED.search(t):
-        return ""
+        return ""                                # (a single question mark is allowed only at the very end)
     if topic and t == topic.strip().upper():
         return ""
     return t
 
 
-def compose(photo: str, *, topic: str, hours: int, out: str, tagline: str = "Calm facts to fall asleep to",
+def compose(photo: str, *, topic: str, hours: float | int, out: str, tagline: str = "Calm facts to fall asleep to",
             brand: str = "SLEEP ON FACTS", hook: str = "", subject_side: str = "") -> str:
     from PIL import Image, ImageDraw
 
@@ -227,7 +227,10 @@ def compose(photo: str, *, topic: str, hours: int, out: str, tagline: str = "Cal
         d.text((66, y + 6), tagline, font=_font("DejaVuSerif-Italic.ttf", 40), fill=MUTED)
 
     # Hours pill — top right.
-    label = f"{hours} HOUR{'S' if hours != 1 else ''}"
+    from sof.seo import fmt_hours
+
+    h = fmt_hours(hours)
+    label = f"{h} HOUR{'' if h == '1' else 'S'}"
     f_pill = _font("DejaVuSans-Bold.ttf", 44)
     tw = d.textlength(label, font=f_pill)
     px2, py1 = W - 56, 48
@@ -262,7 +265,7 @@ def _aspect(path: str) -> float:
         return 0.0
 
 
-def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates: list[str] | None = None,
+def make(image_paths: list[str], *, topic: str, hours: float | int, out: str, candidates: list[str] | None = None,
          choose=None, max_choices: int = 16, hook: str = "", confirm=None, attempts: int = 4) -> str:
     """Compose the thumbnail from the best photo.
 

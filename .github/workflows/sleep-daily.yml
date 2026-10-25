@@ -11,7 +11,7 @@ on:
     inputs:
       minutes:
         description: "Target narration minutes (<=10 = smoke run, always unlisted)"
-        default: "180"
+        default: "150"
       topic:
         description: "Force a topic by name (optional)"
         default: ""
@@ -61,7 +61,7 @@ jobs:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-          IN_MINUTES: ${{ github.event.inputs.minutes || '180' }}
+          IN_MINUTES: ${{ github.event.inputs.minutes || '150' }}
           IN_TOPIC: ${{ github.event.inputs.topic || '' }}
           IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
           IN_SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || 'false' }}
@@ -91,7 +91,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
       - name: Keep the finished video for the weekly marathon (sof/marathon.py)
-        if: success() && (github.event.inputs.minutes || '180') == '180' && (github.event.inputs.skip_upload || 'false') == 'false'
+        if: success() && fromJSON(github.event.inputs.minutes || '150') > 10 && (github.event.inputs.skip_upload || 'false') == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: media-${{ github.run_id }}

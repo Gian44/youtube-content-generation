@@ -104,11 +104,14 @@ HARD RULES:
 - Keep it restful. Pass over destruction, disease, conflict, politics and alarming statistics
   in a sentence at most, even if the notes dwell on them; choose the notes that describe,
   explain and evoke.
-- Unhurried pace. Vary sentence length. Mostly plain, concrete words.
+- Unhurried pace, short sentences: most of them 8 to 16 words, one idea each, with a longer one now and
+  then. Mostly plain, concrete words.
+- The narrator is the channel's host, explaining to one listener: say "we" for where the story goes
+  ("we follow the river north", "here we reach the outer planets"), "you" only now and then. At most one
+  plain question in this movement, answered in the very next sentence.
 - Continuous PROSE only. No headings, bullets, lists or numbering.
 - BANNED: "did you know", "fun fact", "interestingly", "it is worth noting", "in conclusion",
-  "imagine", "picture this", "let's", "we", "you", rhetorical questions, exclamation marks,
-  "welcome back", calls to action.
+  "imagine", "picture this", "let's dive", exclamation marks, "welcome back", calls to action.
 - Do not restate the topic's definition; the listener already knows what the video is about.
 - Begin mid-flow as a natural continuation, with a plain concrete fact — not a metaphor,
   not a scene-setting flourish ("In the slow grammar of the sea…").
@@ -121,8 +124,8 @@ Output as JSON:
   "body": "..."   // the narration prose for this movement only
 }"""
 
-TITLE_HOOK_RULE = ("<4-10 words, Title Case: the single most intriguing TRUE thing this video explains, as a statement or a how/why line that makes a curious stranger want to hear the rest. It must be supported by the chapters and the narration. Name the subject (or its usual short form). Good: 'The Moon Is Slowly Drifting Away From Earth', 'Why Saturn's Rings Will Not Last Forever', 'How Paper Was Made Before Machines', 'Half the People on Earth Live on Rice'. Never: fear words (scary, terrifying, deadly, disturbing, dangerous), hype words (shocking, insane, secret, mind-blowing, unbelievable), question marks, exclamation marks, 'you', emojis, mood words (calm, gentle, quiet, peaceful, soothing).>")
-THUMB_TEXT_RULE = ("<2-4 words in capitals for the thumbnail, the hook compressed so it reads at a glance, e.g. 'DRIFTING AWAY', 'RINGS WON'T LAST', 'MADE BY HAND', 'HALF THE WORLD'. True, no hype, no fear words, no question marks, do not repeat the subject's name.>")
+TITLE_HOOK_RULE = ("<4-10 words, Title Case: the single most intriguing TRUE thing this video explains, as a statement or a how/why line that makes a curious stranger want to hear the rest. It must be supported by the chapters and the narration. Name the subject (or its usual short form). A real question is welcome when the video answers it. Good: 'The Moon Is Slowly Drifting Away From Earth', 'What Actually Is Light?', 'Why Do Saturn's Rings Not Last Forever?', 'How Paper Was Made Before Machines', 'Scientists Still Debate How the Moon Formed' (only when true). Never: fear words (scary, terrifying, deadly, disturbing, dangerous), hype words (shocking, insane, secret, mind-blowing, unbelievable), exclamation marks, 'you', emojis, mood words (calm, gentle, quiet, peaceful, soothing).>")
+THUMB_TEXT_RULE = ("<2-4 words in capitals for the thumbnail, the hook compressed so it reads at a glance, e.g. 'DRIFTING AWAY', 'RINGS WON'T LAST', 'MADE BY HAND', 'HALF THE WORLD'. True, no hype, no fear words; a short question is fine ('WHAT IS LIGHT?'); do not repeat the subject's name.>")
 
 METADATA_PROMPT = """You write YouTube metadata for a calm "facts to fall asleep to" channel.
 Topic: {{topic}}. Video length: about {{hours}} hour(s). First 600 characters of the narration:
@@ -136,6 +139,7 @@ Return JSON:
   "title": "<at most 95 characters, pattern: Calm Facts About <Topic> to Fall Asleep To (<N> Hours); no clickbait, no emojis>",
   "title_hook": "{{title_hook_rule}}",
   "thumb_text": "{{thumb_text_rule}}",
+  "intro_teaser": "<2-3 sentences the host says right after the welcome, starting with 'Tonight, we': where tonight's journey goes, named concretely from the chapters (places, things, ideas). The 'we' voice; no hype, no questions, no 'imagine', no mood words such as calm or gentle.>",
   "description": "<2-3 plain sentences saying what the video covers, named concretely (places, creatures, crafts, years). No hashtags, no emojis, no questions, no 'not X but Y', no colon reveals, no words like remarkable, journey, tapestry, testament.>",
   "tags": ["<8-12 lowercase tags: sleep, facts, the topic, calm, relaxation, bedtime, and related words>"]
 }"""
@@ -181,11 +185,12 @@ STORY_FORMATS = {
 }
 STORY_ORDER = ["journey", "story", "day", "parts"]
 
-OPENING_LINE = "This is Sleep On Facts. Tonight: {opening}."
+OPENING_LINE = "This is Sleep On Facts. Tonight: {opening}."     # pre-2026-10-25; the host intro (sof/host.py) replaced it
+TONIGHT_FALLBACK = "Tonight, we're taking {opening}."
 
 CLOSING_HEADING = "Three Quiet Things to Keep"
 
-CLOSING_PROMPT = """You are closing a calm, three-hour "facts to fall asleep to" video about {{topic}}.
+CLOSING_PROMPT = """You are closing a long "facts to fall asleep to" video about {{topic}}.
 This closing segment is the same every night in shape (it is the channel's signature) but its
 content is specific to tonight's subject.
 

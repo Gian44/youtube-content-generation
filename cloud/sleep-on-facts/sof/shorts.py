@@ -85,10 +85,10 @@ Return JSON:
              "hook_title": "<4-9 words, Title Case: the fact stated plainly so a scroller gets it in one second, with no context. Name the subject, and give the number or scale when there is one (digits are fine): 'Venice Stands on 10 Million Wooden Logs', 'The Moon Drifts 3.8 cm Further Every Year', 'One Hive Makes 25 kg of Honey a Year'. Never a cryptic fragment ('Males Begin Without Sperm', 'Four Kilometers Below The Surface'); no clickbait words, no question marks>",
              "narration": "<the sentences, one paragraph>"}, ...]}"""
 
-CTA_LINE = "The full three-hour version is on the channel. Put it on tonight, and sleep well."
+CTA_LINE = "The full, hours-long version is on the channel. Put it on tonight, and sleep well."
 CTA_LINES = (CTA_LINE,
-             "There is a three-hour version of this on the channel, made for falling asleep to.",
-             "The long, slow version is on the channel. Three hours of it, for when you want to drift off.")
+             "There is a long version of this on the channel, made for falling asleep to.",
+             "The long, slow version is on the channel, for when you want to drift off.")
 FALLBACK_TITLES = ("One Strange Fact About {s}", "A Surprising Fact About {s}", "An Odd Detail About {s}")
 HOOK_BANNED = re.compile(r"[!?#@\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|mind|blow\w*|you won't)\b", re.I)
 _SENT = re.compile(r"(?<=[.!?])\s+")
@@ -204,7 +204,7 @@ def choose_photos(*, section: int, plan: list[dict] | None, reel: list[str], lab
     out: list[str] = []
 
     def add(p):
-        if p and os.path.isfile(p) and p not in out:
+        if p and os.path.isfile(p) and p not in out and not str(p).lower().endswith((".mp4", ".mov", ".webm", ".m4v")):
             out.append(p)
 
     for r in plan or []:
@@ -470,8 +470,7 @@ def short_title(hook_title: str, topic: str) -> str:
 
 def short_description(*, long_video_id: str, topic: str, category: str, hours: int, credit_lines: list[str]) -> str:
     p = seo.profile(category)
-    h = max(1, int(hours))
-    lines = [f"Full video — {h} hour{'s' if h != 1 else ''} of calm {p.phrase.lower()} about {seo._clean(topic)} to fall asleep to:",
+    lines = [f"Full video — {seo.hours_label(hours).lower()} of calm {p.phrase.lower()} about {seo._clean(topic)} to fall asleep to:",
              f"https://youtu.be/{long_video_id}", "",
              "Sleep On Facts: long, gentle, true narrations to drift off to. New long video several nights a week."]
     if credit_lines:

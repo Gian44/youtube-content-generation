@@ -161,7 +161,7 @@ def zoom_expr(tau: int, rate: float) -> str:
 
 
 def _photo(inp: int, cap: int | None, label: str, *, frames: int, tau: int, rate: float, width: int, height: int,
-           fps: int, split: bool | None = None) -> str:
+           fps: int, split: bool | None = None, video: bool = False) -> str:
     """One photo's stream (the same chain in bodies and transitions, so they match pixel for pixel at their
     joins): the ``render.ken_burns_cmd`` zoompan on the pre-covered canvas, then the credit line on top.
 
@@ -171,6 +171,14 @@ def _photo(inp: int, cap: int | None, label: str, *, frames: int, tau: int, rate
     bicubic downscale of the whole 4:4:4 canvas is the dominant cost of the render. zoompan itself in 4:2:0
     would be as cheap but snaps its crop to even pixels, which doubled the frame-to-frame step jitter.
     """
+    if video:
+        # Moving footage (pre-cut by render.cover_clip, looped by the input's -stream_loop): its clock is the
+        # same tau, so a clip runs on seamlessly from body to transition to body, like a photo's zoom.
+        chain = (f"[{inp}:v]trim=start_frame={int(tau)}:end_frame={int(tau) + frames},setpts=PTS-STARTPTS,"
+                 f"fps={fps},setsar=1,format=yuv420p")
+        if cap is None:
+            return f"{chain}[{label}]"
+        return f"{chain}[{label}z];[{label}z][{cap}:v]overlay=0:0:format=auto,format=yuv420p[{label}]"
     z = zoom_expr(tau, rate)
 
     def zp(w: int, h: int) -> str:
@@ -200,6 +208,15 @@ def _fades(frames: int, fade_in: int, fade_out: int) -> str:
     return ",".join(parts) or "null"
 
 
+def _is_clip(path: str) -> bool:
+    return str(path).lower().endswith((".mp4", ".mov", ".webm", ".m4v"))
+
+
+def _inp(path: str) -> list[str]:
+    """ffmpeg input args: a footage clip loops forever (the trim in ``_photo`` takes the frames it needs)."""
+    return ["-stream_loop", "-1", "-i", path] if _is_clip(path) else ["-i", path]
+
+
 def _encode(out: str, frames: int, fps: int) -> list[str]:
     return ["-map", "[v]", "-frames:v", str(frames), "-r", str(fps), *X264, "-an", "-map_metadata", "-1", out]
 
@@ -207,9 +224,10 @@ def _encode(out: str, frames: int, fps: int) -> list[str]:
 def body_cmd(image: str, out: str, *, frames: int, tau: int, rate: float, width: int, height: int, fps: int,
              caption: str | None = None, fade_in: int = 0, fade_out: int = 0, split: bool | None = None) -> list[str]:
     """One photo on its own for ``frames`` frames, its zoom clock starting at ``tau``."""
-    cmd = ["ffmpeg", "-y", "-i", image] + (["-i", caption] if caption else [])
+    vid = _is_clip(image)
+    cmd = ["ffmpeg", "-y", *_inp(image)] + (["-i", caption] if caption else [])
     graph = _photo(0, 1 if caption else None, "p", frames=frames, tau=tau, rate=rate, width=width, height=height, fps=fps,
-                   split=split)
+                   split=split, video=vid)
     return cmd + ["-filter_complex", f"{graph};[p]{_fades(frames, fade_in, fade_out)}[v]", *_encode(out, frames, fps)]
 
 
@@ -221,7 +239,7 @@ def transition_cmd(image_a: str, image_b: str, out: str, *, frames: int, tau_a: 
     Each photo carries its own credit line before the xfade, so the two captions crossfade with their photos.
     The first frame is pure a and the last is 1/frames short of pure b, so a's body before and b's after join seamlessly.
     """
-    cmd = ["ffmpeg", "-y", "-i", image_a, "-i", image_b]
+    cmd = ["ffmpeg", "-y", *_inp(image_a), *_inp(image_b)]
     ca = cb = None
     if caption_a:
         cmd += ["-i", caption_a]
@@ -230,7 +248,8 @@ def transition_cmd(image_a: str, image_b: str, out: str, *, frames: int, tau_a: 
         cmd += ["-i", caption_b]
         cb = 3 if caption_a else 2
     kw = dict(frames=frames, rate=rate, width=width, height=height, fps=fps, split=split)
-    graph = ";".join([_photo(0, ca, "a", tau=tau_a, **kw), _photo(1, cb, "b", tau=tau_b, **kw),
+    graph = ";".join([_photo(0, ca, "a", tau=tau_a, video=_is_clip(image_a), **kw),
+                      _photo(1, cb, "b", tau=tau_b, video=_is_clip(image_b), **kw),
                       f"[a][b]xfade=transition=fade:duration={frames / fps:.6f}:offset=0,format=yuv420p[v]"])
     return cmd + ["-filter_complex", graph, *_encode(out, frames, fps)]
 
@@ -283,12 +302,23 @@ def _workers(workers: int | None, jobs: int) -> int:
 
 
 def _cover_all(images: list[str], tmp: Path, *, width: int, height: int, canvas: float, dim: float,
-               workers: int | None) -> dict[str, str | None]:
-    """Pre-cover each unique photo once; ``None`` for a photo that cannot be read."""
+               workers: int | None, fps: int = 24, clip_slow: float = 1.5) -> dict[str, str | None]:
+    """Pre-cover each unique photo once (pre-cut each footage clip once); ``None`` for one that cannot be read."""
     def one(src: str) -> tuple[str, str | None]:
         try:
             st = os.stat(src)
-            dst = tmp / f"cover_{_digest((os.path.abspath(src), st.st_size, st.st_mtime_ns, width, height, canvas, dim))}.jpg"
+            key = (os.path.abspath(src), st.st_size, st.st_mtime_ns, width, height, canvas, dim)
+            if _is_clip(src):
+                dst = tmp / f"clip_{_digest(key + (fps, clip_slow))}.mp4"
+                if not dst.exists():
+                    part = _part(dst)
+                    render.cover_clip(src, str(part), width=width, height=height, fps=fps, dim=dim, slow=clip_slow)
+                    frames, _, _ = probe(str(part))
+                    if not frames or frames < fps:
+                        raise RuntimeError(f"clip too short after cutting ({frames} frames)")
+                    os.replace(part, dst)
+                return src, str(dst)
+            dst = tmp / f"cover_{_digest(key)}.jpg"
             if not dst.exists():
                 part = _part(dst)
                 render.cover_image(src, str(part), width=width, height=height, scale=canvas, dim=dim)
@@ -380,8 +410,8 @@ def _run_jobs(jobs: list[_Job], workers: int | None) -> tuple[dict[Path, str], s
 def build_timeline_reel(slots: list[str], tmp_dir: str, *, dwell: float, crossfade: float, width: int, height: int,
                         fps: int, dim: float = 1.0, captions: dict[str, str] | None = None, total: float | None = None,
                         workers: int | None = None, fade_in: float = 2.0, fade_out: float = 3.0,
-                        canvas: float | None = None, cleanup: bool = True) -> str:
-    """Render the slot list (one local image path per ``dwell``-second slot) into one silent reel and
+                        canvas: float | None = None, cleanup: bool = True, clip_slow: float = 1.5) -> str:
+    """Render the slot list (one local image path — or a ``.mp4`` footage clip — per ``dwell``-second slot) into one silent reel and
     return its path (``tmp_dir/timeline.mp4``), verified with ffprobe to hold exactly the planned frames.
 
     ``captions`` maps an image path to its on-screen credit line. ``total`` (the narration length) makes the
@@ -399,7 +429,8 @@ def build_timeline_reel(slots: list[str], tmp_dir: str, *, dwell: float, crossfa
     t0 = time.time()
 
     unique = list(dict.fromkeys(slots))
-    covers = _cover_all(unique, tmp, width=width, height=height, canvas=canvas, dim=dim, workers=workers)
+    covers = _cover_all(unique, tmp, width=width, height=height, canvas=canvas, dim=dim, workers=workers, fps=fps,
+                        clip_slow=clip_slow)
     bad = {s for s, c in covers.items() if c is None}
     cap_png: dict[str, str] = {}                       # image → credit-line PNG (one PNG per distinct text)
     for img in unique:

@@ -68,13 +68,20 @@ def test_title_shapes_rotate_and_keep_subject_length_and_sleep_intent():
     assert len(set(titles)) == seo.TITLE_VARIANTS                       # every shape is different
     for t in titles:
         assert t.startswith("Why Saturn's Rings Will Not Last Forever | ")
-        assert ("3 Hour" in t or "3-Hour" in t) and ("Sleep" in t or "Asleep" in t) and len(t) <= 100
+        assert ("Sleep" in t or "Asleep" in t) and len(t) <= 100
+    assert sum(("3 Hour" in t or "3-Hour" in t) for t in titles) == 3          # one short tail: "| Space Facts for Sleep"
+    assert titles[3].endswith("| Space Facts for Sleep")
+    assert seo.build_title("Light", "space & astronomy", 2.5, hook="What Actually Is Light?", variant=1) == \
+        "What Actually Is Light? | 2.5-Hour Space Documentary for Sleep"
     assert titles[1] == "Why Saturn's Rings Will Not Last Forever | 3-Hour Space Documentary for Sleep"
     assert seo.build_title("Saturn", "space & astronomy", 3, variant=4) == seo.build_title("Saturn", "space & astronomy", 3)
 
 
 def test_hooks_are_cleaned_and_combined_with_the_subject_when_needed():
-    assert seo.clean_hook("Shocking Secrets of Saturn!") == "" and seo.clean_hook("Why Is Saturn So Big?") == ""
+    assert seo.clean_hook("Shocking Secrets of Saturn!") == ""
+    assert seo.clean_hook("Why Is Saturn So Big?") == "Why Is Saturn So Big?"           # a real question is fine
+    assert seo.clean_hook("Saturn Is Big?") == "" and seo.clean_hook("Big? Saturn Is") == ""
+    assert seo.round_hours(8900) == 2.5 and seo.round_hours(10800) == 3 and seo.hours_label(2.5) == "2.5 Hours"
     assert seo.clean_hook("  'Life Along the Ancient Nile.' ") == "Life Along the Ancient Nile"
     assert seo.clean_hook("Rings") == "" and seo.clean_hook("Top 10 Moons of Saturn") == ""
     assert seo.clean_hook("The Scariest Planet in the Solar System") == ""          # fear words promise the wrong video

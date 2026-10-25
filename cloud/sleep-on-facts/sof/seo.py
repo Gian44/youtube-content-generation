@@ -56,12 +56,24 @@ def _clean(s: str) -> str:
     return re.sub(r"[<>]", "", str(s or "")).strip()
 
 
-def hours_label(hours: int) -> str:
-    h = max(1, int(hours))
-    return f"{h} Hour{'s' if h != 1 else ''}"
+def round_hours(seconds: float) -> float | int:
+    """Narration length for titles, to the nearest half hour (2026-10-25: videos target ~2.5 h)."""
+    h = max(1.0, round(float(seconds) / 1800) / 2)
+    return int(h) if h.is_integer() else h
 
 
-_HOOK_BANNED = re.compile(r"[!?#@\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|you|your|must|best|worst|"
+def fmt_hours(hours: float | int) -> str:
+    """'3', '2.5' — never '3.0'."""
+    h = max(1.0, float(hours))
+    return str(int(h)) if h.is_integer() else f"{h:g}"
+
+
+def hours_label(hours: float | int) -> str:
+    h = fmt_hours(hours)
+    return f"{h} Hour{'' if h == '1' else 's'}"
+
+
+_HOOK_BANNED = re.compile(r"[!#@\"“”]|\?(?=.)|\b(shocking|secrets?|insane|unbelievable|incredible|you|your|must|best|worst|"
                           r"top|ultimate|mind|blow\w*|amazing|scar(?:y|ier|iest)|terrif\w*|horrif\w*|disturbing|creepy|"
                           r"deadl\w*|dangerous|nightmare\w*|evil|killer\w*|exposed|truth)\b", re.I)
 _ARTICLE_NOUNS = re.compile(r"\b(reef|rainforest|forest|civili[sz]ation|engine|river|desert|ocean|sea|mountains|valley|canyon|"
@@ -69,15 +81,21 @@ _ARTICLE_NOUNS = re.compile(r"\b(reef|rainforest|forest|civili[sz]ation|engine|r
                             r"universe|galaxy|milky way|telescope|railway|printing press|lighthouse)$", re.I)
 
 
+_QUESTION_OPENER = re.compile(r"(?i)(what|why|how|where|when|who|which|can|could|does|do|did|is|are|was|were|will|would|has|have)\b")
+
+
 def clean_hook(hook: str) -> str:
     """A model-written title hook, or '' when it is not a 2-10 word statement (hype, fear, question, too long).
 
-    Curiosity is the point ("The Moon Is Slowly Drifting Away From Earth", "Why Saturn's Rings Won't
-    Last"); digits are fine; questions, exclamations, hype and fear words are not.
+    Curiosity is the point ("The Moon Is Slowly Drifting Away From Earth", "What Actually Is Light?");
+    digits are fine; a question is fine when it reads as one and ends the hook (2026-10-25: the niche's
+    leader titles most videos as questions); exclamations, hype and fear words are not.
     """
     h = re.sub(r"\s+", " ", _clean(hook)).strip(" .,:;-–—'‘’")
     if not 2 <= len(h.split()) <= 10 or len(h) > 64 or _HOOK_BANNED.search(h):
         return ""
+    if h.endswith("?") and not _QUESTION_OPENER.match(h):
+        return ""                       # a question must read as one ("What Actually Is Light?")
     return h
 
 
@@ -108,7 +126,7 @@ TITLE_VARIANTS = 4
 NO_HOOK_LEADS = ("The Whole Story of {s}", "Everything We Know About {s}", "A Long, Slow Look at {s}", "All About {s}")
 
 
-def build_title(subject: str, category: str, hours: int, *, hook: str = "", variant: int = 0) -> str:
+def build_title(subject: str, category: str, hours: float | int, *, hook: str = "", variant: int = 0) -> str:
     """Hook first, sleep intent last; one of TITLE_VARIANTS tails (rotate ``variant`` per video).
 
     ``hook`` comes from the metadata model; one that does not name the subject is prefixed with it
@@ -116,7 +134,7 @@ def build_title(subject: str, category: str, hours: int, *, hook: str = "", vari
     YouTube's 100 characters falls back to the shortest tail, then to the subject alone.
     """
     p, h, S = profile(category), hours_label(hours), _clean(subject)
-    n = max(1, int(hours))
+    n = fmt_hours(hours)
     k = clean_hook(hook)
     if k:
         lead = k if _mentions_subject(k, S) else f"{S}: {k}"
@@ -126,7 +144,7 @@ def build_title(subject: str, category: str, hours: int, *, hook: str = "", vari
         f"{h} of {p.phrase} to Fall Asleep To",
         f"{n}-Hour {p.doc} for Sleep",
         f"Fall Asleep to {h} of {p.phrase}",
-        f"{p.phrase} for Sleep ({h})",
+        f"{p.phrase} for Sleep",
     ]
     tail = tails[int(variant) % len(tails)]
     for cand in (f"{lead} | {tail}", f"{lead} | {min(tails, key=len)}", f"{S} | {tails[0]}"):
@@ -162,7 +180,7 @@ def chapter_lines(chapters: list[dict], *, min_gap: float = 10.0) -> list[str]:
     return [f"{fmt_ts(s)} {t}" for s, t in out] if len(out) >= 3 else []
 
 
-def build_description(*, subject: str, category: str, hours: int, blurb: str = "", chapters: list[dict] | None = None,
+def build_description(*, subject: str, category: str, hours: float | int, blurb: str = "", chapters: list[dict] | None = None,
                       footer: str = "", photos: str = "", extra: str = "", limit_bytes: int = 4900) -> str:
     """Keyword-first opening line → blurb → chapters → sources footer → photo/licence line → extra → hashtags.
 
@@ -170,8 +188,7 @@ def build_description(*, subject: str, category: str, hours: int, blurb: str = "
     are dropped from the end first (chapters carry more value).
     """
     p = profile(category)
-    h = max(1, int(hours))
-    opening = f"Fall asleep to {h} hour{'s' if h != 1 else ''} of calm {p.phrase.lower()}: {_clean(subject)}."
+    opening = f"Fall asleep to {hours_label(hours).lower()} of calm {p.phrase.lower()}: {_clean(subject)}."
     head = "\n\n".join(x for x in [opening + (" " + _clean(blurb) if blurb else ""),
                                    ("Chapters\n" + "\n".join(chapter_lines(chapters or []))) if chapter_lines(chapters or []) else ""] if x)
     tail_parts = []

@@ -65,7 +65,8 @@ def test_square_photo_is_shown_whole_on_the_right(tmp_path):
 
 def test_hook_line_replaces_the_tagline_and_is_cleaned(tmp_path):
     assert thumbnail.clean_thumb_text("drifting away") == "DRIFTING AWAY"
-    assert thumbnail.clean_thumb_text("SHOCKING SECRET") == "" and thumbnail.clean_thumb_text("WHY SO BIG?") == ""
+    assert thumbnail.clean_thumb_text("SHOCKING SECRET") == "" and thumbnail.clean_thumb_text("WHY SO BIG?") == "WHY SO BIG?"
+    assert thumbnail.clean_thumb_text("BIG? WHY") == ""
     assert thumbnail.clean_thumb_text("THE SCARIEST PLANET") == ""                 # fear words are banned too
     assert thumbnail.clean_thumb_text("A HOOK FAR TOO LONG TO READ ON A TILE") == ""
     assert thumbnail.clean_thumb_text("saturn", "Saturn") == ""                    # never just the topic again

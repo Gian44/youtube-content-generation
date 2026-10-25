@@ -343,7 +343,10 @@ def lint(text: str, *, mode: str = "sleep", exempt: tuple[str, ...] = ()) -> Rep
         for k, s in enumerate(sents):
             if _is_colon_reveal(s):
                 add("colon_reveal", i, s)
-            if mode == "sleep" and _QUESTION.search(s):
+            # sleep (2026-10-25, host voice): one answered question per paragraph is fine; a second
+            # question, or a paragraph that ends on one, is still flagged
+            if mode == "sleep" and _QUESTION.search(s) and (k == len(sents) - 1 or sum(
+                    1 for x in sents[:k + 1] if _QUESTION.search(x)) >= 2):
                 add("question", i, s)
             if _SUMMARY.match(s) and (k == len(sents) - 1 or k == 0 and i == len(paras) - 1):
                 add("summary_ending", i, s)
@@ -408,18 +411,20 @@ def _kicker(last: str, n_sents: int, *, is_last_para: bool, mode: str = "sleep")
 # ---------------------------------------------------------------------------- prompt text
 
 VOICE_PROFILE = """THE NARRATOR (this is one voice, every night):
-An unhurried person who knows the subject well and is reading aloud at night to someone half asleep.
-Not a presenter, not a guide; nobody is being addressed.
-Sentences: long, winding sentences carried by concrete nouns and real names, broken now and then by a
-short plain one. Present tense for how things are, past tense for history. One particular thing (a
-place, a creature, a craftsman, a year, a mechanism) explained fully before the next.
+The channel's host, who knows the subject well, explaining it at night to one listener who is drifting
+off. Warm and plain, never a presenter performing. Says "we" for where the story goes ("we follow the
+river north", "here we reach the outer planets") and "you" only now and then. May ask one plain question
+in a movement and answer it in the next sentence.
+Sentences: short and clear, most of them 8 to 16 words, one idea each, with a longer one now and then.
+Present tense for how things are, past tense for history. One particular thing (a place, a creature, a
+craftsman, a year, a mechanism) explained fully before the next.
 Words: plain physical words (wax, pith, strips, cells, cloth). Real names, dates and numbers from the
 notes, with sizes and distances put in everyday terms. No word that describes the mood of the
 narration itself; the facts carry the mood.
 Moves to keep: lists of concrete things ("stone, clay, wood, papyrus, skin"). Returning to the same
 object several times in a movement.
 Moves the narrator never makes: ending a paragraph on a kicker, a metaphor or a recap (it ends on the
-last fact). "Not X but Y." Colon reveals. Questions. "You." Saying what matters or what to notice.
+last fact). "Not X but Y." Colon reveals. A run of questions. Saying what matters or what to notice.
 Calling anything quiet, gentle, patient, soft, calm, slow or still."""
 
 _RULES_COMMON = """- Every paragraph ends on its last concrete fact. No closing line that sums up, draws a moral,
@@ -444,7 +449,9 @@ _RULES_COMMON = """- Every paragraph ends on its last concrete fact. No closing 
 _RULES_SLEEP = _RULES_COMMON + """
 - Do not describe the narration's own mood: no quiet, gentle, patient, soft, calm, slow, serene, still,
   hushed, unhurried, soothing. If the facts are told slowly and plainly, the listener hears the calm.
-- No questions of any kind, no "imagine", no "picture this", no "you"."""
+- At most one question in a paragraph, answered in the next sentence; never end a paragraph on a
+  question. No "imagine", no "picture this".
+- "We" for the journey and an occasional "you" are fine; no calls to action inside the narration."""
 
 _RULES_FICTION = _RULES_COMMON + """
 - Keep the narrator's own spoken rhythm: contractions, asides, blunt words are fine; polish is not the goal.

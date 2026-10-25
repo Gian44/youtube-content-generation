@@ -13,8 +13,9 @@ from pathlib import Path
 
 _ATTRIBUTION = re.compile(r"\bCC[ -]?BY\b|^Attribution\b", re.I)
 
-DESCRIPTION_LINE = ("Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay. Photos that need a credit "
-                    "show their author and licence on screen. Licences: https://creativecommons.org/licenses/")
+DESCRIPTION_LINE = ("Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay; footage: Pexels and Pixabay. "
+                    "Photos that need a credit show their author and licence on screen. "
+                    "Licences: https://creativecommons.org/licenses/")
 
 
 def needs_credit(row: dict) -> bool:

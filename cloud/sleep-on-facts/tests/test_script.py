@@ -27,8 +27,11 @@ KW = dict(minutes=20, target_words=3000, num_movements=4, max_segments=40, fill_
 def test_loops_until_target_reached():
     llm = FakeLLM(words_per_segment=600, movements=4)
     s = generate_script(llm, topic="Whales", corpus=None, **KW)
-    # 4 planned + 1 from the refill (stops at target), + the closing signature; opening line adds 10 words
-    assert s.movements == 6 and s.word_count == 3000 + 10 + 13
+    # 4 planned + 1 from the refill (stops at target), + the closing signature; the host intro adds its words
+    from sof import host
+    intro = host.intro("Whales", fallback="Tonight, we're taking a slow journey through Whales.")
+    assert s.movements == 6 and s.word_count == 3000 + 12 + len(intro.split())   # 12 = the closing
+    assert s.body.startswith(intro)
     assert sum("Plan exactly" in c for c in llm.calls) == 2
     assert s.title.startswith("Calm Facts") and s.tags == ["a", "b"] and s.image_queries == ["q1", "q2"]
     assert Script.from_dict(s.to_dict()) == s
@@ -144,7 +147,9 @@ def test_story_shape_opening_line_and_closing_signature():
     s = generate_script(llm, topic="Saturn", corpus=None, story_format="day", **KW)
     outline = next(c for c in llm.calls if "Plan exactly" in c)
     assert 'STORY SHAPE FOR THIS VIDEO — "A day and a night"' in outline and "one orbit or rotation" in outline
-    assert s.body.startswith("This is Sleep On Facts. Tonight: a day and a night with Saturn.")
+    from sof import host
+    assert s.body.startswith(host.GREETINGS) and "Tonight, we're taking a day and a night with Saturn." in s.body[:1200]
+    assert "in the comments" in s.body[:1200] or "comment" in s.body[:1200]
     assert s.sections[-1]["heading"] == "Three Quiet Things to Keep" and s.sections[-1]["body"].startswith("Three quiet")
     closing_prompt = next(c for c in llm.calls if "Three quiet things to keep" in c)
     assert "Part 100" in closing_prompt and "This is Sleep On Facts" not in closing_prompt   # built from the movements

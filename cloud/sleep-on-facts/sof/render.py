@@ -63,6 +63,25 @@ def cover_image(src: str, dst: str, *, width: int, height: int, scale: float = C
     return dst
 
 
+def cover_clip_cmd(src: str, dst: str, *, width: int, height: int, fps: int, dim: float = 1.0, slow: float = 1.5,
+                   max_seconds: float = 45.0, skip: float = 0.5) -> list[str]:
+    """Pre-cut one stock clip for the timeline: cover-cropped to the frame, slowed ``slow``× (footage is
+    shot at normal speed; a bedtime video wants it drifting), resampled to ``fps``, dimmed like the photos,
+    silent, at most ``max_seconds`` long. Encoded once, then looped/trimmed per segment."""
+    vf = (f"setpts={slow:g}*PTS,scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
+          f"crop={width}:{height},fps={fps},setsar=1")
+    if dim < 1.0:
+        vf += f",lutyuv=y='val*{max(0.2, dim):g}'"
+    vf += ",format=yuv420p"
+    return ["ffmpeg", "-y", "-v", "error", "-ss", f"{skip:g}", "-i", src, "-an", "-vf", vf, "-t", f"{max_seconds:g}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-map_metadata", "-1", dst]
+
+
+def cover_clip(src: str, dst: str, **kw) -> str:
+    run(cover_clip_cmd(src, dst, **kw), 900)
+    return dst
+
+
 CAPTION_FONTS = ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf",
                  "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf")
 # Commons authors are often Japanese, Chinese or Korean user names; DejaVu has no CJK glyphs (they drew as boxes).

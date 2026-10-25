@@ -52,7 +52,7 @@ def test_plain_narration_passes():
     ("It tells us that honey bees were present in Europe by then.", "metadiscourse"),
     ("Wax is made. Cells are maintained. Honey is stored.", "fragmentation"),
     ("It becomes a wall. It becomes a rim, a base, a cap. It becomes a floor.", "robotic_rhythm"),
-    ("Did the bees know? Nobody can say.", "question"),
+    ("The bees crossed the field. Did the bees know?", "question"),
 ])
 def test_pattern_is_caught(text, rule):
     assert rule in rules(text), noslop.lint(text).findings
@@ -90,8 +90,10 @@ def test_mood_words_sleep_only_and_density():
 
 
 def test_questions_only_flagged_in_sleep_mode():
-    assert "question" in rules("Why does the comb hang downward? Gravity.", mode="sleep")
-    assert "question" not in rules("Why does the comb hang downward? Gravity.", mode="recap")
+    assert "question" in rules("Why does it hang? Why so low? Gravity pulls it.", mode="sleep")     # a run of questions
+    assert "question" in rules("The comb hangs low. Why does it hang downward?", mode="sleep")     # ends on a question
+    assert "question" not in rules("Why does the comb hang downward? Gravity pulls it.", mode="sleep")  # one, answered
+    assert "question" not in rules("Why does it hang? Why so low? Gravity.", mode="recap")
 
 
 def test_em_dashes_hard_outside_sleep():

@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import (captions, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
+from sof import (captions, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
                  topics, tts, upload, visuals)
 from sof.config import Config
 from sof.llm import LLM
@@ -141,7 +141,7 @@ def run(cfg: Config) -> int:
                                              for st, x in zip(starts, secs)], indent=1, ensure_ascii=False), encoding="utf-8")
     chapters = json.loads(chapters_path.read_text(encoding="utf-8"))
     duration = tts.duration_seconds(str(narration))
-    hours = max(1, round(duration / 3600))
+    hours = seo.round_hours(duration)          # 2.5 for a ~2½-hour video (titles, thumbnail, description)
     print(f"narration: {duration / 60:.1f} min · {len(chapters)} chapters · est. TTS cost "
           f"${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)
 
@@ -210,7 +210,8 @@ def run(cfg: Config) -> int:
             else:
                 slots = _plan_timeline(cfg, work=work, llm=llm, topic=name, article=article or "", sections=secs,
                                        duration=duration, chapters=chapters, reel=image_paths, used=used,
-                                       use_nasa=use_nasa, out=plan_path)
+                                       use_nasa=use_nasa, out=plan_path,
+                                       footage_queries=[name, *sc.image_queries[:8], *sc.setting_queries[:4]])
         except Exception as exc:  # noqa: BLE001 — never lose the video over the better visuals
             log.exception("timeline planning failed")
             print(f"! narration-matched photos unavailable ({exc}); using the looped subject reel", flush=True)
@@ -230,7 +231,7 @@ def run(cfg: Config) -> int:
                     built = timeline.build_timeline_reel(
                         slots, str(work / "timeline_tmp"), dwell=cfg.dwell_seconds, crossfade=cfg.crossfade_seconds,
                         width=cfg.width, height=cfg.height, fps=cfg.fps, dim=cfg.video_dim, captions=caps, total=duration,
-                        canvas=cfg.timeline_canvas)
+                        canvas=cfg.timeline_canvas, clip_slow=cfg.footage_slow)
                 except Exception as exc:  # noqa: BLE001
                     log.exception("timeline render failed")
                     print(f"! timeline render failed ({exc}); falling back to the looped subject reel", flush=True)
@@ -381,8 +382,10 @@ def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
 
 
 def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, sections: list[dict], duration: float,
-                   chapters: list[dict], reel: list[str], used: list[dict], use_nasa: bool, out: Path) -> list[str]:
-    """Slot list (one photo per ``dwell`` seconds) that follows the narration; writes ``out`` (timeline.json)."""
+                   chapters: list[dict], reel: list[str], used: list[dict], use_nasa: bool, out: Path,
+                   footage_queries: list[str] | None = None) -> list[str]:
+    """Slot list (one photo — or footage clip — per ``dwell`` seconds) that follows the narration; writes ``out``
+    (timeline.json)."""
     mentions = visuals.extract_mentions(llm, sections, topic=topic, model=cfg.fast_model, wiki_title=article)
     mentions = visuals.resolve_titles(mentions, topic=topic, wiki_title=article)
     chunks, owner = tts.chunk_sections(sections, cfg.tts_chunk_chars)
@@ -410,6 +413,21 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
                                      fallback=reel_abs, section_pools=visuals.build_section_pools(timed, photos),
                                      lead=cfg.timeline_lead, hold=cfg.timeline_hold, recall=cfg.timeline_recall)
     stats = visuals.plan_stats(plan)
+    if cfg.footage_enabled:                # moving footage in some filler slots (sof/footage.py, 2026-10-25)
+        try:
+            cands = footage.search(footage_queries or [topic], pexels_key=cfg.pexels_api_key,
+                                   pixabay_key=cfg.pixabay_api_key, limit=cfg.footage_candidates)
+            clips = footage.gather(cands, str(work / "footage"), classify_fn=lambda ps: label(ps, topic),
+                                   want=cfg.footage_want, budget_seconds=cfg.footage_budget)
+            slots, placed = footage.mix_into_slots(slots, plan, clips, every=cfg.footage_every)
+            for k, row in enumerate(plan):
+                if k < len(slots) and footage.is_video(slots[k]):
+                    row["image"], row["why"] = slots[k], "footage"
+            stats["footage_slots"], stats["footage_clips"] = placed, len(clips)
+            print(f"footage: {len(clips)} clips from {len(cands)} candidates · {placed} of {len(slots)} slots", flush=True)
+        except Exception as exc:  # noqa: BLE001 — footage is a bonus; the photos alone still make the video
+            log.exception("footage failed")
+            print(f"! footage skipped ({exc})", flush=True)
     out.write_text(json.dumps({"slots": slots, "stats": stats, "plan": plan,
                                "entities": [{**e, "photos": len(photos.get(e["key"]) or [])} for e in entities],
                                "mentions": [{k: m.get(k) for k in ("key", "name", "section", "quote", "time", "timing")}

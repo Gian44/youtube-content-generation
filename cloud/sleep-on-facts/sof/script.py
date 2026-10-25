@@ -17,8 +17,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from sof import noslop, research
-from sof.prompts import (CLOSING_HEADING, CLOSING_PROMPT, DESCRIPTION_FOOTER, METADATA_PROMPT, OPENING_LINE,
+from sof import host, noslop, research
+from sof.prompts import (CLOSING_HEADING, CLOSING_PROMPT, DESCRIPTION_FOOTER, METADATA_PROMPT, TONIGHT_FALLBACK,
                          OUTLINE_PROMPT, SEGMENT_PROMPT, STORY_FORMATS)
 
 log = logging.getLogger("sof.script")
@@ -253,8 +253,6 @@ def generate_script(
             covered.append(CLOSING_HEADING)
     except Exception as exc:  # noqa: BLE001 — a missing outro must not cost the video
         log.warning("closing segment failed: %s", exc)
-    opening = OPENING_LINE.format(opening=fmt["opening"].format(subject=topic))
-    bodies[0] = f"{opening}\n\n{bodies[0]}"
     body = "\n\n".join(bodies)
     words = len(body.split())
     slop = noslop.merge_stats(slop_parts)
@@ -264,9 +262,15 @@ def generate_script(
 
     meta = llm.generate_json(
         _fill(METADATA_PROMPT, topic=topic, hours=max(1, round(minutes / 60)), opening=body[:600],
-              headings="\n".join(f"- {h}" for h in covered)), max_tokens=700,
+              headings="\n".join(f"- {h}" for h in covered)), max_tokens=1000,
         model=fast_model,
     )
+    # The host's welcome + tonight's teaser open the video (sof/host.py; replaces "This is Sleep On Facts. Tonight: …").
+    welcome = host.intro(topic, teaser=str(meta.get("intro_teaser") or ""),
+                         fallback=TONIGHT_FALLBACK.format(opening=fmt["opening"].format(subject=topic)))
+    bodies[0] = f"{welcome}\n\n{bodies[0]}"
+    body = "\n\n".join(bodies)
+    words = len(body.split())
     blurb, footer = str(meta.get("description") or "").strip(), sources_footer(corpus)
     if blurb and slop_rounds > 0:
         blurb = noslop.polish(blurb, rewrite=edit, mode="sleep", rounds=1).text or blurb

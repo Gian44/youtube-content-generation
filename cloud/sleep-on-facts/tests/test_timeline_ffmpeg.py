@@ -192,3 +192,26 @@ def test_zoom_runs_on_across_segment_joins(tmp_path):
     assert abs(np.median(step_a) - expected) < 0.25 * expected and abs(np.median(step_b) - expected) < 0.25 * expected
     assert abs(_jump(sa, 0, 12, 22)) < 0.4 * expected                           # A: body → transition
     assert abs(_jump(sb, 15, 24, 48)) < 0.4 * expected                          # B: transition → body
+
+
+def _clip(tmp_path, name, seconds=2, size=(640, 360)):
+    """A moving test clip (ffmpeg's testsrc2: a colour pattern with a sweeping gradient and a running counter)."""
+    p = tmp_path / name
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=s={size[0]}x{size[1]}:r=30:d={seconds}",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", str(p)], check=True)
+    return str(p)
+
+
+def test_footage_slots_move_and_loop_and_mix_with_photos(tmp_path):
+    imgs = _photos(tmp_path, COLOURS[:2])
+    clip = _clip(tmp_path, "clip.mp4", seconds=2)                         # 2 s raw → 3 s slowed, loops in a 4 s slot
+    slots = [imgs[0], clip, imgs[1], clip]
+    reel = timeline.build_timeline_reel(slots, str(tmp_path / "t"), dwell=4.0, crossfade=0.5, width=320, height=180,
+                                        fps=24, total=16.0, fade_in=0.25, fade_out=0.25, workers=2, clip_slow=1.5)
+    f = _frames(reel, 320, 180).astype(int)
+    assert len(f) == 384 == timeline.probe(reel)[0] == _decoded_frames(reel)
+    assert np.abs(_centre(f[48]) - COLOURS[0]).max() < 8                      # photo slot
+    assert np.abs(_centre(f[240]) - COLOURS[1]).max() < 8                     # back to a photo
+    moving = [np.abs(f[k + 6] - f[k]).mean() for k in (100, 120, 140, 160, 300, 330)]
+    still = np.abs(f[60] - f[54]).mean()
+    assert min(moving) > 3 * max(still, 0.5)                                  # clip slots move, photo slots barely
