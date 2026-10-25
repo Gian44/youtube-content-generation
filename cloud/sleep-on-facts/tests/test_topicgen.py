@@ -34,6 +34,18 @@ def test_next_category_rotates_by_fewest_videos():
     assert topicgen.next_category(cats, [{"category": "nature"}, {"category": "history"}, {"category": "space"}]) == "nature"
 
 
+def test_next_category_honours_weights_and_ignores_marathons():
+    cats = ["space", "history", "craft"]
+    w = {"space": 3, "history": 3, "craft": 1}
+    picked, ledger = [], []
+    for _ in range(7):
+        c = topicgen.next_category(cats, ledger, w)
+        picked.append(c)
+        ledger.append({"category": c})
+    assert picked.count("space") == 3 and picked.count("history") == 3 and picked.count("craft") == 1
+    assert topicgen.next_category(cats, [{"category": "space", "kind": "marathon"}] * 5, w) == "space"
+
+
 def test_choose_skips_used_and_thin_topics():
     llm = FakeLLM()
     pick = topicgen.choose(llm, categories=["nature"], ledger=[{"topic": "Ancient Egypt", "wiki_title": "Ancient Egypt", "category": "history"}],

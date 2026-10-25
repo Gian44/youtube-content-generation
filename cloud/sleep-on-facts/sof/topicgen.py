@@ -24,13 +24,16 @@ class Pick:
     category: str
 
 
-def next_category(categories: list[str], ledger: list[dict]) -> str:
+def next_category(categories: list[str], ledger: list[dict], weights: dict[str, float] | None = None) -> str:
+    """Fewest past videos per unit of weight (a weight-3 category comes up three times as often);
+    ties → the heavier category, then list order. Rows that are not daily videos (marathons) don't count."""
+    w = {c: max(0.01, float((weights or {}).get(c, 1))) for c in categories}
     counts = {c: 0 for c in categories}
     for row in ledger:
         c = row.get("category")
-        if c in counts:
+        if c in counts and row.get("kind", "video") == "video":
             counts[c] += 1
-    return min(categories, key=lambda c: (counts[c], categories.index(c)))
+    return min(categories, key=lambda c: (counts[c] / w[c], -w[c], categories.index(c)))
 
 
 def _fill(t: str, **kw) -> str:
@@ -53,8 +56,8 @@ def propose(llm, *, category: str, used: list[str], model: str | None, n: int = 
 
 
 def choose(llm, *, categories: list[str], ledger: list[dict], model: str | None = None, transport=None,
-           rounds: int = 2, min_chars: int = research.MIN_ARTICLE_CHARS) -> Pick:
-    category = next_category(categories, ledger)
+           rounds: int = 2, min_chars: int = research.MIN_ARTICLE_CHARS, weights: dict[str, float] | None = None) -> Pick:
+    category = next_category(categories, ledger, weights)
     used_topics = [str(r.get("topic")) for r in ledger if r.get("topic")]
     used_titles = {str(r.get("wiki_title") or r.get("topic")).lower() for r in ledger}
     rejected: list[str] = []

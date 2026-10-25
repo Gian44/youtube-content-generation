@@ -3,23 +3,27 @@ from datetime import datetime, timezone
 from sof import seo
 
 
-def test_titles_lead_with_length_and_search_phrase():
-    assert seo.build_title("Saturn", "space & astronomy", 3) == "3 Hours of Calm Space Facts to Fall Asleep To | Saturn"
-    assert seo.build_title("Indus Valley Civilization", "history & ancient civilisations", 3) == \
-        "3 Hours of Calm History to Fall Asleep To | Indus Valley Civilization"
-    assert seo.build_title("Steam Engine", "how things work (machines, materials, everyday engineering)", 3).startswith(
-        "3 Hours of Calm Science Facts")
-    assert seo.build_title("Whales", "", 1) == "1 Hour of Calm Facts to Fall Asleep To | Whales"
+def test_titles_lead_with_the_hook_and_end_with_sleep_intent():
+    t = seo.build_title("The Moon", "space & astronomy", 3, hook="The Moon Is Slowly Drifting Away From Earth")
+    assert t == "The Moon Is Slowly Drifting Away From Earth | 3 Hours of Space Facts to Fall Asleep To"
+    assert "Calm" not in t and "Gentle" not in t                        # mood words gave no reason to click
+    assert seo.build_title("Saturn", "space & astronomy", 3) == "The Whole Story of Saturn | 3 Hours of Space Facts to Fall Asleep To"
+    assert seo.build_title("Steam Engine", "how things work (machines, materials, everyday engineering)", 3,
+                           hook="How a Steam Engine Turns Heat Into Motion").endswith("| 3 Hours of Science Facts to Fall Asleep To")
+    assert seo.build_title("Whales", "", 1) == "The Whole Story of Whales | 1 Hour of Facts to Fall Asleep To"
     long = seo.build_title("A" * 90, "space & astronomy", 3)
     assert len(long) <= 100 and "<" not in seo.build_title("x <b>", "", 3)
+    t = seo.build_title("Saturn", "space & astronomy", 3, hook="Why the Rings of Saturn Will Not Last Forever", variant=0)
+    assert len(t) <= 100 and t.startswith("Why the Rings of Saturn")
 
 
 def test_profiles_cover_every_category():
-    cats = ["nature & animals", "history & ancient civilisations", "space & astronomy", "oceans & rivers",
-            "how things work (machines, materials, everyday engineering)", "cities, islands & landscapes",
-            "food, farming & plants", "inventions, crafts & ideas"]
+    cats = ["nature & animals", "history & ancient civilisations", "space & astronomy", "oceans & the deep sea",
+            "how things work (machines, materials, everyday engineering)", "earth & geology (volcanoes, caves, glaciers, deserts)",
+            "oceans & rivers", "cities, islands & landscapes", "food, farming & plants", "inventions, crafts & ideas"]
     assert all(seo.profile(c) is not seo.DEFAULT for c in cats)
-    assert seo.profile("oceans & rivers").playlist == "Ocean Facts to Fall Asleep To"
+    assert seo.profile("oceans & the deep sea").playlist == "Ocean Facts to Fall Asleep To"
+    assert seo.profile("earth & geology (volcanoes, caves, glaciers, deserts)").phrase == "Earth Facts"
 
 
 def test_chapter_lines_follow_youtube_rules():
@@ -59,23 +63,26 @@ def test_publish_slot_is_830pm_eastern_or_now():
 
 
 def test_title_shapes_rotate_and_keep_subject_length_and_sleep_intent():
-    titles = [seo.build_title("Saturn", "space & astronomy", 3, hook="The Silent Rings of Saturn", variant=v)
+    titles = [seo.build_title("Saturn", "space & astronomy", 3, hook="Why Saturn's Rings Will Not Last Forever", variant=v)
               for v in range(seo.TITLE_VARIANTS)]
     assert len(set(titles)) == seo.TITLE_VARIANTS                       # every shape is different
     for t in titles:
-        assert "Saturn" in t and ("3 Hour" in t or "3-Hour" in t) and ("Sleep" in t or "Asleep" in t) and len(t) <= 100
-    assert titles[1] == "The Silent Rings of Saturn | 3 Hours of Calm Space Facts to Fall Asleep To"
-    assert titles[4] == "The Silent Rings of Saturn | 3-Hour Space Documentary for Sleep"
-    assert seo.build_title("Saturn", "space & astronomy", 3, variant=7) == titles[0]      # wraps around
+        assert t.startswith("Why Saturn's Rings Will Not Last Forever | ")
+        assert ("3 Hour" in t or "3-Hour" in t) and ("Sleep" in t or "Asleep" in t) and len(t) <= 100
+    assert titles[1] == "Why Saturn's Rings Will Not Last Forever | 3-Hour Space Documentary for Sleep"
+    assert seo.build_title("Saturn", "space & astronomy", 3, variant=4) == seo.build_title("Saturn", "space & astronomy", 3)
 
 
 def test_hooks_are_cleaned_and_combined_with_the_subject_when_needed():
     assert seo.clean_hook("Shocking Secrets of Saturn!") == "" and seo.clean_hook("Why Is Saturn So Big?") == ""
     assert seo.clean_hook("  'Life Along the Ancient Nile.' ") == "Life Along the Ancient Nile"
     assert seo.clean_hook("Rings") == "" and seo.clean_hook("Top 10 Moons of Saturn") == ""
-    t = seo.build_title("Ancient Egypt", "history & ancient civilisations", 3, hook="Life Along the Ancient Nile", variant=1)
-    assert t == "Ancient Egypt: Life Along the Ancient Nile | 3 Hours of Calm History to Fall Asleep To"
-    no_hook = {seo.build_title("Mount Fuji", "cities, islands & landscapes", 3, variant=v) for v in range(seo.TITLE_VARIANTS)}
+    assert seo.clean_hook("The Scariest Planet in the Solar System") == ""          # fear words promise the wrong video
+    assert seo.clean_hook("The Most Dangerous Place on Earth") == ""
+    assert seo.clean_hook("Rice Feeds 3.5 Billion People Every Day") == "Rice Feeds 3.5 Billion People Every Day"   # digits fine
+    t = seo.build_title("Ancient Egypt", "history & ancient civilisations", 3, hook="Life Along the Ancient Nile", variant=0)
+    assert t == "Ancient Egypt: Life Along the Ancient Nile | 3 Hours of History to Fall Asleep To"
+    no_hook = {seo.build_title("Mount Fuji", "earth & geology", 3, variant=v) for v in range(seo.TITLE_VARIANTS)}
     assert len(no_hook) == seo.TITLE_VARIANTS                          # still varied without a hook
 
 

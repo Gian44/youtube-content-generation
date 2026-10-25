@@ -1,0 +1,68 @@
+name: sleep-on-facts repackage
+
+# Curiosity-first titles, hook thumbnails and plain chapter titles for videos that are already live
+# (cloud/sleep-on-facts/sof/repackage.py, 2026-10-25). apply=false only builds the files (the B arm of
+# a YouTube Studio "Test & compare"); apply=true updates YouTube and the ledger.
+on:
+  workflow_dispatch:
+    inputs:
+      videos:
+        description: "all, or comma-separated video ids"
+        default: "all"
+      apply:
+        description: "true = update the videos on YouTube; false = build thumbnails + titles only"
+        default: "false"
+
+concurrency:
+  group: sleep-repackage
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  repackage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: cloud/sleep-on-facts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cloud/sleep-on-facts/requirements.txt
+      - name: System deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-dejavu-core
+      - name: Python deps
+        run: pip install -r requirements.txt
+      - name: Repackage
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          IN_VIDEOS: ${{ github.event.inputs.videos }}
+          IN_APPLY: ${{ github.event.inputs.apply }}
+        run: |
+          set -e
+          ARGS=(--videos "$IN_VIDEOS" --out out)
+          if [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
+          python repackage.py "${ARGS[@]}"
+      - name: Keep the new thumbnails, titles and descriptions
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repackage-${{ github.run_id }}
+          path: |
+            cloud/sleep-on-facts/out/report.json
+            cloud/sleep-on-facts/out/*/thumb.jpg
+            cloud/sleep-on-facts/out/*/meta.json
+            cloud/sleep-on-facts/out/*/description.txt
+          if-no-files-found: ignore
+          retention-days: 30

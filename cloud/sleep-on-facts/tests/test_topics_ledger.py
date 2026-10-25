@@ -1,5 +1,5 @@
 import json
-from sof.topics import load_topics, load_categories, unused_seed, pick_next, Topic
+from sof.topics import load_topics, load_categories, load_category_weights, unused_seed, pick_next, Topic
 from sof.ledger import load_ledger, append_entry, commit_message
 
 YAML = """
@@ -28,7 +28,11 @@ def test_repo_topics_file_is_valid():
     assert all(t.name.strip() and t.queries and all(isinstance(q, str) and q for q in t.queries) for t in seeds)
     assert len({t.name.lower() for t in seeds}) == len(seeds)
     cats = load_categories("topics.yml")
-    assert len(cats) == 8 and all(t.category in cats for t in seeds)      # seeds name one of the categories
+    assert len(cats) == 6 and all(t.category in cats for t in seeds)      # seeds name one of the categories
+    w = load_category_weights("topics.yml")
+    assert w["space & astronomy"] == 3 and w["how things work (machines, materials, everyday engineering)"] == 1
+    from sof import seo
+    assert all(seo.profile(c) is not seo.DEFAULT for c in cats)          # every category has a title phrase
 
 
 def test_unused_seed_then_none(tmp_path):
@@ -97,3 +101,10 @@ def test_ledger_push_keeps_extra_files_through_conflict(tmp_path):
     assert page.read_text() == "credits"
     adds = [c for c in calls if c[0] == "add"]
     assert len(adds) == 2 and all(str(page) in c for c in adds)
+
+
+def test_plain_string_categories_weigh_one(tmp_path):
+    p = tmp_path / "t.yml"
+    p.write_text("categories:\n  - nature\n  - name: space\n    weight: 3\n  - name: dropped\n    weight: 0\n")
+    assert load_categories(str(p)) == ["nature", "space"]
+    assert load_category_weights(str(p)) == {"nature": 1.0, "space": 3.0}

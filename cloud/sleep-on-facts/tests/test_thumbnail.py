@@ -61,3 +61,35 @@ def test_square_photo_is_shown_whole_on_the_right(tmp_path):
         g = t.convert("L")
         right = ImageStat.Stat(g.crop((850, 300, 1000, 420))).mean[0]     # middle of the disk, right half of the frame
         assert right > 60                                                 # the whole disk sits on the right, not cropped away
+
+
+def test_hook_line_replaces_the_tagline_and_is_cleaned(tmp_path):
+    assert thumbnail.clean_thumb_text("drifting away") == "DRIFTING AWAY"
+    assert thumbnail.clean_thumb_text("SHOCKING SECRET") == "" and thumbnail.clean_thumb_text("WHY SO BIG?") == ""
+    assert thumbnail.clean_thumb_text("THE SCARIEST PLANET") == ""                 # fear words are banned too
+    assert thumbnail.clean_thumb_text("A HOOK FAR TOO LONG TO READ ON A TILE") == ""
+    assert thumbnail.clean_thumb_text("saturn", "Saturn") == ""                    # never just the topic again
+    src = _photo(tmp_path / "src.jpg", 40, contrast=True)                        # a dark photo
+    plain = thumbnail.compose(src, topic="Saturn", hours=3, out=str(tmp_path / "plain.jpg"))
+    hooked = thumbnail.compose(src, topic="Saturn", hours=3, out=str(tmp_path / "hook.jpg"), hook="RINGS OF ICE")
+    with Image.open(hooked) as im:
+        assert im.size == (1280, 720)
+    with Image.open(plain) as a, Image.open(hooked) as b:
+        assert a.tobytes() != b.tobytes()
+
+
+def test_dark_photos_are_lifted(tmp_path):
+    from PIL import ImageStat
+    src = _photo(tmp_path / "dark.jpg", 40)
+    with Image.open(src) as im:
+        before = ImageStat.Stat(im.convert("L")).mean[0]
+        after = ImageStat.Stat(thumbnail._cool(im.convert("RGB")).convert("L")).mean[0]
+    assert after > before * 1.15
+
+
+def test_marathon_thumbnail_has_one_panel_per_part(tmp_path):
+    srcs = [_photo(tmp_path / f"p{i}.jpg", 60 + 40 * i, contrast=True) for i in range(3)]
+    out = thumbnail.compose_marathon(srcs, label="Space Facts to fall asleep to", names=["Saturn", "The Moon", "Jupiter"],
+                                     hours=9, out=str(tmp_path / "m.jpg"))
+    with Image.open(out) as im:
+        assert im.size == (1280, 720)

@@ -29,11 +29,32 @@ def load_topics(path: str) -> list[Topic]:
     return out
 
 
+def _category_entries(path: str) -> list[tuple[str, float]]:
+    out = []
+    for c in _load(path).get("categories") or []:
+        if isinstance(c, dict):
+            name, weight = str(c.get("name") or "").strip(), c.get("weight", 1)
+        else:
+            name, weight = str(c).strip(), 1
+        try:
+            w = float(weight)
+        except (TypeError, ValueError):
+            w = 1.0
+        if name and w > 0:
+            out.append((name, w))
+    return out
+
+
 def load_categories(path: str) -> list[str]:
-    cats = [str(c).strip() for c in (_load(path).get("categories") or []) if str(c).strip()]
+    cats = [n for n, _ in _category_entries(path)]
     if not cats and not load_topics(path):
         raise ValueError(f"{path} has neither categories nor topics")
     return cats
+
+
+def load_category_weights(path: str) -> dict[str, float]:
+    """{category: weight}; plain-string entries weigh 1."""
+    return dict(_category_entries(path))
 
 
 def unused_seed(topics: list[Topic], ledger: list[dict]) -> Topic | None:

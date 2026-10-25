@@ -128,11 +128,13 @@ def test_metadata_title_hook_is_kept_and_sees_the_chapters():
         def generate_json(self, prompt, **kw):
             if "title_hook" in prompt:
                 self.meta_prompt = prompt
-                return {"title": "T", "description": "d", "tags": [], "title_hook": "The Silent Rings of Saturn"}
+                return {"title": "T", "description": "d", "tags": [], "title_hook": "The Silent Rings of Saturn",
+                        "thumb_text": "RINGS OF ICE"}
             return super().generate_json(prompt, **kw)
     llm = HookLLM(words_per_segment=600, movements=4)
     s = generate_script(llm, topic="Saturn", corpus=None, **KW)
-    assert s.title_hook == "The Silent Rings of Saturn"
+    assert s.title_hook == "The Silent Rings of Saturn" and s.thumb_text == "RINGS OF ICE"
+    assert Script.from_dict(s.to_dict()).thumb_text == "RINGS OF ICE"
     assert "- Part 100" in llm.meta_prompt                     # chapter headings reach the metadata model
 
 

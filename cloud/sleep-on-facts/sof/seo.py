@@ -1,10 +1,14 @@
 """Discovery metadata: titles, descriptions, chapters, tags, hashtags, playlists, publish slot.
 
-Sleep viewers search broad intent phrases ("space facts to fall asleep to", "history for sleep",
-"sleep documentary"), so every title carries the length, the intent phrase and the subject. The
-SHAPE rotates from video to video (TITLE_VARIANTS) and most shapes carry a short hook written from the
-video's own chapters ("The Silent Rings of Saturn"), so the channel page does not read as one template
-with the topic swapped — the pattern YouTube's inauthentic-content policy describes.
+2026-10-25 (channel analytics): 76 % of long-form watch time comes from *Suggested* — the video
+shown beside someone else's long documentary at bedtime — and only 1.4 % of those impressions were
+clicked; search brought 0.1 h. The neighbours that win there lead with curiosity ("The Amazon Gets
+More Dangerous the Deeper You Go"); ours led with mood words ("Calm", "Gentle", "Quiet"). So every
+title now LEADS with a true, specific hook from the video (``title_hook``) and ends with the sleep
+intent ("| 3 Hours of Space Facts to Fall Asleep To"). The tail rotates (TITLE_VARIANTS) so the
+channel page does not read as one template with the topic swapped — the pattern YouTube's
+inauthentic-content policy describes. Fear and hype words stay banned: the narration is restful,
+and the title must not promise what the video does not deliver.
 Each topic category maps to one search phrase, one documentary noun, one playlist and one hashtag.
 """
 
@@ -30,6 +34,7 @@ PROFILES: list[tuple[str, Profile]] = [
     ("nature", Profile("Nature Facts", "Nature Facts to Fall Asleep To", "naturefacts", "Nature Documentary")),
     ("ocean", Profile("Ocean Facts", "Ocean Facts to Fall Asleep To", "oceanfacts", "Ocean Documentary")),
     ("how things work", Profile("Science Facts", "Science Facts to Fall Asleep To", "sciencefacts", "Science Documentary")),
+    ("earth", Profile("Earth Facts", "Earth & Geology Facts to Fall Asleep To", "earthfacts", "Earth Documentary")),
     ("cities", Profile("Geography Facts", "Geography Facts to Fall Asleep To", "geography", "Travel Documentary")),
     ("food", Profile("Facts", "Food, Farming & Plants for Sleep", "sleepfacts", "Documentary")),
     ("invention", Profile("History", "Inventions & Ideas for Sleep", "historyforsleep", "History Documentary")),
@@ -56,17 +61,22 @@ def hours_label(hours: int) -> str:
     return f"{h} Hour{'s' if h != 1 else ''}"
 
 
-_HOOK_BANNED = re.compile(r"[!?#@\d\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|you|your|must|best|worst|"
-                          r"top|ultimate|mind|blow\w*|amazing)\b", re.I)
+_HOOK_BANNED = re.compile(r"[!?#@\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|you|your|must|best|worst|"
+                          r"top|ultimate|mind|blow\w*|amazing|scar(?:y|ier|iest)|terrif\w*|horrif\w*|disturbing|creepy|"
+                          r"deadl\w*|dangerous|nightmare\w*|evil|killer\w*|exposed|truth)\b", re.I)
 _ARTICLE_NOUNS = re.compile(r"\b(reef|rainforest|forest|civili[sz]ation|engine|river|desert|ocean|sea|mountains|valley|canyon|"
                             r"islands|wall|pyramids|alps|andes|himalayas|sahara|nile|amazon|arctic|antarctic|moon|sun|"
                             r"universe|galaxy|milky way|telescope|railway|printing press|lighthouse)$", re.I)
 
 
 def clean_hook(hook: str) -> str:
-    """A model-written title hook, or '' when it is not a calm 2-7 word phrase (clickbait, question, too long)."""
+    """A model-written title hook, or '' when it is not a 2-10 word statement (hype, fear, question, too long).
+
+    Curiosity is the point ("The Moon Is Slowly Drifting Away From Earth", "Why Saturn's Rings Won't
+    Last"); digits are fine; questions, exclamations, hype and fear words are not.
+    """
     h = re.sub(r"\s+", " ", _clean(hook)).strip(" .,:;-–—'‘’")
-    if not 2 <= len(h.split()) <= 7 or len(h) > 48 or _HOOK_BANNED.search(h):
+    if not 2 <= len(h.split()) <= 10 or len(h) > 64 or _HOOK_BANNED.search(h):
         return ""
     return h
 
@@ -87,34 +97,35 @@ def _mentions_subject(hook: str, subject: str) -> bool:
     return bool(words) and hits * 2 > len(words)
 
 
-TITLE_VARIANTS = 7
+TITLE_VARIANTS = 4
+NO_HOOK_LEADS = ("The Whole Story of {s}", "Everything We Know About {s}", "A Long, Slow Look at {s}", "All About {s}")
 
 
 def build_title(subject: str, category: str, hours: int, *, hook: str = "", variant: int = 0) -> str:
-    """One of TITLE_VARIANTS shapes (rotate ``variant`` per video); ``hook`` comes from the metadata model.
+    """Hook first, sleep intent last; one of TITLE_VARIANTS tails (rotate ``variant`` per video).
 
-    Every shape keeps the subject, the length and a sleep intent phrase; shapes that need a hook fall
-    back to a hook-free form, and anything over YouTube's 100 characters falls back to the classic shape.
+    ``hook`` comes from the metadata model; one that does not name the subject is prefixed with it
+    ("Rice: Half the World Eats It"). With no usable hook a plain lead names the subject. Anything over
+    YouTube's 100 characters falls back to the shortest tail, then to the subject alone.
     """
     p, h, S = profile(category), hours_label(hours), _clean(subject)
     n = max(1, int(hours))
     k = clean_hook(hook)
-    lead = (k if _mentions_subject(k, S) else f"{S}: {k}") if k else ""
-    shapes = [
-        f"{h} of Calm {p.phrase} to Fall Asleep To | {S}",
-        f"{lead} | {h} of Calm {p.phrase} to Fall Asleep To" if lead
-        else f"The Story of {subject_phrase(S)} | {h} of Calm {p.phrase} to Fall Asleep To",
-        f"{S} | {h} of Calm {p.phrase} for Deep Sleep",
-        f"Fall Asleep Learning About {subject_phrase(S)} | {h} of Calm {p.phrase}",
-        f"{lead} | {n}-Hour {p.doc} for Sleep" if lead else f"{S}: A Calm {n}-Hour {p.doc} for Sleep",
-        f"Bedtime {p.phrase}: {k if k and _mentions_subject(k, S) else S} ({h} to Fall Asleep To)",
-        f"{lead} | Drift Off to Sleep with {h} of Gentle {p.phrase}" if lead
-        else f"Drift Off with {subject_phrase(S)} | {h} of Gentle {p.phrase} for Sleep",
+    if k:
+        lead = k if _mentions_subject(k, S) else f"{S}: {k}"
+    else:
+        lead = NO_HOOK_LEADS[int(variant) % len(NO_HOOK_LEADS)].format(s=subject_phrase(S))
+    tails = [
+        f"{h} of {p.phrase} to Fall Asleep To",
+        f"{n}-Hour {p.doc} for Sleep",
+        f"Fall Asleep to {h} of {p.phrase}",
+        f"{p.phrase} for Sleep ({h})",
     ]
-    t = shapes[int(variant) % len(shapes)]
-    if len(t) > 100:
-        t = shapes[0] if len(shapes[0]) <= 100 else f"{h} of {p.phrase} to Fall Asleep To | {S}"
-    return t[:100]
+    tail = tails[int(variant) % len(tails)]
+    for cand in (f"{lead} | {tail}", f"{lead} | {min(tails, key=len)}", f"{S} | {tails[0]}"):
+        if len(cand) <= 100:
+            return cand
+    return f"{S} | {tails[0]}"[:100]
 
 
 def hashtags(subject: str, category: str) -> list[str]:

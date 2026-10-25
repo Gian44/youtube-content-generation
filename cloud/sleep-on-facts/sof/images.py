@@ -693,9 +693,12 @@ def select_reel(paths: list[str], labels: dict[str, str], *, target: int, floor:
 
 
 PICK_PROMPT = (
-    "Which ONE of these {n} images would make the best YouTube thumbnail for a calm sleep video about {subject}? "
-    "Choose the image that shows {subject} most clearly and recognizably — the classic view people picture — "
-    "well composed, not cluttered, no text. Return JSON {{\"best\": <1-based index>}}."
+    "Which ONE of these {n} images would make the best YouTube thumbnail for a video about {subject}? "
+    "It will be seen as a small tile (about 170 pixels wide), so choose the image where {subject} itself is "
+    "LARGE, sharp and instantly recognisable — the classic view people picture — with strong light and colour, "
+    "not a scene where the subject is small, partly hidden or only implied (a flower without the bee, ruins "
+    "without a recognisable structure). Well composed, not cluttered, no text. "
+    "Return JSON {{\"best\": <1-based index>}}."
 )
 
 

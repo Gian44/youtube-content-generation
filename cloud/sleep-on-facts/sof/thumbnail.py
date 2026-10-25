@@ -1,9 +1,14 @@
 """Channel-branded thumbnail (1280×720) from the run's own photos — Pillow only, deterministic.
 
-Layout: the most atmospheric photo, cover-cropped and cooled slightly; a dark gradient from the
-left and bottom so type always reads; the topic in big bold caps (auto-fit, ≤2 lines); a serif
-tagline; a "N HOURS" pill top-right; a small crescent-moon mark + wordmark bottom-right.
-Every video gets the same frame, so the channel page reads as one series.
+Layout: the photo that shows the subject most clearly, cover-cropped; a dark gradient from the
+left and bottom so type always reads; the topic in big bold caps (auto-fit, ≤2 lines); under it the
+video's hook in gold caps (``hook`` — the metadata model's 2-4 word ``thumb_text``; the old serif
+tagline only when there is none); a "N HOURS" pill top-right; a small crescent-moon mark + wordmark
+bottom-right. Every video gets the same frame, so the channel page reads as one series.
+
+2026-10-25: the frame was too dim for where it is seen — a 168-px tile in YouTube's dark sidebar at
+night — and the generic tagline gave no reason to click (1.4 % CTR on Suggested). The photo now
+keeps its colour (lighter night tint, gentle lift for dark photos) and the hook replaces the tagline.
 """
 
 from __future__ import annotations
@@ -99,12 +104,17 @@ def _cover(im, w: int, h: int):
 
 
 def _cool(im):
-    """Slight desaturation + cool shift so every thumbnail shares a night palette."""
-    from PIL import Image, ImageEnhance
+    """A light night tint so the series shares a palette, without dulling the photo: dark photos are
+    lifted and colour is kept (a dim, grey tile disappears in YouTube's dark sidebar)."""
+    from PIL import Image, ImageEnhance, ImageStat
 
-    im = ImageEnhance.Color(im).enhance(0.8)
+    mean = ImageStat.Stat(im.convert("L").resize((64, 36))).mean[0]
+    if mean < 90:
+        im = ImageEnhance.Brightness(im).enhance(min(1.35, 90 / max(mean, 30)))
+    im = ImageEnhance.Contrast(im).enhance(1.08)
+    im = ImageEnhance.Color(im).enhance(1.1)
     tint = Image.new("RGB", im.size, (28, 42, 78))
-    return Image.blend(im, tint, 0.12)
+    return Image.blend(im, tint, 0.05)
 
 
 def _scrim(im):
@@ -115,8 +125,8 @@ def _scrim(im):
     horiz = Image.linear_gradient("L").rotate(90, expand=True).resize((w, h))     # dark left → light right
     vert = Image.linear_gradient("L").resize((w, h))                             # dark top → light bottom
     vert = vert.transpose(Image.FLIP_TOP_BOTTOM)                                 # now dark bottom
-    # Map gradients to multipliers: left edge ×0.45 → right ×1.0; bottom ×0.55 → top ×1.0.
-    hp = horiz.point(lambda v: int(255 * (0.45 + 0.55 * v / 255)))
+    # Map gradients to multipliers: left edge ×0.40 → right ×1.0; bottom ×0.55 → top ×1.0.
+    hp = horiz.point(lambda v: int(255 * (0.40 + 0.60 * v / 255)))
     vp = vert.point(lambda v: int(255 * (0.55 + 0.45 * v / 255)))
     from PIL import ImageChops
 
@@ -159,26 +169,56 @@ def _moon_cut(im, cx: int, cy: int, r: int):
     return mask
 
 
+def _hook_font(draw, text: str, max_w: int, start: int = 64, min_size: int = 40):
+    for size in range(start, min_size - 1, -4):
+        f = _font("DejaVuSans-Bold.ttf", size)
+        if draw.textlength(text, font=f) <= max_w:
+            return f
+    return _font("DejaVuSans-Bold.ttf", min_size)
+
+
+def clean_thumb_text(text: str, topic: str = "") -> str:
+    """The hook line as drawn: capitals, 2-5 words, ≤26 characters, no hype/fear/question; '' if unusable."""
+    import re
+
+    from sof.seo import _HOOK_BANNED
+
+    t = re.sub(r"\s+", " ", str(text or "")).strip(" .,:;-–—'‘’\"").upper()
+    if not t or not 1 <= len(t.split()) <= 5 or len(t) > 26 or _HOOK_BANNED.search(t):
+        return ""
+    if topic and t == topic.strip().upper():
+        return ""
+    return t
+
+
 def compose(photo: str, *, topic: str, hours: int, out: str, tagline: str = "Calm facts to fall asleep to",
-            brand: str = "SLEEP ON FACTS") -> str:
+            brand: str = "SLEEP ON FACTS", hook: str = "") -> str:
     from PIL import Image, ImageDraw
 
     with Image.open(photo) as src:
         base = _scrim(_cool(_cover(src, W, H)))
     frame = base.copy()
     d = ImageDraw.Draw(frame)
+    hook = clean_thumb_text(hook, topic)
 
     # Topic — big, bold, cream; thin gold rule above it.
     f_topic, lines = _fit_lines(d, topic.upper(), "DejaVuSans-Bold.ttf", max_w=760, start=150)
     line_h = int(f_topic.size * 1.02)
     block_h = line_h * len(lines)
-    y = H - 84 - 54 - block_h           # above tagline, above bottom margin
+    f_hook = _hook_font(d, hook, 760) if hook else None
+    under = (f_hook.size + 18) if f_hook else 54
+    y = H - 84 - under - block_h        # above the hook/tagline, above the bottom margin
     d.rectangle((64, y - 26, 64 + 110, y - 18), fill=GOLD)
     for ln in lines:
         d.text((60, y), ln, font=f_topic, fill=CREAM)
         y += line_h
-    # Tagline — serif, muted.
-    d.text((66, y + 6), tagline, font=_font("DejaVuSerif-Italic.ttf", 40), fill=MUTED)
+    if f_hook:
+        # The hook — bold gold caps with a soft shadow, so it reads on a 168-px tile.
+        d.text((66 + 3, y + 10 + 3), hook, font=f_hook, fill=(0, 0, 0))
+        d.text((66, y + 10), hook, font=f_hook, fill=GOLD)
+    else:
+        # Tagline — serif, muted.
+        d.text((66, y + 6), tagline, font=_font("DejaVuSerif-Italic.ttf", 40), fill=MUTED)
 
     # Hours pill — top right.
     label = f"{hours} HOUR{'S' if hours != 1 else ''}"
@@ -217,7 +257,7 @@ def _aspect(path: str) -> float:
 
 
 def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates: list[str] | None = None,
-         choose=None, max_choices: int = 16) -> str:
+         choose=None, max_choices: int = 16, hook: str = "") -> str:
     """Compose the thumbnail from the best photo.
 
     ``candidates`` — photos verified to show the subject itself (vision-labelled); the thumbnail is
@@ -238,7 +278,7 @@ def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates
     if not best:
         best = pick_photo(wide or pool)
     log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
-    result = compose(best, topic=topic, hours=hours, out=out)
+    result = compose(best, topic=topic, hours=hours, out=out, hook=hook)
     Path(_source_file(out)).write_text(str(best), encoding="utf-8")      # for the description's photo credit
     return result
 
@@ -251,3 +291,45 @@ def source_of(out: str) -> str | None:
     """Path of the photo the thumbnail at ``out`` was made from (None if unknown)."""
     f = Path(_source_file(out))
     return f.read_text(encoding="utf-8").strip() or None if f.exists() else None
+
+
+def compose_marathon(photos: list[str], *, label: str, names: list[str], hours: int, out: str,
+                     brand: str = "SLEEP ON FACTS") -> str:
+    """Marathon thumbnail: the segments' own thumbnail photos as side-by-side panels (it reads as a
+    compilation at a glance), the length big ("9 HOURS"), the category under it and the subjects in gold."""
+    from PIL import Image, ImageDraw
+
+    photos = [p for p in photos if p][:4] or []
+    if not photos:
+        raise ValueError("no photos for the marathon thumbnail")
+    k = len(photos)
+    base = Image.new("RGB", (W, H), (10, 14, 28))
+    pw = W // k
+    for i, p in enumerate(photos):
+        with Image.open(p) as src:
+            from PIL import ImageOps
+            panel = ImageOps.fit(src.convert("RGB"), (pw, H), method=Image.LANCZOS, centering=(0.5, 0.45))
+        base.paste(panel, (i * pw, 0))
+    base = _scrim(_cool(base))
+    d = ImageDraw.Draw(base)
+    for i in range(1, k):                                       # thin dark seams between panels
+        d.rectangle((i * pw - 3, 0, i * pw + 3, H), fill=(10, 14, 28))
+    frame = base
+    big = f"{max(1, int(hours))} HOURS"
+    f_big = _hook_font(d, big, 1000, start=170, min_size=90)
+    f_label = _hook_font(d, label.upper(), 1000, start=72, min_size=40)
+    line = " · ".join(n.upper() for n in names)
+    f_names = _hook_font(d, line, 1100, start=50, min_size=26)
+    y = H - 84 - f_names.size - 22 - f_label.size - 14 - int(f_big.size * 1.0)
+    d.rectangle((64, y - 26, 64 + 110, y - 18), fill=GOLD)
+    d.text((60, y), big, font=f_big, fill=CREAM)
+    y += int(f_big.size * 1.0) + 14
+    d.text((64, y), label.upper(), font=f_label, fill=CREAM)
+    y += f_label.size + 22
+    d.text((66 + 3, y + 3), line, font=f_names, fill=(0, 0, 0))
+    d.text((66, y), line, font=f_names, fill=GOLD)
+    f_brand = _font("DejaVuSans-Bold.ttf", 30)
+    bw = d.textlength(brand, font=f_brand)
+    d.text((int(W - 60 - bw), 48), brand, font=f_brand, fill=CREAM)
+    frame.save(out, "JPEG", quality=90, optimize=True)
+    return out

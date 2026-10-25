@@ -1,15 +1,25 @@
-# Categories rotate daily (fewest past videos first). Each run a cheap model proposes specific
-# subjects in the day's category; the first one with a substantial Wikipedia article (and not in
-# the ledger) is used. Edit freely — the generator reads this file every run.
+# Categories rotate (fewest past videos per unit of weight first). Each run a cheap model proposes
+# specific subjects in the day's category; the first one with a substantial Wikipedia article (and not
+# in the ledger) is used. Edit freely — the generator reads this file every run.
+#
+# 2026-10-25 re-weighting by demand: the long videos YouTube suggests ours beside are space,
+# ancient-history and deep-ocean documentaries, and YouTube's autocomplete for "... to fall asleep to"
+# leads with history, space, ocean and psychology. Space and history now come up three times as
+# often as how-things-work; food/farming, crafts/inventions and cities were dropped (Paper and
+# Venice drew 0.7 % and ~0 % click-through). An entry is a plain string (weight 1) or {name, weight}.
 categories:
-  - nature & animals
-  - history & ancient civilisations
-  - space & astronomy
-  - oceans & rivers
-  - how things work (machines, materials, everyday engineering)
-  - cities, islands & landscapes
-  - food, farming & plants
-  - inventions, crafts & ideas
+  - name: space & astronomy
+    weight: 3
+  - name: history & ancient civilisations
+    weight: 3
+  - name: oceans & the deep sea
+    weight: 2
+  - name: nature & animals
+    weight: 2
+  - name: how things work (machines, materials, everyday engineering)
+    weight: 1
+  - name: earth & geology (volcanoes, caves, glaciers, deserts)
+    weight: 1
 
 # Optional seed list. If present AND some entries are still unused, the picker takes those first
 # (in order); when they are exhausted the category generator takes over. Empty by decision

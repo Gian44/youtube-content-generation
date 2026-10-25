@@ -13,6 +13,7 @@ import logging
 import math
 import os
 import re
+import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -46,7 +47,7 @@ def run(cfg: Config) -> int:
     # One public video per UTC day: a manual run earlier in the day makes the scheduled one a no-op
     # (forced topics and smoke tests are deliberate and always run).
     if not cfg.is_smoke and not cfg.topic and not cfg.skip_upload and any(
-            str(r.get("date")) == today for r in ledger.load_ledger(cfg.ledger_path)):
+            str(r.get("date")) == today and r.get("kind", "video") == "video" for r in ledger.load_ledger(cfg.ledger_path)):
         print(f"already published a video today ({today} UTC); nothing to do", flush=True)
         return EXIT_OK
 
@@ -66,7 +67,8 @@ def run(cfg: Config) -> int:
     _stage("topic")
     # Rows YouTube abandoned (e.g. the Oct 7 Ancient Egypt upload) do not count as published: their
     # topic can be made again and they do not advance the story-shape / title rotations.
-    rows = [r for r in ledger.load_ledger(cfg.ledger_path) if not r.get("abandoned")]
+    # Marathon compilations (sof/marathon.py) are ledger rows too, but not daily videos.
+    rows = [r for r in ledger.load_ledger(cfg.ledger_path) if not r.get("abandoned") and r.get("kind", "video") == "video"]
     llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
     seeds = topics.load_topics(cfg.topics_path)
     category, wiki_title, queries = "", None, []
@@ -78,7 +80,8 @@ def run(cfg: Config) -> int:
     elif (seed := topics.unused_seed(seeds, rows)) is not None:
         name, queries, category, wiki_title = seed.name, seed.queries, seed.category, seed.wiki_title or None
     else:
-        pick = topicgen.choose(llm, categories=topics.load_categories(cfg.topics_path), ledger=rows, model=cfg.fast_model)
+        pick = topicgen.choose(llm, categories=topics.load_categories(cfg.topics_path), ledger=rows, model=cfg.fast_model,
+                               weights=topics.load_category_weights(cfg.topics_path))
         name, wiki_title, category = pick.topic, pick.wiki_title, pick.category
     run_id = f"{today}-{_slug(name)}"
     work = Path(cfg.work_dir) / run_id
@@ -247,7 +250,14 @@ def run(cfg: Config) -> int:
         if cfg.images_vision_check and cfg.openai_api_key:
             def chooser(paths):
                 return images.pick_iconic(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
-        thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser)
+        thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser,
+                       hook=sc.thumb_text)
+    try:                                   # the marathon compiler (sof/marathon.py) re-uses the thumbnail's photo
+        src = thumbnail.source_of(str(thumb))
+        if src and Path(src).exists() and not (work / "thumb_source.jpg").exists():
+            shutil.copyfile(src, work / "thumb_source.jpg")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("thumbnail source copy skipped: %s", exc)
     size_gb = final.stat().st_size / 1e9
     print(f"video: {final} ({size_gb:.2f} GB)", flush=True)
     try:                                   # stills for checking the run by eye (kept as artifacts)

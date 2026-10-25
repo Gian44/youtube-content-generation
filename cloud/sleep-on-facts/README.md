@@ -17,9 +17,11 @@ topic (generated daily from topics.yml categories, verified on Wikipedia) → re
     category), NASA for space topics, then Pexels/Pixabay only if the caption NAMES the subject;
     a vision pass labels each subject / setting / reject → reel of subject shots (+ ≤30 % setting),
     dimmed to 75 %, portraits shown whole on a blurred fill → smooth 4× zoompan reel, looped under the audio
-  → thumbnail from a vision-picked subject photo
-  → YouTube upload, private + scheduled for 8:30 PM US Eastern; search-style title, chapters, Education
-    category, hashtags; added to its category playlist
+  → thumbnail from a vision-picked subject photo (the subject large and recognisable at tile size), the
+    topic in big caps and the video's 2-4 word hook (`thumb_text`) in gold under it
+  → YouTube upload, private + scheduled for 8:30 PM US Eastern; curiosity-first title ("The Moon Is Slowly
+    Drifting Away From Earth | 3 Hours of Space Facts to Fall Asleep To"), plain-English chapters,
+    Education category, hashtags; added to its category playlist
   → 3 Shorts teasers (sof/shorts.py): three different facts from three different chapters, ~50 s each,
     same narrator a touch brighter, 1080×1920 over the run's own photos with burned-in captions; the first
     goes live one hour after the long video, the others one and two days later, all linking to it
@@ -28,6 +30,19 @@ topic (generated daily from topics.yml categories, verified on Wikipedia) → re
 ```
 
 Design: `../../docs/superpowers/specs/2026-10-06-sleep-on-facts-cloud-pipeline-design.md`.
+
+### Growth changes (2026-10-25, from Studio analytics)
+
+76 % of long-form watch time came from *Suggested* (beside other long documentaries at bedtime), where
+1.4 % of 8,167 thumbnail impressions were clicked; search gave 0.1 h; Shorts gave 88 % of views but 9 % of
+watch time. So: hook-first titles (`seo.build_title`), hook thumbnails (`thumbnail.compose(hook=)`),
+plain chapter titles, categories weighted by demand (`topics.yml`), sharper Shorts titles, one video a day,
+and two new workflows:
+
+- `sleep-repackage.yml` → `repackage.py`: new title, thumbnail and chapter names for videos already live.
+  `apply=false` only builds them (the B arm for a Studio "Test & compare"); `apply=true` updates YouTube.
+- `sleep-marathon.yml` → `marathon.py` (Sundays): three recent videos joined into one ~9-hour upload from
+  the `media-<run id>` artifacts the daily runs keep for 45 days — no new narration cost.
 
 ## Running
 
@@ -50,7 +65,7 @@ gh workflow run sleep-daily.yml -f minutes=180 -f shorts=false
 gh run list --workflow sleep-daily.yml --limit 3 && gh run watch
 ```
 
-The cron (`17 15 * * 1,3,5` UTC — Mon/Wed/Fri, 23:17 Asia/Manila; GitHub starts it 3–5 h late) uploads the
+The cron (`17 15 * * *` UTC — daily, 23:17 Asia/Manila; GitHub starts it 3–5 h late) uploads the
 video private and YouTube publishes it at 20:30 America/New_York. A run more than 12 h from that
 slot (e.g. a manual daytime run) publishes immediately. Comment out the `schedule:` block to pause;
 `workflow_dispatch` still works for manual runs.
@@ -74,7 +89,9 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 
 | file | purpose |
 | --- | --- |
-| `topics.yml` | categories that rotate daily (fewest past videos first); optional seed topics |
+| `topics.yml` | weighted categories (fewest past videos per unit of weight first); optional seed topics |
+| `repackage.py`, `sof/repackage.py` | re-title / re-thumbnail / rename chapters of live videos |
+| `marathon.py`, `sof/marathon.py` | weekly ~9-hour compilation from kept media artifacts |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
 | `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, render, thumbnail, seo, credits, upload, ledger, pipeline`) |
 | `sof/noslop.py` | the no-AI-slop lint + targeted rewrite + the prompt text of the rules; rules ported from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) (MIT) and adapted for spoken narration. Vendored verbatim into `apps/worker/storyfactory/services/noslop.py` (a worker test keeps the two identical) |

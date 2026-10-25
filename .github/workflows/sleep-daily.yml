@@ -2,11 +2,11 @@ name: sleep-on-facts daily
 
 on:
   schedule:
-    # Mon/Wed/Fri 15:17 UTC (23:17 Manila) — three long videos a week while the channel has no reach
-    # (Gian, 2026-10-13). GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour minute
-    # helps; the video is uploaded private and YouTube publishes it at 8:30 PM US Eastern, with its
-    # first Shorts teaser an hour later and two more on the following days (2026-10-19).
-    - cron: "17 15 * * 1,3,5"
+    # Daily at 15:17 UTC (23:17 Manila) — one long video a day (Gian, 2026-10-25; Mon/Wed/Fri before).
+    # GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour minute helps; the video is
+    # uploaded private and YouTube publishes it at 8:30 PM US Eastern, with its first Shorts teaser an
+    # hour later and two more on the following days (2026-10-19).
+    - cron: "17 15 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -90,3 +90,15 @@ jobs:
             cloud/sleep-on-facts/work/**/short*.mp4
           if-no-files-found: ignore
           retention-days: 30
+      - name: Keep the finished video for the weekly marathon (sof/marathon.py)
+        if: success() && (github.event.inputs.minutes || '180') == '180' && (github.event.inputs.skip_upload || 'false') == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-${{ github.run_id }}
+          path: |
+            cloud/sleep-on-facts/work/**/final.mp4
+            cloud/sleep-on-facts/work/**/chapters.json
+            cloud/sleep-on-facts/work/**/thumb_source.jpg
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 45

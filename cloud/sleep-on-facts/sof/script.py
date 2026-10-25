@@ -48,7 +48,8 @@ class Script:
     blurb: str = ""                                       # 2-3 sentence summary (metadata model)
     footer: str = ""                                      # "Facts … drawn from" + Wikipedia sources
     story_format: str = ""                                # key of prompts.STORY_FORMATS used for this video
-    title_hook: str = ""                                  # 2-6 word evocative phrase for the title (metadata model)
+    title_hook: str = ""                                  # 4-10 word curiosity lead for the title (metadata model)
+    thumb_text: str = ""                                  # 2-4 word hook in capitals for the thumbnail (metadata model)
     slop: dict = field(default_factory=dict)              # noslop.merge_stats(...) over the movements: before/after findings
 
     def to_dict(self) -> dict:
@@ -57,7 +58,7 @@ class Script:
             "word_count": self.word_count, "movements": self.movements, "image_queries": self.image_queries,
             "sources": self.sources, "image_keywords": self.image_keywords, "setting_queries": self.setting_queries,
             "sections": self.sections, "blurb": self.blurb, "footer": self.footer, "story_format": self.story_format,
-            "title_hook": self.title_hook, "slop": self.slop,
+            "title_hook": self.title_hook, "thumb_text": self.thumb_text, "slop": self.slop,
         }
 
     @classmethod
@@ -68,7 +69,7 @@ class Script:
                  sections=[x for x in (d.get("sections") or []) if isinstance(x, dict)],
                  blurb=str(d.get("blurb") or ""), footer=str(d.get("footer") or ""),
                  story_format=str(d.get("story_format") or ""), title_hook=str(d.get("title_hook") or ""),
-                 slop=dict(d.get("slop") or {}))
+                 thumb_text=str(d.get("thumb_text") or ""), slop=dict(d.get("slop") or {}))
         if not sc.blurb and not sc.footer:
             sc.blurb, sc.footer = split_description(sc.description)
         return sc
@@ -286,5 +287,6 @@ def generate_script(
         footer=footer,
         story_format=story_format if story_format in STORY_FORMATS else "journey",
         title_hook=str(meta.get("title_hook") or "").strip(),
+        thumb_text=str(meta.get("thumb_text") or "").strip(),
         slop=slop,
     )

@@ -41,8 +41,8 @@ What the long video covers, chapter by chapter (index: heading — how it opens)
 
 Write the Short's narration: {{words}} words at most, plain spoken English, present tense where natural.
 Rules:
-- Line 1 is the hook: a specific, curious statement about the subject that makes a stranger stop
-  scrolling (a number, a scale, a strange detail). Not a question, not "did you know", no hype words
+- Line 1 is the hook and must work in the first two seconds: name the subject and state the
+  surprising number, scale or detail at once (a stranger decides to stay or swipe right there). Not a question, not "did you know", no hype words
   (insane, shocking, mind-blowing, secret), no exclamation marks, no emojis.
 - Then 3-5 short sentences that unfold that ONE fact with concrete detail taken from the chapters above.
   Stay on one thread; do not list unrelated facts.
@@ -54,7 +54,7 @@ Rules:
 
 Return JSON:
 {"section": <index of the chapter the fact comes from>,
- "hook_title": "<3-8 words, Title Case, the fact as a short title for the Short, e.g. 'Venice Stands on Ten Million Logs'; no clickbait words, no question marks, no numbers spelled as digits is fine>",
+ "hook_title": "<4-9 words, Title Case: the fact stated plainly so a scroller gets it in one second, with no context. Name the subject, and give the number or scale when there is one (digits are fine): 'Venice Stands on 10 Million Wooden Logs', 'The Moon Drifts 3.8 cm Further Every Year', 'One Hive Makes 25 kg of Honey a Year'. Never a cryptic fragment ('Males Begin Without Sperm', 'Four Kilometers Below The Surface'); no clickbait words, no question marks>",
  "narration": "<the sentences, one paragraph>"}"""
 
 SHORTS_PROMPT = """You write 50-second YouTube Shorts for a calm "facts to fall asleep to" channel.
@@ -67,8 +67,8 @@ What the long video covers, chapter by chapter (index: heading — how it opens)
 
 Each Short's narration: {{words}} words at most, plain spoken English, present tense where natural.
 Rules for every Short:
-- Line 1 is the hook: a specific, curious statement about the subject that makes a stranger stop
-  scrolling (a number, a scale, a strange detail). Not a question, not "did you know", no hype words
+- Line 1 is the hook and must work in the first two seconds: name the subject and state the
+  surprising number, scale or detail at once (a stranger decides to stay or swipe right there). Not a question, not "did you know", no hype words
   (insane, shocking, mind-blowing, secret), no exclamation marks, no emojis.
 - Then 3-5 short sentences that unfold that ONE fact with concrete detail taken from the chapters above.
   Stay on one thread; do not list unrelated facts.
@@ -82,14 +82,14 @@ different hook shape (e.g. a number, a place, a person, a process). Best Short f
 
 Return JSON:
 {"shorts": [{"section": <index of the chapter the fact comes from>,
-             "hook_title": "<3-8 words, Title Case, the fact as a short title, e.g. 'Venice Stands on Ten Million Logs'; no clickbait words, no question marks>",
+             "hook_title": "<4-9 words, Title Case: the fact stated plainly so a scroller gets it in one second, with no context. Name the subject, and give the number or scale when there is one (digits are fine): 'Venice Stands on 10 Million Wooden Logs', 'The Moon Drifts 3.8 cm Further Every Year', 'One Hive Makes 25 kg of Honey a Year'. Never a cryptic fragment ('Males Begin Without Sperm', 'Four Kilometers Below The Surface'); no clickbait words, no question marks>",
              "narration": "<the sentences, one paragraph>"}, ...]}"""
 
 CTA_LINE = "The full three-hour version is on the channel. Put it on tonight, and sleep well."
 CTA_LINES = (CTA_LINE,
              "There is a three-hour version of this on the channel, made for falling asleep to.",
              "The long, slow version is on the channel. Three hours of it, for when you want to drift off.")
-FALLBACK_TITLES = ("One Strange Fact About {s}", "A Quiet Fact About {s}", "A Small Fact About {s}")
+FALLBACK_TITLES = ("One Strange Fact About {s}", "A Surprising Fact About {s}", "An Odd Detail About {s}")
 HOOK_BANNED = re.compile(r"[!?#@\"“”]|\b(shocking|secrets?|insane|unbelievable|incredible|mind|blow\w*|you won't)\b", re.I)
 _SENT = re.compile(r"(?<=[.!?])\s+")
 STYLE_BLOCK = noslop.style_block("sleep", voice=False)      # the Shorts narrator is brighter; the rules are the same

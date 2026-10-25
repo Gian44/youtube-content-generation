@@ -168,7 +168,7 @@ def test_write_shorts_returns_distinct_chapters_titles_and_closing_lines():
         {"section": 0, "hook_title": "Extra", "narration": "Beyond the count. " + LONG}]})
     out = shorts.write_shorts(llm, topic="Venice", sections=THREE, words=60, model="fast", count=3)
     assert [o["section"] for o in out] == [1, 0, 2]
-    assert out[1]["hook_title"] == "A Quiet Fact About Venice"            # second fallback title, not a repeat of the first
+    assert out[1]["hook_title"] == "A Surprising Fact About Venice"            # second fallback title, not a repeat of the first
     assert [o["narration"].endswith(c) for o, c in zip(out, shorts.CTA_LINES)] == [True, True, True]
     assert "Write 3 different Shorts" in llm.calls[0][0] and llm.calls[0][1]["model"] == "fast"
 

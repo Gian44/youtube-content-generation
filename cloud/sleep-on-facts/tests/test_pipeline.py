@@ -105,7 +105,7 @@ def test_pipeline_order_and_ledger(tmp_path, monkeypatch):
                      "frames", "short", "upload", "status", "playlist:Calm Facts to Fall Asleep To", "short-upload:vid123"]
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["video_id"] == "vid123" and rows[0]["topic"] == "Whales" and rows[0]["duration_seconds"] == 120
-    assert rows[0]["title"] == "1 Hour of Calm Facts to Fall Asleep To | Whales" and rows[0]["image_sources"]["commons"] == 3
+    assert rows[0]["title"] == "The Whole Story of Whales | 1 Hour of Facts to Fall Asleep To" and rows[0]["image_sources"]["commons"] == 3
     assert rows[0]["title_variant"] == 0 and "credits" not in rows[0]
     assert rows[0]["short"] == {"video_id": "short1", "title": "Whales Fact #Shorts", "seconds": 48.0, "publish_at": None}
     assert rows[0]["shorts"] == [rows[0]["short"]]
@@ -265,7 +265,7 @@ def test_scheduled_publish_and_chapters(tmp_path, monkeypatch):
     body = pipeline._UPLOADS[0]
     assert body["status"]["privacyStatus"] == "private" and body["status"]["publishAt"] == "2026-10-12T00:30:00Z"
     d = body["snippet"]["description"]
-    assert body["snippet"]["title"] == "3 Hours of Calm Facts to Fall Asleep To | Whales"
+    assert body["snippet"]["title"] == "The Whole Story of Whales | 3 Hours of Facts to Fall Asleep To"
     assert "Chapters\n0:00 Part 0\n" in d and "Narration is AI-generated" in d
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["publish_at"] == "2026-10-12T00:30:00Z"

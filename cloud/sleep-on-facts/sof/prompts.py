@@ -14,8 +14,11 @@ Rejected this round (too thin or missing on Wikipedia — do not propose again):
 {{avoid}}
 
 Propose {{n}} candidates. Prefer concrete, evocative subjects over abstractions: "The Silk Road"
-over "trade", "Honeybees" over "insects", "The Great Barrier Reef" over "coral". Mix the familiar
-with the pleasantly obscure. Nothing violent, political, medical, or distressing — this plays while
+over "trade", "The Mariana Trench" over "oceans", "The Great Barrier Reef" over "coral".
+Prefer subjects people already watch long documentaries about and would recognise from a thumbnail
+— famous places, objects, eras, creatures and phenomena with a sense of scale or mystery (Jupiter,
+the Roman Empire, the Mariana Trench, Black Holes, Pompeii, Blue Whales, Antarctica) — over niche
+ones with no audience. Avoid everyday commodities and crafts (paper, rice, soap). Nothing violent, political, medical, or distressing — this plays while
 people fall asleep.
 
 Return JSON:
@@ -41,8 +44,9 @@ together covering the topic broadly and gently.
 
 STORY SHAPE FOR THIS VIDEO — "{{format_name}}":
 {{format_guidance}}
-Shape the order and the headings of the movements around it, so this video plays out
-differently from one that merely lists facts. Adapt it naturally to the subject; never force
+Shape the order of the movements around it, so this video plays out differently from one
+that merely lists facts — but keep every heading a plain, descriptive chapter title (they become
+the video's chapters, which viewers scan and search). Adapt it naturally to the subject; never force
 it into something untrue. Within the shape, ease the listener toward sleep: start concrete
 and familiar, drift toward the quieter, stranger corners late in the video.
 
@@ -61,7 +65,9 @@ Output as JSON:
   "title": "...",                  // calm, sleep-style title
   "hook": "...",                   // one gentle opening sentence (no "welcome back", no hype)
   "movements": [                   // exactly {{num_movements}} items, in order
-    {"heading": "...", "beats": ["...", "..."]}
+    {"heading": "...", "beats": ["...", "..."]}   // heading = a plain, descriptive chapter title a viewer could
+                                                   // search for, 2-7 words: "How the Moon Formed", "The Far Side",
+                                                   // "Tides and Eclipses". Not poetic ("The First Light of Its Making").
   ],
   "image_search_queries": ["..."], // 10-15 stock-photo searches that show THE SUBJECT ITSELF (e.g. "octopus underwater close up", "octopus tentacles reef")
   "image_setting_queries": ["..."], // 4-6 searches for its natural setting/places only (e.g. "coral reef underwater", "deep ocean floor") — used sparingly
@@ -115,6 +121,9 @@ Output as JSON:
   "body": "..."   // the narration prose for this movement only
 }"""
 
+TITLE_HOOK_RULE = ("<4-10 words, Title Case: the single most intriguing TRUE thing this video explains, as a statement or a how/why line that makes a curious stranger want to hear the rest. It must be supported by the chapters and the narration. Name the subject (or its usual short form). Good: 'The Moon Is Slowly Drifting Away From Earth', 'Why Saturn's Rings Will Not Last Forever', 'How Paper Was Made Before Machines', 'Half the People on Earth Live on Rice'. Never: fear words (scary, terrifying, deadly, disturbing, dangerous), hype words (shocking, insane, secret, mind-blowing, unbelievable), question marks, exclamation marks, 'you', emojis, mood words (calm, gentle, quiet, peaceful, soothing).>")
+THUMB_TEXT_RULE = ("<2-4 words in capitals for the thumbnail, the hook compressed so it reads at a glance, e.g. 'DRIFTING AWAY', 'RINGS WON'T LAST', 'MADE BY HAND', 'HALF THE WORLD'. True, no hype, no fear words, no question marks, do not repeat the subject's name.>")
+
 METADATA_PROMPT = """You write YouTube metadata for a calm "facts to fall asleep to" channel.
 Topic: {{topic}}. Video length: about {{hours}} hour(s). First 600 characters of the narration:
 {{opening}}
@@ -125,7 +134,8 @@ What the video covers, chapter by chapter:
 Return JSON:
 {
   "title": "<at most 95 characters, pattern: Calm Facts About <Topic> to Fall Asleep To (<N> Hours); no clickbait, no emojis>",
-  "title_hook": "<2-6 words, Title Case: a calm, evocative name for what THIS video lingers on, built from its chapters, e.g. 'The Silent Rings of Saturn', 'Life Along the Ancient Nile', 'Under the Rainforest Canopy', 'Inside a Working Steam Engine'. Concrete and specific; include the subject's name (or its usual short form) when it reads naturally; no clickbait, no questions, no exclamation marks, no numbers, no emojis.>",
+  "title_hook": "{{title_hook_rule}}",
+  "thumb_text": "{{thumb_text_rule}}",
   "description": "<2-3 plain sentences saying what the video covers, named concretely (places, creatures, crafts, years). No hashtags, no emojis, no questions, no 'not X but Y', no colon reveals, no words like remarkable, journey, tapestry, testament.>",
   "tags": ["<8-12 lowercase tags: sleep, facts, the topic, calm, relaxation, bedtime, and related words>"]
 }"""
@@ -196,3 +206,25 @@ Write the closing segment, about {{target_words}} words:
 
 Output as JSON:
 {"body": "..."}"""
+
+
+REPACKAGE_PROMPT = """You rewrite the YouTube packaging of a long "facts to fall asleep to" video that is already
+published. Its narration and chapters stay as they are; only the title hook, the thumbnail text and the
+chapter titles change.
+
+Subject: {{topic}}
+Its current description (summary, then chapters):
+{{description}}
+
+Chapters to rename, in order ({{n}} of them):
+{{chapters}}
+
+Return JSON:
+{
+  "title_hook": "{{title_hook_rule}}",
+  "thumb_text": "{{thumb_text_rule}}",
+  "chapters": ["<exactly {{n}} plain, descriptive chapter titles in the same order, 2-7 words each, no numbering, e.g. 'How the Moon Formed', 'The Far Side', 'Tides and Eclipses' — say what the chapter is about, not a poetic image>"]
+}"""
+
+METADATA_PROMPT = METADATA_PROMPT.replace("{{title_hook_rule}}", TITLE_HOOK_RULE).replace("{{thumb_text_rule}}", THUMB_TEXT_RULE)
+REPACKAGE_PROMPT = REPACKAGE_PROMPT.replace("{{title_hook_rule}}", TITLE_HOOK_RULE).replace("{{thumb_text_rule}}", THUMB_TEXT_RULE)
