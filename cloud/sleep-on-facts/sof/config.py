@@ -34,12 +34,13 @@ class Config:
     max_words_ratio: float = 1.3
     # tts
     tts_model: str = "gpt-4o-mini-tts"
-    tts_voice: str = "echo"         # chosen by Gian from gpt-4o-mini-tts samples (2026-10-06)
+    tts_voice: str = "echo"         # chosen by Gian from gpt-4o-mini-tts samples (2026-10-06); British host delivery 2026-10-25
     tts_speed: float = 0.9          # tts-1 only; gpt-4o-mini-tts takes pace from tts_instructions
     tts_instructions: str = (
-        "You are narrating a gentle bedtime video. Speak slowly and softly, in a warm, low, unhurried voice, "
-        "with long natural pauses between sentences. No excitement, no emphasis spikes. An even, soothing "
-        "cadence, like telling a quiet story to someone who is drifting off to sleep."
+        "You are the host of a late-night science show, speaking to one listener who is drifting off to sleep. "
+        "A middle-aged man with a soft, educated British accent. Warm, low and unhurried, with natural pauses "
+        "between sentences. Friendly and personal in the welcome, then calm and even through the facts. "
+        "No excitement, no emphasis spikes, no sing-song."
     )
     tts_chunk_chars: int = 2000     # gpt-4o-mini-tts input cap is 2,000 chars (tts-1 allows 4,096)
     # music: synthesised ambient pad looped under the voice (see sof/music.py)
@@ -99,8 +100,9 @@ class Config:
     shorts_delay_minutes: int = 60     # the Short's link must never point at a still-private video
     shorts_brand: str = "Sleep On Facts"
     shorts_tts_instructions: str = (
-        "You are the narrator of a calm facts channel, recording a short teaser. Warm, low, unhurried, but "
-        "awake and curious — a little brighter than a bedtime read. Clear diction, natural pauses, no hype."
+        "You are the host of a late-night science show, recording a short teaser. A middle-aged man with a soft, "
+        "educated British accent. Warm and low, but awake and curious — a little brighter than at bedtime. "
+        "Clear diction, natural pauses, no hype."
     )
     # secrets
     openai_api_key: str = ""
