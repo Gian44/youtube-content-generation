@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 WORDS_PER_MINUTE = 150
+KOKORO_WORDS_PER_MINUTE = 135   # measured on the Kokoro voice at speed 0.88 with 0.55 s sentence pauses (smoke 2026-10-25)
 SMOKE_MAX_MINUTES = 10  # at/below this the run is a smoke test: always unlisted
 
 
@@ -140,7 +141,7 @@ class Config:
 
     @property
     def target_words(self) -> int:
-        return self.minutes * WORDS_PER_MINUTE
+        return self.minutes * (KOKORO_WORDS_PER_MINUTE if self.tts_backend == "kokoro" else WORDS_PER_MINUTE)
 
     @property
     def is_smoke(self) -> bool:

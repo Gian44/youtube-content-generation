@@ -266,7 +266,8 @@ def _aspect(path: str) -> float:
 
 
 def make(image_paths: list[str], *, topic: str, hours: float | int, out: str, candidates: list[str] | None = None,
-         choose=None, max_choices: int = 16, hook: str = "", confirm=None, attempts: int = 4) -> str:
+         choose=None, max_choices: int = 16, hook: str = "", confirm=None, attempts: int = 4,
+         fallback: list[str] | None = None) -> str:
     """Compose the thumbnail from the best photo.
 
     ``candidates`` — photos verified to show the subject itself (vision-labelled); the thumbnail is
@@ -276,6 +277,9 @@ def make(image_paths: list[str], *, topic: str, hours: float | int, out: str, ca
     ``confirm(path) -> {"ok", "where"} | bool | None`` double-checks the pick (subject large, no printed
     text); not ok drops that photo and asks again, up to ``attempts`` times (2026-10-25: an Indus pick
     had a scanned caption); "where" = left moves the subject out from under the title.
+    ``fallback`` — scenery shots (vision label "setting") used when every subject pick was turned down: a
+    subject that cannot be photographed whole (a trench, a current) is better shown by its setting than by
+    the last rejected close-up (2026-10-25 smoke: a submersible's thruster for "Mariana Trench").
     """
     pool = [p for p in (candidates or []) if p] or list(image_paths)
     wide = [p for p in pool if _aspect(p) >= 1.3]
@@ -298,6 +302,18 @@ def make(image_paths: list[str], *, topic: str, hours: float | int, out: str, ca
             continue
         best, side = pick, (verdict.get("where", "") if isinstance(verdict, dict) else "")
         break
+    rejected_all = not best and confirm is not None and len(offer) < len(
+        (wide + [p for p in pool if p not in wide])[:max_choices])
+    scenery = [p for p in (fallback or []) if p and p not in pool]
+    if rejected_all and scenery:
+        sc_wide = [p for p in scenery if _aspect(p) >= 1.3]
+        sc_offer = (sc_wide + [p for p in scenery if p not in sc_wide])[:max_choices]
+        try:
+            best = choose(sc_offer) if choose is not None else None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("thumbnail chooser failed on scenery: %s", exc)
+        best = best or pick_photo(sc_wide or sc_offer)
+        log.info("thumbnail: every subject shot was turned down; using a setting shot")
     if not best:
         rest = [p for p in (wide or pool) if p in offer] or offer or wide or pool
         best = pick_photo(rest)

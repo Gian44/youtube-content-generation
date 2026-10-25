@@ -114,6 +114,16 @@ def test_make_drops_picks_the_confirm_step_rejects(tmp_path):
     assert thumbnail.source_of(out) == b
 
 
+def test_a_setting_shot_wins_when_every_subject_pick_is_turned_down(tmp_path):
+    a, b, sea = (_photo(tmp_path / f"{n}.jpg", 90, contrast=True) for n in ("a", "b", "sea"))
+    out = thumbnail.make([a, b, sea], topic="Mariana Trench", hours=2.5, out=str(tmp_path / "t.jpg"), candidates=[a, b],
+                         choose=lambda ps: ps[0], confirm=lambda p: {"ok": False, "where": "center"}, fallback=[sea])
+    assert thumbnail.source_of(out) == sea
+    out = thumbnail.make([a, b], topic="X", hours=3, out=str(tmp_path / "u.jpg"), candidates=[a, b],
+                         choose=lambda ps: ps[0], confirm=lambda p: False)       # no scenery: old behaviour
+    assert thumbnail.source_of(out) in (a, b)
+
+
 def test_a_subject_on_the_left_is_moved_out_from_under_the_title(tmp_path):
     from PIL import ImageStat
     src = tmp_path / "wide.jpg"

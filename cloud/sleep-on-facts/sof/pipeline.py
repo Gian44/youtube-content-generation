@@ -262,7 +262,8 @@ def run(cfg: Config) -> int:
             def confirmer(path):
                 return vis.confirm_thumbnail(path, subject=name)
         thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser,
-                       hook=sc.thumb_text, confirm=confirmer)
+                       hook=sc.thumb_text, confirm=confirmer,
+                       fallback=[p for p in image_paths if labels.get(p) == "setting"])
     try:                                   # the marathon compiler (sof/marathon.py) re-uses the thumbnail's photo
         src = thumbnail.source_of(str(thumb))
         if src and Path(src).exists() and not (work / "thumb_source.jpg").exists():
