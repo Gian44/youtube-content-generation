@@ -215,3 +215,16 @@ def test_footage_slots_move_and_loop_and_mix_with_photos(tmp_path):
     moving = [np.abs(f[k + 6] - f[k]).mean() for k in (100, 120, 140, 160, 300, 330)]
     still = np.abs(f[60] - f[54]).mean()
     assert min(moving) > 3 * max(still, 0.5)                                  # clip slots move, photo slots barely
+
+
+def test_stock_clips_with_bt709_tags_concat_with_untagged_photos(tmp_path):
+    """2026-10-25 smoke: Pexels clips carry bt709 colour tags, photos none; x264 put them in the SPS and the
+    stream-copy concat refused mixed headers. Every segment is now tagged the same (timeline.COLOUR)."""
+    imgs = _photos(tmp_path, COLOURS[:2])
+    clip = tmp_path / "tagged.mp4"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=25:d=2", "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+                    str(clip)], check=True)
+    reel = timeline.build_timeline_reel([imgs[0], str(clip), imgs[1]], str(tmp_path / "t"), dwell=3.0, crossfade=0.5,
+                                        width=320, height=180, fps=24, total=9.0, workers=2, captions={imgs[1]: CAPTION})
+    assert timeline.probe(reel)[0] == 216 == _decoded_frames(reel)

@@ -45,6 +45,10 @@ ZOOM_MAX = 1.12      # ...then eases out toward this, same slope at the knee: no
 MIN_SEGMENT_FRAMES = 3
 # Identical for every segment: stream-copy concat needs byte-identical SPS/PPS in all of them.
 X264 = ("-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p")
+# Every stream gets the same colour tags before encoding (limited range, everything else unspecified, as the
+# photos always were): stock footage arrives tagged bt709, x264 writes such tags into the SPS, and mixed
+# headers broke the stream-copy concat (2026-10-25 smoke). render.cover_clip converts clips to the photos' matrix.
+COLOUR = "setparams=range=tv:color_primaries=unknown:color_trc=unknown:colorspace=unknown"
 SPLIT_PLANES = True  # zoom luma and chroma planes separately (same luma, ~0.63x the CPU; see _photo)
 
 
@@ -175,10 +179,10 @@ def _photo(inp: int, cap: int | None, label: str, *, frames: int, tau: int, rate
         # Moving footage (pre-cut by render.cover_clip, looped by the input's -stream_loop): its clock is the
         # same tau, so a clip runs on seamlessly from body to transition to body, like a photo's zoom.
         chain = (f"[{inp}:v]trim=start_frame={int(tau)}:end_frame={int(tau) + frames},setpts=PTS-STARTPTS,"
-                 f"fps={fps},setsar=1,format=yuv420p")
+                 f"fps={fps},setsar=1,format=yuv420p,{COLOUR}")
         if cap is None:
             return f"{chain}[{label}]"
-        return f"{chain}[{label}z];[{label}z][{cap}:v]overlay=0:0:format=auto,format=yuv420p[{label}]"
+        return f"{chain}[{label}z];[{label}z][{cap}:v]overlay=0:0:format=auto,format=yuv420p,{COLOUR}[{label}]"
     z = zoom_expr(tau, rate)
 
     def zp(w: int, h: int) -> str:
@@ -193,9 +197,10 @@ def _photo(inp: int, cap: int | None, label: str, *, frames: int, tau: int, rate
                  f"[{L}y][{L}u][{L}v]mergeplanes=0x001020:yuvj420p,setsar=1,format=yuv420p")
     else:
         chain = f"[{inp}:v]{zp(width, height)},setsar=1,format=yuv420p"
+    chain += f",{COLOUR}"
     if cap is None:
         return f"{chain}[{label}]"
-    return f"{chain}[{label}z];[{label}z][{cap}:v]overlay=0:0:format=auto,format=yuv420p[{label}]"
+    return f"{chain}[{label}z];[{label}z][{cap}:v]overlay=0:0:format=auto,format=yuv420p,{COLOUR}[{label}]"
 
 
 def _fades(frames: int, fade_in: int, fade_out: int) -> str:
@@ -228,7 +233,7 @@ def body_cmd(image: str, out: str, *, frames: int, tau: int, rate: float, width:
     cmd = ["ffmpeg", "-y", *_inp(image)] + (["-i", caption] if caption else [])
     graph = _photo(0, 1 if caption else None, "p", frames=frames, tau=tau, rate=rate, width=width, height=height, fps=fps,
                    split=split, video=vid)
-    return cmd + ["-filter_complex", f"{graph};[p]{_fades(frames, fade_in, fade_out)}[v]", *_encode(out, frames, fps)]
+    return cmd + ["-filter_complex", f"{graph};[p]{_fades(frames, fade_in, fade_out)},{COLOUR}[v]", *_encode(out, frames, fps)]
 
 
 def transition_cmd(image_a: str, image_b: str, out: str, *, frames: int, tau_a: int, tau_b: int = 0, rate: float,
@@ -250,7 +255,7 @@ def transition_cmd(image_a: str, image_b: str, out: str, *, frames: int, tau_a: 
     kw = dict(frames=frames, rate=rate, width=width, height=height, fps=fps, split=split)
     graph = ";".join([_photo(0, ca, "a", tau=tau_a, video=_is_clip(image_a), **kw),
                       _photo(1, cb, "b", tau=tau_b, video=_is_clip(image_b), **kw),
-                      f"[a][b]xfade=transition=fade:duration={frames / fps:.6f}:offset=0,format=yuv420p[v]"])
+                      f"[a][b]xfade=transition=fade:duration={frames / fps:.6f}:offset=0,format=yuv420p,{COLOUR}[v]"])
     return cmd + ["-filter_complex", graph, *_encode(out, frames, fps)]
 
 

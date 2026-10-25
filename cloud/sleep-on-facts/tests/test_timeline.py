@@ -204,9 +204,9 @@ def test_split_planes_zoom_luma_and_chroma_on_the_same_clock():
     assert g.startswith("[0:v]format=yuvj444p,extractplanes=y+u+v[py0][pu0][pv0];") and g.endswith("[p]")
     assert g.count("(on+36)") == 3 * 3                                     # 3 planes × 3 uses in the expression
     assert g.count("s=1920x1080:fps=24") == 1 and g.count("s=960x540:fps=24") == 2
-    assert g.count("scale=iw/2:ih/2") == 2 and "mergeplanes=0x001020:yuvj420p,setsar=1,format=yuv420p[p]" in g
+    assert g.count("scale=iw/2:ih/2") == 2 and f"mergeplanes=0x001020:yuvj420p,setsar=1,format=yuv420p,{timeline.COLOUR}[p]" in g
     one = timeline._photo(0, 1, "p", frames=444, tau=36, rate=rate, width=1920, height=1080, fps=24, split=False)
-    assert one.startswith("[0:v]zoompan=") and "[pz][1:v]overlay=0:0:format=auto,format=yuv420p[p]" in one
+    assert one.startswith("[0:v]zoompan=") and f"[pz][1:v]overlay=0:0:format=auto,format=yuv420p,{timeline.COLOUR}[p]" in one
     assert timeline.SPLIT_PLANES and "extractplanes" in timeline._photo(0, None, "p", frames=4, tau=0, rate=rate,
                                                                          width=320, height=180, fps=24)
 

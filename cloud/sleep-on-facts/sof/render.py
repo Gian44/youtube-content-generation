@@ -68,11 +68,12 @@ def cover_clip_cmd(src: str, dst: str, *, width: int, height: int, fps: int, dim
     """Pre-cut one stock clip for the timeline: cover-cropped to the frame, slowed ``slow``× (footage is
     shot at normal speed; a bedtime video wants it drifting), resampled to ``fps``, dimmed like the photos,
     silent, at most ``max_seconds`` long. Encoded once, then looped/trimmed per segment."""
-    vf = (f"setpts={slow:g}*PTS,scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,"
-          f"crop={width}:{height},fps={fps},setsar=1")
+    vf = (f"setpts={slow:g}*PTS,scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos"
+          f":out_color_matrix=bt601:out_range=tv,crop={width}:{height},fps={fps},setsar=1")
     if dim < 1.0:
         vf += f",lutyuv=y='val*{max(0.2, dim):g}'"
-    vf += ",format=yuv420p"
+    # same matrix as the photos (BT.601, untagged): footage and stills then look alike and encode alike
+    vf += ",format=yuv420p,setparams=range=tv:color_primaries=unknown:color_trc=unknown:colorspace=unknown"
     return ["ffmpeg", "-y", "-v", "error", "-ss", f"{skip:g}", "-i", src, "-an", "-vf", vf, "-t", f"{max_seconds:g}",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-map_metadata", "-1", dst]
 
