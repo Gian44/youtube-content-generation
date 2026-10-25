@@ -6,3 +6,5 @@ Pillow>=10.3
 PyYAML>=6.0
 pytest>=8
 numpy>=1.26
+kokoro-onnx==0.6.1   # the narrator voice (open-weights Kokoro-82M, Apache-2.0), since 2026-10-25
+soundfile>=0.12

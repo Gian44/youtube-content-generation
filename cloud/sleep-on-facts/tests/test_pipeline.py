@@ -14,14 +14,35 @@ TOPICS = "topics:\n  - name: Whales\n    queries: [whale ocean]\n"
 def _cfg(tmp_path, **kw):
     (tmp_path / "topics.yml").write_text(TOPICS)
     (tmp_path / "ledger.json").write_text("[]")
+    kw.setdefault("tts_backend", "openai")            # the fakes stand in for tts.synthesize
+    kw.setdefault("vision_providers", ("openai",))
     return Config(minutes=kw.pop("minutes", 180), work_dir=str(tmp_path / "work"), topics_path=str(tmp_path / "topics.yml"),
                   ledger_path=str(tmp_path / "ledger.json"), openai_api_key="sk", yt_client_id="a", yt_client_secret="b",
                   yt_refresh_token="c", images_min=2, images_fail_below=1,
                   photo_timeline=kw.pop("photo_timeline", False), **kw)
 
 
+class _Vis:
+    """Stands in for sof.vision.Vision: labels through the (patched) images.classify, no thumbnail questions."""
+    stats: dict = {}
+    active = ["test"]
+
+    def describe(self):
+        return "test"
+
+    def classify(self, paths, *, subject):
+        return pipeline.images.classify(paths, subject=subject, api_key="", model="")
+
+    def pick_iconic(self, paths, *, subject):
+        return None
+
+    def confirm_thumbnail(self, path, *, subject):
+        return None
+
+
 def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uploaded", ""), earlier=None, n_shorts=1):
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(pipeline.vision.Vision, "from_config", classmethod(lambda cls, cfg: _Vis()))
     monkeypatch.setattr(pipeline.upload, "upload_state", lambda yt, ids: {i: (earlier or {}).get(i, ("processed", "")) for i in ids})
     monkeypatch.setattr(pipeline.upload, "wait_until_accepted", lambda yt, vid, **kw: (calls.append("status"), accepted)[1])
     monkeypatch.setattr(pipeline.upload, "build_client", lambda cfg: "YT")
@@ -46,7 +67,7 @@ def _fakes(monkeypatch, calls, *, health_ok=True, image_count=3, accepted=("uplo
         calls.append("tts"); Path(out_dir).mkdir(parents=True, exist_ok=True)
         p = Path(out_dir) / "0000.mp3"; p.write_bytes(b"x"); return [str(p)]
     monkeypatch.setattr(pipeline.tts, "synthesize", synth)
-    def assemble_tts(paths, out_dir):
+    def assemble_tts(paths, out_dir, pre=""):
         p = Path(out_dir) / "narration.mp3"; p.write_bytes(b"audio"); return str(p)
     monkeypatch.setattr(pipeline.tts, "assemble", assemble_tts)
     monkeypatch.setattr(pipeline.tts, "duration_seconds", lambda p: 120.0)

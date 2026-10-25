@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sof import (captions, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
-                 topics, tts, upload, visuals)
+                 topics, tts, upload, vision, visuals)
 from sof.config import Config
 from sof.llm import LLM
 from sof.prompts import STORY_FORMATS, STORY_ORDER
@@ -75,6 +75,10 @@ def run(cfg: Config) -> int:
     print("script writer: " + (f"Claude ({cfg.claude_writer_model}/{cfg.claude_fast_model}) on the subscription, "
                                "OpenAI/Gemini as fallback" if not why_not else f"OpenAI, Gemini as fallback (Claude: {why_not})"),
           flush=True)
+    vis = vision.Vision.from_config(cfg)
+    print(f"photo checks: {vis.describe()}", flush=True)
+    print("voice: " + (f"Kokoro {cfg.kokoro_voice} (free, on the runner)" if cfg.tts_backend == "kokoro"
+                       else f"OpenAI {cfg.tts_model} {cfg.tts_voice}"), flush=True)
     seeds = topics.load_topics(cfg.topics_path)
     category, wiki_title, queries = "", None, []
     if cfg.topic:
@@ -137,10 +141,10 @@ def run(cfg: Config) -> int:
     secs = [x for x in sc.sections if str(x.get("body") or "").strip()] or [{"heading": "", "body": sc.body}]
     if not narration.exists() or not chapters_path.exists():
         chunks, owner = tts.chunk_sections(secs, cfg.tts_chunk_chars)
-        parts = tts.synthesize(chunks, str(work / "tts"), api_key=cfg.openai_api_key, model=cfg.tts_model,
-                               voice=cfg.tts_voice, speed=cfg.tts_speed, instructions=cfg.tts_instructions)
+        print(f"tts: {len(chunks)} chunks", flush=True)
+        parts = tts.speak(chunks, str(work / "tts"), cfg)
         if not narration.exists():
-            tts.assemble(parts, str(work))
+            tts.assemble(parts, str(work), pre=tts.post_filter(cfg))
         starts = tts.section_starts(parts, owner, len(secs), duration=tts.duration_seconds)
         chapters_path.write_text(json.dumps([{"start": round(st, 2), "title": str(x.get("heading") or "")}
                                              for st, x in zip(starts, secs)], indent=1, ensure_ascii=False), encoding="utf-8")
@@ -148,7 +152,7 @@ def run(cfg: Config) -> int:
     duration = tts.duration_seconds(str(narration))
     hours = seo.round_hours(duration)          # 2.5 for a ~2½-hour video (titles, thumbnail, description)
     print(f"narration: {duration / 60:.1f} min · {len(chapters)} chapters · est. TTS cost "
-          f"${tts.estimate_cost_usd(chars, cfg.tts_model):.2f}", flush=True)
+          f"${tts.estimate_cost_usd(chars, tts.cost_model(cfg)):.2f}", flush=True)
 
     # 3b. Faint ambient bed under the voice (synthesised, licence-free).
     soundtrack = narration
@@ -185,9 +189,7 @@ def run(cfg: Config) -> int:
                                   use_commons=cfg.images_commons, use_nasa=use_nasa, generic_floor=cfg.images_fail_below)
 
         def label(paths):
-            if not cfg.images_vision_check:
-                return {p: "unknown" for p in paths}
-            return images.classify(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+            return vis.classify(paths, subject=name)
 
         if img_dir.exists():                       # a stale partial download from an interrupted run
             for f in img_dir.iterdir():
@@ -215,7 +217,7 @@ def run(cfg: Config) -> int:
             else:
                 slots = _plan_timeline(cfg, work=work, llm=llm, topic=name, article=article or "", sections=secs,
                                        duration=duration, chapters=chapters, reel=image_paths, used=used,
-                                       use_nasa=use_nasa, out=plan_path,
+                                       use_nasa=use_nasa, out=plan_path, vis=vis,
                                        footage_queries=[name, *sc.image_queries[:8], *sc.setting_queries[:4]])
         except Exception as exc:  # noqa: BLE001 — never lose the video over the better visuals
             log.exception("timeline planning failed")
@@ -253,12 +255,12 @@ def run(cfg: Config) -> int:
     if not thumb.exists():
         subject_shots = [p for p in image_paths if labels.get(p) == "subject"]
         chooser = confirmer = None
-        if cfg.images_vision_check and cfg.openai_api_key:
+        if vis.active:
             def chooser(paths):
-                return images.pick_iconic(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+                return vis.pick_iconic(paths, subject=name)
 
             def confirmer(path):
-                return images.confirm_thumbnail(path, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+                return vis.confirm_thumbnail(path, subject=name)
         thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser,
                        hook=sc.thumb_text, confirm=confirmer)
     try:                                   # the marathon compiler (sof/marathon.py) re-uses the thumbnail's photo
@@ -358,7 +360,9 @@ def run(cfg: Config) -> int:
         "timeline": _timeline_stats(plan_path), "short": short_entries[0] if short_entries else None,
         "shorts": short_entries, "slop": sc.slop or None,
         "llm_calls": dict(getattr(llm, "stats", {}) or {}),
-        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model)
+        "vision_calls": dict(vis.stats),
+        "voice": f"kokoro {cfg.kokoro_voice}" if cfg.tts_backend == "kokoro" else f"{cfg.tts_model} {cfg.tts_voice}",
+        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, tts.cost_model(cfg))
                                    + (0.02 if getattr(llm, "stats", {}).get("claude") and not getattr(llm, "stats", {}).get("openai")
                                       else 0.80) + 0.03 * len(short_entries), 2),
         "run_url": _run_url(),
@@ -391,7 +395,7 @@ def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
 
 def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, sections: list[dict], duration: float,
                    chapters: list[dict], reel: list[str], used: list[dict], use_nasa: bool, out: Path,
-                   footage_queries: list[str] | None = None) -> list[str]:
+                   footage_queries: list[str] | None = None, vis=None) -> list[str]:
     """Slot list (one photo — or footage clip — per ``dwell`` seconds) that follows the narration; writes ``out``
     (timeline.json)."""
     mentions = visuals.extract_mentions(llm, sections, topic=topic, model=cfg.fast_model, wiki_title=article)
@@ -403,10 +407,12 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
     timed = visuals.mention_times(mentions, chunks=chunks, owner=owner, chunk_durations=[d * scale for d in durs])
     entities = visuals.rank_entities(timed, max_entities=cfg.timeline_max_entities)
 
+    vis = vis or vision.Vision.from_config(cfg)
+
     def label(paths, subject):
-        if not cfg.images_vision_check:
+        if not vis.active:
             return {p: "subject" for p in paths}
-        return images.classify(paths, subject=subject, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+        return vis.classify(paths, subject=subject)
 
     reel_abs = [str(Path(p).resolve()) for p in reel]
     photos = visuals.gather_entity_photos(entities, str(work / "entities"), topic=topic, use_nasa=use_nasa,

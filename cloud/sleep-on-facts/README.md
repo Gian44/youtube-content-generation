@@ -79,18 +79,37 @@ Claude, on Gian's Claude subscription: the workflow installs the Claude Code CLI
 `CLAUDE_CODE_OAUTH_TOKEN` secret. Create it once on a computer logged in to the Claude account:
 `claude setup-token`, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN` and paste the token. A preflight call
 checks it each run; if Claude is capped or logged out, OpenAI then Gemini write instead (ledger `llm_calls`).
-The voice (gpt-4o-mini-tts, echo) and the photo checks still use the OpenAI key, so it needs credits.
+
+## The voice and the photo checks (2026-10-25, after the OpenAI keys ran out of credits)
+
+- **Voice: Kokoro-82M**, an open-weights TTS model (Apache-2.0, fine for a monetised channel), run on the
+  runner's CPU with `kokoro-onnx` — no API, no credits. The narrator is our own blend of Kokoro's British male
+  voices, `bm_george:0.6,bm_lewis:0.4` (`kokoro_voice`; Gian picked it from samples), at speed 0.88 with
+  0.55 s between sentences, plus a little low-end warmth before loudnorm. The workflow downloads the model once
+  (GitHub release `model-files-v1.0`, SHA-256 checked) and caches it. It costs ~0.3–0.6 s of CPU per second
+  of audio, so a 2.5-hour narration adds about an hour to the run (job timeout raised to 360 min).
+  `TTS_BACKEND=openai` brings back gpt-4o-mini-tts echo when there are credits.
+- **Photo checks: `sof/vision.py`** — Codex (Gian's ChatGPT plan via `codex exec`) first, Claude (`claude -p`
+  with the Read tool, Haiku) as fallback, OpenAI last. Photos go in as numbered contact sheets (12 per question).
+  A provider with a dead login or a usage limit is switched off for the run; if nobody answers, photos stay
+  "unknown" and are used. Ledger rows record `vision_calls` and `voice`.
+- **Codex login in CI**: secret `CODEX_AUTH_JSON` = the contents of `%USERPROFILE%\.codex\auth.json` from
+  Gian's PC. The workflow refuses a login with < 6 h left and stamps `last_refresh` so Codex never refreshes
+  it on the runner (a runner-side refresh would rotate the refresh token and could sign the PC out). The PC
+  keeps the login fresh; re-copy the file into the secret when it renews (about every 10 days). OpenAI's docs
+  only support API keys for CI, so this is a workaround that Claude backs up.
 
 ## Secrets (repo → Settings → Secrets → Actions)
 
-`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `OPENAI_API_KEY` (optional now), `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
 `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`. The YouTube token is the Sleep On Facts channel's
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
 
-## Cost per video (≈ $3.75 incl. the Short)
+## Cost per video
 
-OpenAI `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning + no-slop rewrites ≈ $0.03–0.3 + `gpt-4o-mini` photo labels + thumbnail pick ≈ $0.02;
+Since 2026-10-25: ≈ $0 — Kokoro voice on the runner, scripts on the Claude plan, photo checks on the
+ChatGPT/Claude plans. Before (all OpenAI, ≈ $3.75): `gpt-4o-mini-tts` ≈ $17 per 1M characters → ~170k chars ≈ $2.90; `gpt-5.6-terra` script ≈ $0.75 + `gpt-5.6-luna` planning + no-slop rewrites ≈ $0.03–0.3 + `gpt-4o-mini` photo labels + thumbnail pick ≈ $0.02;
 Wikimedia Commons/NASA/Pexels/Pixabay/YouTube/Actions free (public repo). The run aborts before TTS if the script
 exceeds 1.3× the word target, and before everything if the YouTube token is dead.
 

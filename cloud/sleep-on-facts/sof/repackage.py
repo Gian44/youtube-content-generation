@@ -116,10 +116,12 @@ def subject_photos(cfg, *, topic: str, wiki_title: str, category: str, out_dir: 
                               pixabay_key=cfg.pixabay_api_key, use_commons=cfg.images_commons, use_nasa=use_nasa,
                               generic_floor=6, category_limit=80, category_subcats=3, category_per_subcat=30)
 
+    from sof import vision
+
+    vis = vision.Vision.from_config(cfg)
+
     def label(paths):
-        if not (cfg.images_vision_check and cfg.openai_api_key):
-            return {p: "unknown" for p in paths}
-        return images.classify(paths, subject=topic, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+        return vis.classify(paths, subject=topic)
 
     reel, labels = images.gather_reel(urls, str(out_dir), target=target, floor=4, classify_fn=label, setting_share=0.2)
     subject = [p for p in reel if labels.get(p) == "subject"]
@@ -133,13 +135,16 @@ def make_thumbnail(cfg, *, topic: str, wiki_title: str, category: str, hours: in
     reel, subject, used = subject_photos(cfg, topic=topic, wiki_title=wiki_title, category=category, out_dir=work / "images")
     if not reel:
         raise RuntimeError(f"no photos found for {topic!r}")
+    from sof import vision
+
     chooser = confirmer = None
-    if cfg.images_vision_check and cfg.openai_api_key:
+    vis = vision.Vision.from_config(cfg)
+    if vis.active:
         def chooser(paths):
-            return images.pick_iconic(paths, subject=topic, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+            return vis.pick_iconic(paths, subject=topic)
 
         def confirmer(path):
-            return images.confirm_thumbnail(path, subject=topic, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+            return vis.confirm_thumbnail(path, subject=topic)
     out = str(work / "thumb.jpg")
     thumbnail.make(reel, topic=topic, hours=hours, out=out, candidates=subject, choose=chooser, hook=hook,
                    confirm=confirmer)

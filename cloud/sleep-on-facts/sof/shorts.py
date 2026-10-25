@@ -421,9 +421,11 @@ def overlay_cmd(reel: str, audio: str, out: str, *, cues: list[tuple[float, floa
     return cmd
 
 
-def loudnorm_cmd(inp: str, out: str) -> list[str]:
-    """Shorts are watched on a phone speaker in daylight: louder than the bedtime narration."""
-    return ["ffmpeg", "-y", "-i", inp, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-b:a", "160k", out]
+def loudnorm_cmd(inp: str, out: str, pre: str = "") -> list[str]:
+    """Shorts are watched on a phone speaker in daylight: louder than the bedtime narration. ``pre``: the
+    voice's own filters (tts.post_filter)."""
+    af = (pre.rstrip(",") + "," if pre else "") + "loudnorm=I=-16:TP=-1.5:LRA=11"
+    return ["ffmpeg", "-y", "-i", inp, "-af", af, "-ar", "44100", "-b:a", "160k", out]
 
 
 def build_video(*, photos: list[str], narration: str, audio: str, work: Path, title: str, brand: str,
@@ -522,9 +524,8 @@ def make(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], plan: l
         meta_path.write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
     audio = work / f"{stem}.mp3"
     if not audio.exists():
-        parts = tts.synthesize([meta["narration"]], str(work / f"{stem}_tts"), api_key=cfg.openai_api_key, model=cfg.tts_model,
-                               voice=cfg.tts_voice, speed=min(1.0, cfg.tts_speed + 0.1), instructions=cfg.shorts_tts_instructions)
-        render.run(loudnorm_cmd(parts[0], str(audio)), 300)
+        parts = tts.speak([meta["narration"]], str(work / f"{stem}_tts"), cfg, short=True)
+        render.run(loudnorm_cmd(parts[0], str(audio), tts.post_filter(cfg)), 300)
     photos = choose_photos(section=int(meta.get("section", 0)), plan=plan, reel=reel, labels=labels,
                            want=cfg.shorts_photos, avoid=avoid)
     if not photos:

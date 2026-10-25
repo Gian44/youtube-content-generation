@@ -119,7 +119,7 @@ def test_build_video_renders_a_vertical_captioned_short(tmp_path):
 
 
 def test_make_is_resumable_and_uses_cached_files(tmp_path, monkeypatch):
-    cfg = Config(openai_api_key="k")
+    cfg = Config(openai_api_key="k", tts_backend="openai")
     (tmp_path / "short.json").write_text(json.dumps({"section": 0, "hook_title": "H", "narration": "A fact. " + shorts.CTA_LINE}))
     (tmp_path / "short.mp3").write_bytes(b"a")
     (tmp_path / "short.mp4").write_bytes(b"v")
@@ -192,7 +192,7 @@ def test_choose_photos_avoids_photos_of_earlier_shorts(tmp_path):
 
 
 def test_make_all_writes_once_and_renders_each_short_under_its_own_name(tmp_path, monkeypatch):
-    cfg = Config(openai_api_key="k")
+    cfg = Config(openai_api_key="k", tts_backend="openai")
     llm = FakeLLM({"shorts": [{"section": i, "hook_title": f"Fact Number {w} About Venice", "narration": LONG}
                               for i, w in enumerate(("One", "Two", "Three"))]})
     photos = []
@@ -220,7 +220,7 @@ def test_make_all_writes_once_and_renders_each_short_under_its_own_name(tmp_path
 
 
 def test_make_all_skips_a_failing_short(tmp_path, monkeypatch):
-    cfg = Config(openai_api_key="k")
+    cfg = Config(openai_api_key="k", tts_backend="openai")
     (tmp_path / "shorts.json").write_text(json.dumps([{"section": i, "hook_title": f"T{i}", "narration": "N."} for i in range(3)]))
     def make(cfg, *, index, item, **kw):
         if index == 1:

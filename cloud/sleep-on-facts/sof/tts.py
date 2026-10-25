@@ -1,4 +1,12 @@
-"""OpenAI text-to-speech in ≤4,000-char chunks, concatenated and loudness-normalized for bedtime."""
+"""Narration: text in chunks → one loudness-normalised MP3 for bedtime.
+
+Two voices (``speak`` picks by ``cfg.tts_backend``):
+- ``kokoro`` (default since 2026-10-25): Kokoro-82M, an open-weights TTS model (Apache-2.0, free for
+  monetised use) run on the GitHub runner's CPU through kokoro-onnx. The voice is our own: a weighted blend of
+  Kokoro's British "George" and "Lewis" voices (Gian picked sample 3), so no other channel sounds the same.
+  No API, no credits; costs ~0.3–0.6 s of CPU per second of audio.
+- ``openai``: gpt-4o-mini-tts "echo" with British host directions (needs OpenAI credits).
+"""
 
 from __future__ import annotations
 
@@ -117,8 +125,10 @@ def concat_cmd(list_file: str, out: str) -> list[str]:
     return ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file, "-c", "copy", out]
 
 
-def loudnorm_cmd(inp: str, out: str) -> list[str]:
-    return ["ffmpeg", "-y", "-i", inp, "-af", "loudnorm=I=-18:TP=-2:LRA=11", "-ar", "44100", "-b:a", "128k", out]
+def loudnorm_cmd(inp: str, out: str, pre: str = "") -> list[str]:
+    """``pre``: filters before loudnorm (Kokoro gets a little low-end warmth and a soft top)."""
+    af = (pre.rstrip(",") + "," if pre else "") + "loudnorm=I=-18:TP=-2:LRA=11"
+    return ["ffmpeg", "-y", "-i", inp, "-af", af, "-ar", "44100", "-b:a", "128k", out]
 
 
 def _run(cmd: list[str], timeout: int) -> None:
@@ -127,7 +137,7 @@ def _run(cmd: list[str], timeout: int) -> None:
         raise RuntimeError(f"ffmpeg failed: {r.stderr[-400:]}")
 
 
-def assemble(paths: list[str], out_dir: str) -> str:
+def assemble(paths: list[str], out_dir: str, pre: str = "") -> str:
     list_file = os.path.join(out_dir, "concat.txt")
     with open(list_file, "w", encoding="utf-8") as f:
         for p in paths:
@@ -135,11 +145,13 @@ def assemble(paths: list[str], out_dir: str) -> str:
     raw = os.path.join(out_dir, "narration_raw.mp3")
     final = os.path.join(out_dir, "narration.mp3")
     _run(concat_cmd(list_file, raw), 1800)
-    _run(loudnorm_cmd(raw, final), 3600)
+    _run(loudnorm_cmd(raw, final, pre), 3600)
     return final
 
 
 def estimate_cost_usd(chars: int, model: str) -> float:
+    if model == "kokoro":
+        return 0.0
     return chars / 1_000_000 * PRICE_PER_M_CHARS.get(model, 15.0)
 
 
@@ -150,3 +162,119 @@ def duration_seconds(path: str) -> float:
         return float(r.stdout.strip())
     except ValueError:
         return 0.0
+
+
+# ------------------------------------------------------------------ Kokoro (open-weights, runs on the CPU)
+
+KOKORO_EQ = "equalizer=f=180:t=q:w=1:g=2,lowpass=f=11000"
+_KOKORO_ENGINE = None
+
+
+def parse_voice_mix(spec: str) -> list[tuple[str, float]]:
+    """"bm_george:0.6,bm_lewis:0.4" → [("bm_george", 0.6), ("bm_lewis", 0.4)] (weights normalised to 1);
+    a plain "bm_george" → [("bm_george", 1.0)]."""
+    parts: list[tuple[str, float]] = []
+    for item in str(spec or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        name, _, w = item.partition(":")
+        try:
+            weight = float(w) if w.strip() else 1.0
+        except ValueError:
+            raise ValueError(f"bad voice weight in {spec!r}") from None
+        if weight > 0:
+            parts.append((name.strip(), weight))
+    if not parts:
+        raise ValueError(f"no voice in {spec!r}")
+    total = sum(w for _, w in parts)
+    return [(n, w / total) for n, w in parts]
+
+
+def kokoro_engine(model_path: str, voices_path: str):
+    """One Kokoro session per process (loading the 310 MB model takes a few seconds)."""
+    global _KOKORO_ENGINE
+    if _KOKORO_ENGINE is None:
+        from kokoro_onnx import Kokoro
+
+        logging.getLogger("phonemizer").setLevel(logging.ERROR)     # "words count mismatch" on every chunk
+
+        for f in (model_path, voices_path):
+            if not Path(f).exists():
+                raise RuntimeError(f"Kokoro model file missing: {f} (the workflow downloads it; see README)")
+        _KOKORO_ENGINE = Kokoro(model_path, voices_path)
+    return _KOKORO_ENGINE
+
+
+def voice_style(engine, spec: str):
+    import numpy as np
+
+    mix = parse_voice_mix(spec)
+    style = sum(w * np.asarray(engine.get_voice_style(name), dtype=np.float32) for name, w in mix)
+    return np.asarray(style, dtype=np.float32)
+
+
+def encode_mp3_cmd(wav: str, out: str) -> list[str]:
+    return ["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-ar", "24000", "-c:a", "libmp3lame",
+            "-b:a", "96k", out]
+
+
+def synthesize_kokoro(chunks: list[str], out_dir: str, *, voice: str, speed: float = 0.88, lang: str = "en-gb",
+                      sentence_pause: float = 0.55, clause_pause: float = 0.2, model_path: str = "",
+                      voices_path: str = "", engine=None, write_wav=None, encode=None) -> list[str]:
+    """Same contract as ``synthesize``: one ``NNNN.mp3`` per chunk (existing files are kept, so a resumed run
+    only speaks what is missing). ``engine``/``write_wav``/``encode`` are injectable for tests."""
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    todo = [i for i in range(len(chunks)) if not ((Path(out_dir) / f"{i:04d}.mp3").exists()
+                                                    and (Path(out_dir) / f"{i:04d}.mp3").stat().st_size > 0)]
+    eng = None
+    style = None
+    if todo:
+        eng = engine or kokoro_engine(model_path, voices_path)
+        style = voice_style(eng, voice)
+    if write_wav is None:
+        def write_wav(path, samples, sr):
+            import soundfile as sf
+
+            sf.write(path, samples, sr)
+    encode = encode or (lambda wav, mp3: _run(encode_mp3_cmd(wav, mp3), 600))
+    t0 = time.monotonic()
+    spoken = 0.0
+    for i, chunk in enumerate(chunks):
+        p = Path(out_dir) / f"{i:04d}.mp3"
+        paths.append(str(p))
+        if i not in todo:
+            continue
+        samples, sr = eng.create(chunk, voice=style, speed=speed, lang=lang, sentence_pause=sentence_pause,
+                                 clause_pause=clause_pause)
+        wav = Path(out_dir) / f"{i:04d}.wav"
+        write_wav(str(wav), samples, sr)
+        encode(str(wav), str(p))
+        wav.unlink(missing_ok=True)
+        spoken += len(samples) / float(sr or 1)
+        log.info("tts chunk %d/%d (kokoro) · %.0f s audio so far in %.0f s", i + 1, len(chunks), spoken,
+                 time.monotonic() - t0)
+    return paths
+
+
+def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[str]:
+    """Narrate ``chunks`` with the configured voice (``cfg.tts_backend``)."""
+    if cfg.tts_backend == "kokoro":
+        return synthesize_kokoro(chunks, out_dir, voice=cfg.kokoro_voice,
+                                 speed=cfg.kokoro_short_speed if short else cfg.kokoro_speed, lang=cfg.kokoro_lang,
+                                 sentence_pause=cfg.kokoro_short_sentence_pause if short else cfg.kokoro_sentence_pause,
+                                 clause_pause=cfg.kokoro_clause_pause, model_path=cfg.kokoro_model_path,
+                                 voices_path=cfg.kokoro_voices_path)
+    return synthesize(chunks, out_dir, api_key=cfg.openai_api_key, model=cfg.tts_model, voice=cfg.tts_voice,
+                      speed=min(1.0, cfg.tts_speed + 0.1) if short else cfg.tts_speed,
+                      instructions=cfg.shorts_tts_instructions if short else cfg.tts_instructions)
+
+
+def post_filter(cfg) -> str:
+    """Filters applied before loudnorm for the configured voice."""
+    return KOKORO_EQ if cfg.tts_backend == "kokoro" else ""
+
+
+def cost_model(cfg) -> str:
+    return "kokoro" if cfg.tts_backend == "kokoro" else cfg.tts_model

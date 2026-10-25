@@ -35,7 +35,7 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 360          # GitHub's maximum; the Kokoro voice runs on this machine's CPU
     defaults:
       run:
         working-directory: cloud/sleep-on-facts
@@ -54,6 +54,31 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version || echo "claude CLI unavailable; OpenAI/Gemini will write"
       - name: Unit tests
         run: python -m pytest -q
+      - name: Kokoro voice model (free, open-weights; cached between runs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kokoro
+          key: kokoro-v1.0
+      - name: Download the Kokoro model if the cache is empty
+        working-directory: .
+        run: |
+          set -e
+          mkdir -p ~/.cache/kokoro && cd ~/.cache/kokoro
+          base=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          [ -s kokoro-v1.0.onnx ] || curl -fsSL --retry 3 -o kokoro-v1.0.onnx "$base/kokoro-v1.0.onnx"
+          [ -s voices-v1.0.bin ] || curl -fsSL --retry 3 -o voices-v1.0.bin "$base/voices-v1.0.bin"
+          echo "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5  kokoro-v1.0.onnx" | sha256sum -c -
+          echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin" | sha256sum -c -
+      - name: Codex CLI (photo checks on Gian's ChatGPT plan; Claude takes over without it)
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          if [ -z "$CODEX_AUTH_JSON" ]; then echo "no CODEX_AUTH_JSON secret; photo checks go to Claude"; exit 0; fi
+          npm install -g @openai/codex >/dev/null 2>&1 && codex --version || { echo "codex CLI unavailable; Claude checks the photos"; exit 0; }
+          export CODEX_HOME="$RUNNER_TEMP/codex"
+          if python -c "import os, sys; from sof.vision import prepare_codex_home as p; why = p(os.environ['CODEX_AUTH_JSON'], os.environ['CODEX_HOME']); print(why or 'codex login ready'); sys.exit(1 if why else 0)"; then
+            echo "CODEX_HOME=$CODEX_HOME" >> "$GITHUB_ENV"
+          fi
       - name: Run pipeline
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

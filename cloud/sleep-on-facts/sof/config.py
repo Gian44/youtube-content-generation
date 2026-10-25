@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 
 WORDS_PER_MINUTE = 150
@@ -37,7 +38,19 @@ class Config:
     max_segments: int = 40
     fill_ratio: float = 0.9
     max_words_ratio: float = 1.3
-    # tts
+    # tts — which voice: "kokoro" (free, open-weights, runs on the runner; default since 2026-10-25 when the
+    # OpenAI keys ran out of credits) or "openai" (gpt-4o-mini-tts echo below). Env TTS_BACKEND overrides.
+    tts_backend: str = "kokoro"
+    # Kokoro voice = our own blend of its British male voices (Gian picked sample 3, George 60 % + Lewis 40 %).
+    kokoro_voice: str = "bm_george:0.6,bm_lewis:0.4"
+    kokoro_lang: str = "en-gb"
+    kokoro_speed: float = 0.88                 # slower than default: bedtime pace
+    kokoro_sentence_pause: float = 0.55        # seconds between sentences
+    kokoro_clause_pause: float = 0.2
+    kokoro_short_speed: float = 0.97           # Shorts teasers: a little brighter
+    kokoro_short_sentence_pause: float = 0.3
+    kokoro_model_path: str = ""                # default ~/.cache/kokoro/kokoro-v1.0.onnx (env KOKORO_DIR)
+    kokoro_voices_path: str = ""
     tts_model: str = "gpt-4o-mini-tts"
     tts_voice: str = "echo"         # chosen by Gian from gpt-4o-mini-tts samples (2026-10-06); British host delivery 2026-10-25
     tts_speed: float = 0.9          # tts-1 only; gpt-4o-mini-tts takes pace from tts_instructions
@@ -55,8 +68,15 @@ class Config:
     images_target: int = 150
     images_min: int = 100
     images_fail_below: int = 30
-    images_vision_check: bool = True            # gpt-4o-mini labels each photo subject/setting/reject (~$0.01/video)
-    images_vision_model: str = "gpt-4o-mini"
+    images_vision_check: bool = True            # a vision model labels each photo subject/setting/reject
+    images_vision_model: str = "gpt-4o-mini"    # the OpenAI provider's model
+    # Who looks at the photos (sof/vision.py), tried in order per call (Gian 2026-10-25: Codex, Claude as
+    # fallback). "codex" needs CODEX_HOME with his ChatGPT login (the workflow writes it from CODEX_AUTH_JSON),
+    # "claude" the CLAUDE_CODE_OAUTH_TOKEN, "openai" credits. Env VISION_PROVIDERS="codex,claude" overrides.
+    vision_providers: tuple = ("codex", "claude", "openai")
+    codex_model: str = ""                       # "" = the account's default Codex model
+    codex_effort: str = "low"
+    claude_vision_model: str = "haiku"
     images_commons: bool = True                 # Wikimedia Commons: the article's own photos + its Commons category
     images_nasa: str = "auto"                   # "auto" = space topics only, "on", "off"
     images_setting_share: float = 0.3           # at most this share of the reel may be setting/scenery shots
@@ -146,6 +166,14 @@ class Config:
         )
         cfg.claude_writer_model = os.environ.get("CLAUDE_WRITER_MODEL") or cfg.claude_writer_model
         cfg.claude_fast_model = os.environ.get("CLAUDE_FAST_MODEL") or cfg.claude_fast_model
+        cfg.tts_backend = (os.environ.get("TTS_BACKEND") or cfg.tts_backend).strip().lower()
+        kdir = Path(os.environ.get("KOKORO_DIR") or Path.home() / ".cache" / "kokoro")
+        cfg.kokoro_model_path = os.environ.get("KOKORO_MODEL") or str(kdir / "kokoro-v1.0.onnx")
+        cfg.kokoro_voices_path = os.environ.get("KOKORO_VOICES") or str(kdir / "voices-v1.0.bin")
+        cfg.kokoro_voice = os.environ.get("KOKORO_VOICE") or cfg.kokoro_voice
+        if os.environ.get("VISION_PROVIDERS"):
+            cfg.vision_providers = tuple(x.strip().lower() for x in os.environ["VISION_PROVIDERS"].split(",") if x.strip())
+        cfg.codex_model = os.environ.get("CODEX_MODEL", cfg.codex_model)
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)
