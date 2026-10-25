@@ -122,7 +122,7 @@ def run(cfg: Config) -> int:
         sc = script.generate_script(
             llm, topic=name, corpus=corpus, hints=research.wikipedia_hints(name) if corpus is None else "",
             minutes=cfg.minutes, target_words=cfg.target_words, num_movements=cfg.num_movements,
-            max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio, max_words_ratio=cfg.max_words_ratio,
+            max_segments=cfg.max_segments, fill_ratio=cfg.fill_ratio, max_words_ratio=cfg.max_words_ratio if not cfg.is_smoke else max(cfg.max_words_ratio, 2.0),
             segment_max_tokens=cfg.segment_max_tokens, writer_model=cfg.script_model, fast_model=cfg.fast_model,
             story_format=STORY_ORDER[len(rows) % len(STORY_ORDER)],      # rotates one shape per published video
             slop_rounds=cfg.slop_rounds,
