@@ -96,3 +96,13 @@ def test_speak_falls_back_to_kokoro_for_the_whole_narration(monkeypatch, tmp_pat
     tts.speak(["x"], str(tmp_path), cfg)
     assert "kokoro" in seen and cfg.tts_backend == "kokoro" and tts.voice_label(cfg).startswith("kokoro")
     assert tts.voice_label(Config()).startswith("pocket narrator.wav") and Path(Config().pocket_voice).exists()
+
+
+def test_pocket_text_splits_only_long_sentences_at_a_natural_break():
+    long = ("In 1960 the bathyscaphe Trieste, carrying Jacques Piccard and Don Walsh, sank for nearly five hours through "
+            "the dark water of the western Pacific, until it settled on the soft grey floor of the Challenger Deep.")
+    out = tts.pocket_text("Short one. " + long)
+    sents = [x for x in out.split(". ") if x]
+    assert out.startswith("Short one. ") and all(len(x.split()) <= 30 for x in sents)
+    assert "Pacific. Until it settled" in out and out.count("Trieste") == 1 and out.endswith("Challenger Deep.")
+    assert tts.pocket_text("No breaks here at all " * 4 + "end.") == ("No breaks here at all " * 4 + "end.")

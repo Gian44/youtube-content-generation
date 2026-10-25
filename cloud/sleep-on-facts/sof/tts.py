@@ -284,6 +284,37 @@ def pocket_engine(threads: int = 2):
     return _POCKET
 
 
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_BREAK = re.compile(r"[,;:\u2013\u2014]\s+")
+_CLAUSE = re.compile(r"(and|but|so|yet|until|while|when|where|which|because|though|although|as|after|before|"
+                     r"since|then|its|it|they|this|these|those|we|you)\b", re.I)
+
+
+def pocket_text(text: str, max_words: int = 30) -> str:
+    """Pocket TTS is trained on single sentences and may skip words in one longer than ~50 tokens (its own
+    warning; seen in the 2026-10-25 smoke). Split long sentences at the comma/semicolon/dash nearest the
+    middle until every sentence has at most ``max_words`` words; sentences without such a break stay whole."""
+    out: list[str] = []
+    todo = [x for x in _SENTENCE.split(" ".join(str(text or "").split())) if x]
+    while todo:
+        sent = todo.pop(0)
+        words = sent.split()
+        if len(words) <= max_words:
+            out.append(sent)
+            continue
+        mid = len(sent) // 2
+        cuts = [m for m in _BREAK.finditer(sent) if 3 <= len(sent[:m.start()].split()) <= len(words) - 3]
+        if not cuts:
+            out.append(sent)
+            continue
+        # prefer a break before a clause ("…, until it settled …"): the tail then reads as a sentence of its own
+        clause = [m for m in cuts if _CLAUSE.match(sent[m.end():])]
+        cut = min(clause or cuts, key=lambda m: abs(m.start() - mid))
+        head, tail = sent[:cut.start()].rstrip(" ,;:"), sent[cut.end():].lstrip()
+        todo[:0] = [head + ".", tail[:1].upper() + tail[1:]]
+    return " ".join(out)
+
+
 def _pocket_worker_init(voice_wav: str, threads: int):
     global _POCKET_STATE
     eng = pocket_engine(threads)
@@ -295,7 +326,7 @@ def _pocket_worker_task(args):
     import scipy.io.wavfile
 
     eng = pocket_engine()
-    audio = eng.generate_audio(_POCKET_STATE, text)
+    audio = eng.generate_audio(_POCKET_STATE, pocket_text(text))
     samples = audio.detach().cpu().numpy()
     scipy.io.wavfile.write(wav_path, eng.sample_rate, samples)
     return len(samples) / float(eng.sample_rate)
@@ -325,7 +356,7 @@ def synthesize_pocket(chunks: list[str], out_dir: str, *, voice_wav: str, worker
 
                 scipy.io.wavfile.write(path, sr, samples)
         for i in todo:
-            audio = eng.generate_audio(state, chunks[i])
+            audio = eng.generate_audio(state, pocket_text(chunks[i]))
             samples = audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio
             wav = out / f"{i:04d}.wav"
             write_wav(str(wav), samples, eng.sample_rate)
