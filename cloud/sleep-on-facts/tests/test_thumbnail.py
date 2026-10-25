@@ -93,3 +93,18 @@ def test_marathon_thumbnail_has_one_panel_per_part(tmp_path):
                                      hours=9, out=str(tmp_path / "m.jpg"))
     with Image.open(out) as im:
         assert im.size == (1280, 720)
+
+
+def test_make_drops_picks_the_confirm_step_rejects(tmp_path):
+    a, b, c = (_photo(tmp_path / f"{n}.jpg", 90, contrast=True) for n in "abc")
+    seen = []
+
+    def choose(paths):
+        seen.append(list(paths))
+        return paths[0]
+    out = thumbnail.make([a, b, c], topic="Honey Bees", hours=3, out=str(tmp_path / "t.jpg"), candidates=[a, b, c],
+                         choose=choose, confirm=lambda p: p != a, hook="WINTER STORES")
+    assert thumbnail.source_of(out) == b and seen == [[a, b, c], [b, c]]
+    out = thumbnail.make([a, b], topic="X", hours=3, out=str(tmp_path / "u.jpg"), candidates=[a, b],
+                         choose=lambda ps: ps[0], confirm=lambda p: None)          # check unavailable → keep the pick
+    assert thumbnail.source_of(out) == a

@@ -257,26 +257,39 @@ def _aspect(path: str) -> float:
 
 
 def make(image_paths: list[str], *, topic: str, hours: int, out: str, candidates: list[str] | None = None,
-         choose=None, max_choices: int = 16, hook: str = "") -> str:
+         choose=None, max_choices: int = 16, hook: str = "", confirm=None, attempts: int = 4) -> str:
     """Compose the thumbnail from the best photo.
 
     ``candidates`` — photos verified to show the subject itself (vision-labelled); the thumbnail is
     never taken from scenery when those exist. ``choose(paths) -> path | None`` picks the most iconic
     one (a vision call) among up to ``max_choices`` (wide first, then square/portrait, which
     ``_cover`` shows whole); the mood/contrast heuristic over wide photos is the fallback.
+    ``confirm(path) -> bool | None`` double-checks the pick (subject large, no printed text); a False
+    drops that photo and asks again, up to ``attempts`` times (2026-10-25: the Honey Bees thumbnail
+    showed flowers, an Indus one a scanned caption).
     """
     pool = [p for p in (candidates or []) if p] or list(image_paths)
     wide = [p for p in pool if _aspect(p) >= 1.3]
     # Offer both shapes (wide first): the most recognisable view of a planet or a statue is often square.
     offer = (wide + [p for p in pool if p not in wide])[:max_choices]
     best = None
-    if choose is not None:
-        try:
-            best = choose(offer)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("thumbnail chooser failed: %s", exc)
+    for _ in range(max(1, attempts)):
+        pick = None
+        if choose is not None and offer:
+            try:
+                pick = choose(offer)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("thumbnail chooser failed: %s", exc)
+        if not pick:
+            break
+        if confirm is not None and confirm(pick) is False:
+            offer = [p for p in offer if p != pick]
+            continue
+        best = pick
+        break
     if not best:
-        best = pick_photo(wide or pool)
+        rest = [p for p in (wide or pool) if p in offer] or offer or wide or pool
+        best = pick_photo(rest)
     log.info("thumbnail photo: %s (%d subject candidates)", Path(best).name, len(pool))
     result = compose(best, topic=topic, hours=hours, out=out, hook=hook)
     Path(_source_file(out)).write_text(str(best), encoding="utf-8")      # for the description's photo credit

@@ -133,12 +133,16 @@ def make_thumbnail(cfg, *, topic: str, wiki_title: str, category: str, hours: in
     reel, subject, used = subject_photos(cfg, topic=topic, wiki_title=wiki_title, category=category, out_dir=work / "images")
     if not reel:
         raise RuntimeError(f"no photos found for {topic!r}")
-    chooser = None
+    chooser = confirmer = None
     if cfg.images_vision_check and cfg.openai_api_key:
         def chooser(paths):
             return images.pick_iconic(paths, subject=topic, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+
+        def confirmer(path):
+            return images.confirm_thumbnail(path, subject=topic, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
     out = str(work / "thumb.jpg")
-    thumbnail.make(reel, topic=topic, hours=hours, out=out, candidates=subject, choose=chooser, hook=hook)
+    thumbnail.make(reel, topic=topic, hours=hours, out=out, candidates=subject, choose=chooser, hook=hook,
+                   confirm=confirmer)
     src = thumbnail.source_of(out)
     row = next((r for r in used if src and r.get("file") == Path(src).name), None)
     return out, captions.thumbnail_line(row)
@@ -169,6 +173,25 @@ def repackage_row(cfg, yt, llm, row: dict, *, index: int, work: Path, apply: boo
         upload.update_snippet(yt, vid, title=title, description=description, tags=list(snip.get("tags") or []))
         yt.thumbnails().set(videoId=vid, media_body=thumb).execute()
         report["applied"] = True
+    (vdir / "meta.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
+    return report
+
+
+def apply_prepared(yt, vdir: Path) -> dict:
+    """Publish a reviewed ``prepare`` result as-is (meta.json title, description.txt, thumb.jpg) — no new
+    model call, so what goes live is exactly what was looked at."""
+    meta = json.loads((vdir / "meta.json").read_text(encoding="utf-8"))
+    vid = meta["video_id"]
+    description = (vdir / "description.txt").read_text(encoding="utf-8")
+    thumb = vdir / "thumb.jpg"
+    items = yt.videos().list(part="snippet", id=vid).execute().get("items") or []
+    if not items:
+        raise RuntimeError(f"{vid} not found on YouTube")
+    snip = items[0]["snippet"]
+    upload.update_snippet(yt, vid, title=meta["title"], description=description, tags=list(snip.get("tags") or []))
+    if thumb.exists():
+        yt.thumbnails().set(videoId=vid, media_body=str(thumb)).execute()
+    report = {**meta, "title_before": snip.get("title"), "thumb": str(thumb), "applied": True}
     (vdir / "meta.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     return report
 

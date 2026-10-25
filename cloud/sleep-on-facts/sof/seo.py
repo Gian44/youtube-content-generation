@@ -89,12 +89,19 @@ def subject_phrase(subject: str) -> str:
     return s
 
 
+_GENERIC_WORDS = {"the", "and", "ancient", "great", "old", "ocean", "sea", "river", "rainforest", "forest", "mount",
+                  "mountain", "lake", "valley", "civilization", "civilisation", "desert", "empire", "island", "islands",
+                  "city", "reef", "bay", "national", "park", "world"}
+
+
 def _mentions_subject(hook: str, subject: str) -> bool:
-    """More than half of the subject's words are in the hook ("Cities of the Indus Valley" names the
-    Indus Valley Civilization well enough; "Life Along the Ancient Nile" does not name Ancient Egypt)."""
-    words = [w for w in re.findall(r"[a-z0-9]+", subject.lower()) if len(w) > 2 and w != "the"]
-    hits = sum(1 for w in words if re.search(rf"\b{re.escape(w)}", hook.lower()))
-    return bool(words) and hits * 2 > len(words)
+    """The hook names the subject: every distinctive word of it appears ("Why the Pacific Has Earth's
+    Deepest Trenches" names the Pacific Ocean, "Cities of the Indus Valley" the Indus Valley Civilization;
+    "Life Along the Ancient Nile" does not name Ancient Egypt). Plural/singular both count."""
+    words = [w for w in re.findall(r"[a-z0-9]+", subject.lower()) if len(w) > 2]
+    key = [w for w in words if w not in _GENERIC_WORDS] or words
+    text = hook.lower()
+    return bool(key) and all(re.search(rf"\b{re.escape(w.rstrip('s') or w)}", text) for w in key)
 
 
 TITLE_VARIANTS = 4

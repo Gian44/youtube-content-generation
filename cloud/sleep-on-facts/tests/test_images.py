@@ -262,3 +262,22 @@ def test_fetch_abandons_a_trickling_download():
         assert images._fetch(c, "https://upload.wikimedia.org/x.jpg", deadline=45, clock=lambda: next(ticks)) is None
         fast = iter([0.0] * 1000)
         assert images._fetch(c, "https://upload.wikimedia.org/x.jpg", deadline=45, clock=lambda: next(fast)) == b"x" * 50_000
+
+
+def test_confirm_thumbnail_reads_the_verdict_and_tolerates_errors(tmp_path):
+    import json as _json
+
+    import httpx
+    from PIL import Image
+
+    from sof import images
+    p = tmp_path / "x.jpg"
+    Image.new("RGB", (64, 36), (90, 90, 90)).save(p)
+
+    def answer(ok):
+        return httpx.MockTransport(lambda req: httpx.Response(200, json={"choices": [{"message": {"content": _json.dumps({"ok": ok, "why": "w"})}}]}))
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(True)) is True
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=answer(False)) is False
+    boom = httpx.MockTransport(lambda req: httpx.Response(500))
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=boom) is None
+    assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="") is None

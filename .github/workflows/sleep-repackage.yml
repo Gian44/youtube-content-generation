@@ -12,6 +12,9 @@ on:
       apply:
         description: "true = update the videos on YouTube; false = build thumbnails + titles only"
         default: "false"
+      from_run:
+        description: "with apply=true: run id of a reviewed prepare run — publish its files exactly as built"
+        default: ""
 
 concurrency:
   group: sleep-repackage
@@ -19,6 +22,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   repackage:
@@ -49,10 +53,16 @@ jobs:
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           IN_VIDEOS: ${{ github.event.inputs.videos }}
           IN_APPLY: ${{ github.event.inputs.apply }}
+          IN_FROM: ${{ github.event.inputs.from_run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           ARGS=(--videos "$IN_VIDEOS" --out out)
           if [ "$IN_APPLY" = "true" ]; then ARGS+=(--apply); fi
+          if [ -n "$IN_FROM" ]; then
+            gh run download "$IN_FROM" -n "repackage-$IN_FROM" -D prepared
+            ARGS+=(--from prepared)
+          fi
           python repackage.py "${ARGS[@]}"
       - name: Keep the new thumbnails, titles and descriptions
         if: always()

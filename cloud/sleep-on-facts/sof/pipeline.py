@@ -246,12 +246,15 @@ def run(cfg: Config) -> int:
     thumb = work / "thumb.jpg"
     if not thumb.exists():
         subject_shots = [p for p in image_paths if labels.get(p) == "subject"]
-        chooser = None
+        chooser = confirmer = None
         if cfg.images_vision_check and cfg.openai_api_key:
             def chooser(paths):
                 return images.pick_iconic(paths, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
+
+            def confirmer(path):
+                return images.confirm_thumbnail(path, subject=name, api_key=cfg.openai_api_key, model=cfg.images_vision_model)
         thumbnail.make(image_paths, topic=name, hours=hours, out=str(thumb), candidates=subject_shots, choose=chooser,
-                       hook=sc.thumb_text)
+                       hook=sc.thumb_text, confirm=confirmer)
     try:                                   # the marathon compiler (sof/marathon.py) re-uses the thumbnail's photo
         src = thumbnail.source_of(str(thumb))
         if src and Path(src).exists() and not (work / "thumb_source.jpg").exists():

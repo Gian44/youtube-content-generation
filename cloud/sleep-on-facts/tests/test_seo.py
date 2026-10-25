@@ -82,6 +82,8 @@ def test_hooks_are_cleaned_and_combined_with_the_subject_when_needed():
     assert seo.clean_hook("Rice Feeds 3.5 Billion People Every Day") == "Rice Feeds 3.5 Billion People Every Day"   # digits fine
     t = seo.build_title("Ancient Egypt", "history & ancient civilisations", 3, hook="Life Along the Ancient Nile", variant=0)
     assert t == "Ancient Egypt: Life Along the Ancient Nile | 3 Hours of History to Fall Asleep To"
+    assert seo.build_title("Pacific Ocean", "oceans & the deep sea", 3, hook="Why the Pacific Has Earth's Deepest Trenches").startswith(
+        "Why the Pacific Has Earth's Deepest Trenches | ")                 # half the subject's words is enough
     no_hook = {seo.build_title("Mount Fuji", "earth & geology", 3, variant=v) for v in range(seo.TITLE_VARIANTS)}
     assert len(no_hook) == seo.TITLE_VARIANTS                          # still varied without a hook
 

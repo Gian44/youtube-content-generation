@@ -76,3 +76,34 @@ def test_mark_ledger_records_only_applied_rows():
     out = repackage.mark_ledger(rows, reps, today="2026-10-25")
     assert out[0]["title"] == "new a" and out[0]["repackaged"] == {"date": "2026-10-25", "title_before": "old a", "thumb_text": "X"}
     assert out[1] == {"video_id": "b", "title": "old b"}
+
+
+def test_apply_prepared_publishes_the_reviewed_files(tmp_path):
+    import json as _json
+    vdir = tmp_path / "abc"
+    vdir.mkdir()
+    (vdir / "meta.json").write_text(_json.dumps({"video_id": "abc", "title": "New | 3 Hours of Space Facts to Fall Asleep To",
+                                                 "thumb_text": "X", "title_before": "?"}))
+    (vdir / "description.txt").write_text("new description")
+    (vdir / "thumb.jpg").write_bytes(b"jpg")
+    calls = []
+
+    class Req:
+        def __init__(self, out): self.out = out
+        def execute(self): return self.out
+
+    class Videos:
+        def list(self, **kw): return Req({"items": [{"snippet": {"title": "Old", "tags": ["sleep"]}}]})
+        def update(self, **kw): calls.append(("update", kw["body"])); return Req({})
+
+    class Thumbs:
+        def set(self, **kw): calls.append(("thumb", kw)); return Req({})
+
+    class YT:
+        def videos(self): return Videos()
+        def thumbnails(self): return Thumbs()
+    rep = repackage.apply_prepared(YT(), vdir)
+    assert rep["applied"] and rep["title_before"] == "Old"
+    body = calls[0][1]
+    assert body["id"] == "abc" and body["snippet"]["title"].startswith("New |") and body["snippet"]["description"] == "new description"
+    assert body["snippet"]["tags"] == ["sleep"] and calls[1] == ("thumb", {"videoId": "abc", "media_body": str(vdir / "thumb.jpg")})
