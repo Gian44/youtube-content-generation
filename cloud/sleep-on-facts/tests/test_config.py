@@ -5,7 +5,7 @@ def test_defaults_and_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("PEXELS_API_KEY", "px")
     cfg = Config.from_env(minutes=180)
-    assert cfg.minutes == 180 and cfg.target_words == 24300 and cfg.tts_backend == "kokoro"   # Kokoro speaks ~135 wpm
+    assert cfg.minutes == 180 and cfg.target_words == 24300 and cfg.tts_backend == "pocket"   # our voice speaks ~135 wpm
     assert Config(minutes=180, tts_backend="openai").target_words == 27000
     assert cfg.tts_model == "gpt-4o-mini-tts" and cfg.tts_instructions and cfg.tts_chunk_chars <= 2000
     assert cfg.script_model == "gpt-5.6-terra" and cfg.fast_model == "gpt-5.6-luna"

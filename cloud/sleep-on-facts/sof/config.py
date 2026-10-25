@@ -8,7 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 WORDS_PER_MINUTE = 150
-KOKORO_WORDS_PER_MINUTE = 135   # measured on the Kokoro voice at speed 0.88 with 0.55 s sentence pauses (smoke 2026-10-25)
+KOKORO_WORDS_PER_MINUTE = 135   # Kokoro at speed 0.88 (smoke 2026-10-25); the Pocket TTS designed voice measured ~137
 SMOKE_MAX_MINUTES = 10  # at/below this the run is a smoke test: always unlisted
 
 
@@ -41,7 +41,10 @@ class Config:
     max_words_ratio: float = 1.3
     # tts — which voice: "kokoro" (free, open-weights, runs on the runner; default since 2026-10-25 when the
     # OpenAI keys ran out of credits) or "openai" (gpt-4o-mini-tts echo below). Env TTS_BACKEND overrides.
-    tts_backend: str = "kokoro"
+    tts_backend: str = "pocket"               # 2026-10-25 evening: our designed voice "C · Velvet low London"
+    pocket_voice: str = str(Path(__file__).resolve().parents[1] / "brand" / "voice" / "narrator.wav")
+    pocket_workers: int = 2                   # processes; Pocket TTS uses ~2 cores each (runner has 4)
+    pocket_threads: int = 2
     # Kokoro voice = our own blend of its British male voices (Gian picked sample 3, George 60 % + Lewis 40 %).
     kokoro_voice: str = "bm_george:0.6,bm_lewis:0.4"
     kokoro_lang: str = "en-gb"
@@ -141,7 +144,7 @@ class Config:
 
     @property
     def target_words(self) -> int:
-        return self.minutes * (KOKORO_WORDS_PER_MINUTE if self.tts_backend == "kokoro" else WORDS_PER_MINUTE)
+        return self.minutes * (KOKORO_WORDS_PER_MINUTE if self.tts_backend in ("kokoro", "pocket") else WORDS_PER_MINUTE)
 
     @property
     def is_smoke(self) -> bool:
@@ -172,6 +175,9 @@ class Config:
         cfg.kokoro_model_path = os.environ.get("KOKORO_MODEL") or str(kdir / "kokoro-v1.0.onnx")
         cfg.kokoro_voices_path = os.environ.get("KOKORO_VOICES") or str(kdir / "voices-v1.0.bin")
         cfg.kokoro_voice = os.environ.get("KOKORO_VOICE") or cfg.kokoro_voice
+        cfg.pocket_voice = os.environ.get("POCKET_VOICE") or cfg.pocket_voice
+        if os.environ.get("POCKET_WORKERS"):
+            cfg.pocket_workers = int(os.environ["POCKET_WORKERS"])
         if os.environ.get("VISION_PROVIDERS"):
             cfg.vision_providers = tuple(x.strip().lower() for x in os.environ["VISION_PROVIDERS"].split(",") if x.strip())
         cfg.codex_model = os.environ.get("CODEX_MODEL", cfg.codex_model)

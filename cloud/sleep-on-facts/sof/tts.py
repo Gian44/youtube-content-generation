@@ -1,6 +1,9 @@
 """Narration: text in chunks → one loudness-normalised MP3 for bedtime.
 
-Two voices (``speak`` picks by ``cfg.tts_backend``):
+Voices (``speak`` picks by ``cfg.tts_backend``):
+- ``pocket`` (default since 2026-10-25, evening): the channel's own designed voice (brand/voice/narrator.wav,
+  see its README) spoken by Kyutai's Pocket TTS on the runner's CPU, two worker processes. Falls back to
+  Kokoro for the whole video if Pocket TTS cannot load (e.g. the Hugging Face gate/token).
 - ``kokoro`` (default since 2026-10-25): Kokoro-82M, an open-weights TTS model (Apache-2.0, free for
   monetised use) run on the GitHub runner's CPU through kokoro-onnx. The voice is our own: a weighted blend of
   Kokoro's British "George" and "Lewis" voices (Gian picked sample 3), so no other channel sounds the same.
@@ -150,7 +153,7 @@ def assemble(paths: list[str], out_dir: str, pre: str = "") -> str:
 
 
 def estimate_cost_usd(chars: int, model: str) -> float:
-    if model == "kokoro":
+    if model in ("kokoro", "pocket"):
         return 0.0
     return chars / 1_000_000 * PRICE_PER_M_CHARS.get(model, 15.0)
 
@@ -258,14 +261,122 @@ def synthesize_kokoro(chunks: list[str], out_dir: str, *, voice: str, speed: flo
     return paths
 
 
+# ------------------------------------------------------------------ Pocket TTS (our designed voice, CPU)
+
+_POCKET = None
+
+
+class PocketUnavailable(RuntimeError):
+    pass
+
+
+def pocket_engine(threads: int = 2):
+    global _POCKET
+    if _POCKET is None:
+        try:
+            import torch
+            from pocket_tts import TTSModel
+
+            torch.set_num_threads(max(1, int(threads)))
+            _POCKET = TTSModel.load_model()
+        except Exception as exc:  # noqa: BLE001 — missing package, gated weights, no token
+            raise PocketUnavailable(f"Pocket TTS could not load: {str(exc)[:300]}") from exc
+    return _POCKET
+
+
+def _pocket_worker_init(voice_wav: str, threads: int):
+    global _POCKET_STATE
+    eng = pocket_engine(threads)
+    _POCKET_STATE = eng.get_state_for_audio_prompt(voice_wav)
+
+
+def _pocket_worker_task(args):
+    text, wav_path = args
+    import scipy.io.wavfile
+
+    eng = pocket_engine()
+    audio = eng.generate_audio(_POCKET_STATE, text)
+    samples = audio.detach().cpu().numpy()
+    scipy.io.wavfile.write(wav_path, eng.sample_rate, samples)
+    return len(samples) / float(eng.sample_rate)
+
+
+def synthesize_pocket(chunks: list[str], out_dir: str, *, voice_wav: str, workers: int = 2, threads: int = 2,
+                      engine=None, write_wav=None, encode=None) -> list[str]:
+    """Same contract as ``synthesize``: one ``NNNN.mp3`` per chunk, existing ones kept. ``workers`` > 1 runs
+    that many processes (each loads the model and voice once; Pocket TTS uses ~2 cores each)."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    if not Path(voice_wav).exists():
+        raise PocketUnavailable(f"voice reference missing: {voice_wav}")
+    paths = [str(out / f"{i:04d}.mp3") for i in range(len(chunks))]
+    todo = [i for i, p in enumerate(paths) if not (Path(p).exists() and Path(p).stat().st_size > 0)]
+    encode = encode or (lambda wav, mp3: _run(encode_mp3_cmd(wav, mp3), 600))
+    t0 = time.monotonic()
+    spoken = 0.0
+    if not todo:
+        return paths
+    if engine is not None or workers <= 1:
+        eng = engine or pocket_engine(threads)
+        state = eng.get_state_for_audio_prompt(voice_wav)
+        if write_wav is None:
+            def write_wav(path, samples, sr):
+                import scipy.io.wavfile
+
+                scipy.io.wavfile.write(path, sr, samples)
+        for i in todo:
+            audio = eng.generate_audio(state, chunks[i])
+            samples = audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio
+            wav = out / f"{i:04d}.wav"
+            write_wav(str(wav), samples, eng.sample_rate)
+            encode(str(wav), paths[i])
+            wav.unlink(missing_ok=True)
+            spoken += len(samples) / float(eng.sample_rate)
+            log.info("tts chunk %d/%d (pocket) · %.0f s audio so far in %.0f s", i + 1, len(chunks), spoken,
+                     time.monotonic() - t0)
+        return paths
+    import multiprocessing as mp
+    from concurrent.futures import ProcessPoolExecutor
+
+    try:
+        pocket_engine(threads)          # fail fast here (gate/token) instead of inside every worker
+    except PocketUnavailable:
+        raise
+    jobs = [(chunks[i], str(out / f"{i:04d}.wav")) for i in todo]
+    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn"),
+                             initializer=_pocket_worker_init, initargs=(voice_wav, threads)) as ex:
+        for i, secs in zip(todo, ex.map(_pocket_worker_task, jobs)):
+            wav = out / f"{i:04d}.wav"
+            encode(str(wav), paths[i])
+            wav.unlink(missing_ok=True)
+            spoken += secs
+            log.info("tts chunk %d/%d (pocket ×%d) · %.0f s audio so far in %.0f s", i + 1, len(chunks), workers,
+                     spoken, time.monotonic() - t0)
+    return paths
+
+
+def _kokoro_speak(chunks, out_dir, cfg, short):
+    return synthesize_kokoro(chunks, out_dir, voice=cfg.kokoro_voice,
+                             speed=cfg.kokoro_short_speed if short else cfg.kokoro_speed, lang=cfg.kokoro_lang,
+                             sentence_pause=cfg.kokoro_short_sentence_pause if short else cfg.kokoro_sentence_pause,
+                             clause_pause=cfg.kokoro_clause_pause, model_path=cfg.kokoro_model_path,
+                             voices_path=cfg.kokoro_voices_path)
+
+
 def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[str]:
-    """Narrate ``chunks`` with the configured voice (``cfg.tts_backend``)."""
+    """Narrate ``chunks`` with the configured voice (``cfg.tts_backend``). If Pocket TTS cannot load, the whole
+    narration switches to Kokoro (``cfg.tts_backend`` is changed so later steps match) — never a mix."""
+    if cfg.tts_backend == "pocket":
+        try:
+            return synthesize_pocket(chunks, out_dir, voice_wav=cfg.pocket_voice, workers=1 if short else cfg.pocket_workers,
+                                     threads=cfg.pocket_threads)
+        except PocketUnavailable as exc:
+            log.warning("%s — narrating with Kokoro instead", exc)
+            for f in Path(out_dir).glob("*.mp3"):
+                f.unlink()
+            cfg.tts_backend = "kokoro"
     if cfg.tts_backend == "kokoro":
-        return synthesize_kokoro(chunks, out_dir, voice=cfg.kokoro_voice,
-                                 speed=cfg.kokoro_short_speed if short else cfg.kokoro_speed, lang=cfg.kokoro_lang,
-                                 sentence_pause=cfg.kokoro_short_sentence_pause if short else cfg.kokoro_sentence_pause,
-                                 clause_pause=cfg.kokoro_clause_pause, model_path=cfg.kokoro_model_path,
-                                 voices_path=cfg.kokoro_voices_path)
+        return _kokoro_speak(chunks, out_dir, cfg, short)
     return synthesize(chunks, out_dir, api_key=cfg.openai_api_key, model=cfg.tts_model, voice=cfg.tts_voice,
                       speed=min(1.0, cfg.tts_speed + 0.1) if short else cfg.tts_speed,
                       instructions=cfg.shorts_tts_instructions if short else cfg.tts_instructions)
@@ -277,4 +388,12 @@ def post_filter(cfg) -> str:
 
 
 def cost_model(cfg) -> str:
-    return "kokoro" if cfg.tts_backend == "kokoro" else cfg.tts_model
+    return "kokoro" if cfg.tts_backend in ("kokoro", "pocket") else cfg.tts_model
+
+
+def voice_label(cfg) -> str:
+    if cfg.tts_backend == "pocket":
+        return f"pocket {Path(cfg.pocket_voice).name}"
+    if cfg.tts_backend == "kokoro":
+        return f"kokoro {cfg.kokoro_voice}"
+    return f"{cfg.tts_model} {cfg.tts_voice}"

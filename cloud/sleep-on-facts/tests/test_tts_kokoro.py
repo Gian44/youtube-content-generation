@@ -56,3 +56,43 @@ def test_loudnorm_takes_the_voice_filters():
     cmd = tts.loudnorm_cmd("a.mp3", "b.mp3", tts.KOKORO_EQ)
     assert cmd[cmd.index("-af") + 1] == tts.KOKORO_EQ + ",loudnorm=I=-18:TP=-2:LRA=11"
     assert tts.loudnorm_cmd("a", "b")[5] == "loudnorm=I=-18:TP=-2:LRA=11"
+
+
+class FakePocket:
+    sample_rate = 24000
+
+    def __init__(self):
+        self.texts, self.prompts = [], []
+
+    def get_state_for_audio_prompt(self, wav):
+        self.prompts.append(wav)
+        return {"voice": wav}
+
+    def generate_audio(self, state, text):
+        self.texts.append(text)
+        return np.zeros(12000, dtype=np.float32)
+
+
+def test_synthesize_pocket_speaks_missing_chunks_in_the_designed_voice(tmp_path):
+    voice = tmp_path / "narrator.wav"
+    voice.write_bytes(b"RIFF")
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "0000.mp3").write_bytes(b"done")
+    eng = FakePocket()
+    paths = tts.synthesize_pocket(["a.", "b."], str(tmp_path / "out"), voice_wav=str(voice), engine=eng,
+                                  write_wav=lambda p, s, sr: Path(p).write_bytes(b"w"),
+                                  encode=lambda w, m: Path(m).write_bytes(b"m"))
+    assert [Path(p).name for p in paths] == ["0000.mp3", "0001.mp3"] and eng.texts == ["b."]
+    assert eng.prompts == [str(voice)] and not list((tmp_path / "out").glob("*.wav"))
+
+
+def test_speak_falls_back_to_kokoro_for_the_whole_narration(monkeypatch, tmp_path):
+    def broken(*a, **k):
+        raise tts.PocketUnavailable("gated")
+    monkeypatch.setattr(tts, "synthesize_pocket", broken)
+    seen = {}
+    monkeypatch.setattr(tts, "synthesize_kokoro", lambda chunks, out, **kw: seen.setdefault("kokoro", kw) and ["k"])
+    cfg = Config(tts_backend="pocket")
+    tts.speak(["x"], str(tmp_path), cfg)
+    assert "kokoro" in seen and cfg.tts_backend == "kokoro" and tts.voice_label(cfg).startswith("kokoro")
+    assert tts.voice_label(Config()).startswith("pocket narrator.wav") and Path(Config().pocket_voice).exists()

@@ -82,7 +82,14 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 
 ## The voice and the photo checks (2026-10-25, after the OpenAI keys ran out of credits)
 
-- **Voice: Kokoro-82M**, an open-weights TTS model (Apache-2.0, fine for a monetised channel), run on the
+- **Voice (since the evening of 2026-10-25): our own designed narrator** — `brand/voice/narrator.wav`, an original
+  voice designed from a text description with Qwen3-TTS VoiceDesign on Gian's PC (he picked "C · Velvet low
+  London"; see `brand/voice/README.md`), spoken nightly by **Kyutai Pocket TTS** on the runner CPU (2 worker
+  processes × 2 threads; ~2.3× real time per process measured on Gian's laptop). The model is gated on Hugging
+  Face: secret `HF_TOKEN` (Gian's read token, account granted access); weights cached. If Pocket TTS cannot load,
+  the whole narration falls back to Kokoro below. Never clone a real person's or a product's voice here
+  (Gemini's terms and Pocket TTS's conditions forbid it) — design a new one instead.
+- **Fallback voice: Kokoro-82M**, an open-weights TTS model (Apache-2.0, fine for a monetised channel), run on the
   runner's CPU with `kokoro-onnx` — no API, no credits. The narrator is our own blend of Kokoro's British male
   voices, `bm_george:0.6,bm_lewis:0.4` (`kokoro_voice`; Gian picked it from samples), at speed 0.88 with
   0.55 s between sentences, plus a little low-end warmth before loudnorm. The workflow downloads the model once
@@ -101,7 +108,7 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 
 ## Secrets (repo → Settings → Secrets → Actions)
 
-`CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `OPENAI_API_KEY` (optional now), `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `HF_TOKEN`, `OPENAI_API_KEY` (optional now), `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
 `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`. The YouTube token is the Sleep On Facts channel's
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).

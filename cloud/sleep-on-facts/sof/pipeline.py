@@ -77,8 +77,8 @@ def run(cfg: Config) -> int:
           flush=True)
     vis = vision.Vision.from_config(cfg)
     print(f"photo checks: {vis.describe()}", flush=True)
-    print("voice: " + (f"Kokoro {cfg.kokoro_voice} (free, on the runner)" if cfg.tts_backend == "kokoro"
-                       else f"OpenAI {cfg.tts_model} {cfg.tts_voice}"), flush=True)
+    print(f"voice: {tts.voice_label(cfg)}" + (" (free, on the runner)" if cfg.tts_backend in ("kokoro", "pocket") else ""),
+          flush=True)
     seeds = topics.load_topics(cfg.topics_path)
     category, wiki_title, queries = "", None, []
     if cfg.topic:
@@ -141,7 +141,7 @@ def run(cfg: Config) -> int:
     secs = [x for x in sc.sections if str(x.get("body") or "").strip()] or [{"heading": "", "body": sc.body}]
     if not narration.exists() or not chapters_path.exists():
         chunks, owner = tts.chunk_sections(secs, cfg.tts_chunk_chars)
-        print(f"tts: {len(chunks)} chunks", flush=True)
+        print(f"tts: {len(chunks)} chunks · {tts.voice_label(cfg)}", flush=True)
         parts = tts.speak(chunks, str(work / "tts"), cfg)
         if not narration.exists():
             tts.assemble(parts, str(work), pre=tts.post_filter(cfg))
@@ -362,7 +362,7 @@ def run(cfg: Config) -> int:
         "shorts": short_entries, "slop": sc.slop or None,
         "llm_calls": dict(getattr(llm, "stats", {}) or {}),
         "vision_calls": dict(vis.stats),
-        "voice": f"kokoro {cfg.kokoro_voice}" if cfg.tts_backend == "kokoro" else f"{cfg.tts_model} {cfg.tts_voice}",
+        "voice": tts.voice_label(cfg),
         "cost_estimate_usd": round(tts.estimate_cost_usd(chars, tts.cost_model(cfg))
                                    + (0.02 if getattr(llm, "stats", {}).get("claude") and not getattr(llm, "stats", {}).get("openai")
                                       else 0.80) + 0.03 * len(short_entries), 2),

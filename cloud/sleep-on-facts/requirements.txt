@@ -8,3 +8,5 @@ pytest>=8
 numpy>=1.26
 kokoro-onnx==0.6.1   # the narrator voice (open-weights Kokoro-82M, Apache-2.0), since 2026-10-25
 soundfile>=0.12
+pocket-tts==4.0.1    # our designed narrator voice (Kyutai Pocket TTS, CPU); torch is installed CPU-only by the workflow
+scipy>=1.10
