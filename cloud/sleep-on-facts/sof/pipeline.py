@@ -69,7 +69,12 @@ def run(cfg: Config) -> int:
     # topic can be made again and they do not advance the story-shape / title rotations.
     # Marathon compilations (sof/marathon.py) are ledger rows too, but not daily videos.
     rows = [r for r in ledger.load_ledger(cfg.ledger_path) if not r.get("abandoned") and r.get("kind", "video") == "video"]
-    llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
+    llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models, claude=cfg.claude_enabled,
+              claude_writer=cfg.claude_writer_model, claude_fast=cfg.claude_fast_model)
+    why_not = llm.check_claude() if cfg.claude_enabled and hasattr(llm, "check_claude") else "not configured"
+    print("script writer: " + (f"Claude ({cfg.claude_writer_model}/{cfg.claude_fast_model}) on the subscription, "
+                               "OpenAI/Gemini as fallback" if not why_not else f"OpenAI, Gemini as fallback (Claude: {why_not})"),
+          flush=True)
     seeds = topics.load_topics(cfg.topics_path)
     category, wiki_title, queries = "", None, []
     if cfg.topic:
@@ -352,7 +357,10 @@ def run(cfg: Config) -> int:
         "image_sources": by_source, "story_format": sc.story_format, "title_variant": variant,
         "timeline": _timeline_stats(plan_path), "short": short_entries[0] if short_entries else None,
         "shorts": short_entries, "slop": sc.slop or None,
-        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model) + 0.80 + 0.03 * len(short_entries), 2),
+        "llm_calls": dict(getattr(llm, "stats", {}) or {}),
+        "cost_estimate_usd": round(tts.estimate_cost_usd(chars, cfg.tts_model)
+                                   + (0.02 if getattr(llm, "stats", {}).get("claude") and not getattr(llm, "stats", {}).get("openai")
+                                      else 0.80) + 0.03 * len(short_entries), 2),
         "run_url": _run_url(),
     }
     if cfg.is_smoke:

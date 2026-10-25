@@ -17,7 +17,6 @@ from pathlib import Path
 
 from sof import ledger, repackage, upload
 from sof.config import Config
-from sof.llm import LLM
 
 
 def main(argv=None) -> int:
@@ -44,7 +43,9 @@ def main(argv=None) -> int:
 
     yt = upload.build_client(cfg)
     print(f"connected as {upload.health(yt)} · {len(live)} video(s) · {'APPLY' if ns.apply else 'prepare only'}", flush=True)
-    llm = LLM(cfg.openai_api_key, cfg.gemini_api_key, cfg.script_model, cfg.gemini_models)
+    llm = cfg.make_llm()
+    if cfg.claude_enabled:
+        print(f"claude: {llm.check_claude() or 'ok'}", flush=True)
     out = Path(ns.out)
     reports, failed = [], 0
     for i, row in enumerate(live):

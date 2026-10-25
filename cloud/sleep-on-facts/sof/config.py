@@ -22,6 +22,11 @@ class Config:
     # script — writer does the 30 prose movements; fast model does topic/outline/metadata.
     script_model: str = "gpt-5.6-terra"     # writer (≈ $0.75 per 3-h script at $2/$12 per 1M tokens)
     fast_model: str = "gpt-5.6-luna"        # planner/metadata (≈ $0.03)
+    # 2026-10-25 (Gian): Claude writes the scripts on his Claude subscription via the Claude Code CLI
+    # (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`); OpenAI/Gemini above are the fallbacks.
+    claude_enabled: bool = False            # on when CLAUDE_CODE_OAUTH_TOKEN is set (from_env)
+    claude_writer_model: str = "sonnet"     # the long narration movements
+    claude_fast_model: str = "haiku"        # topic, outline, metadata, rewrites, Shorts
     research_linked_articles: int = 15      # linked Wikipedia articles pulled into the corpus
     gemini_models: list[str] = field(
         default_factory=lambda: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
@@ -121,6 +126,12 @@ class Config:
     def is_smoke(self) -> bool:
         return self.minutes <= SMOKE_MAX_MINUTES
 
+    def make_llm(self):
+        from sof.llm import LLM
+
+        return LLM(self.openai_api_key, self.gemini_api_key, self.script_model, self.gemini_models,
+                   claude=self.claude_enabled, claude_writer=self.claude_writer_model, claude_fast=self.claude_fast_model)
+
     @classmethod
     def from_env(cls, **overrides) -> "Config":
         cfg = cls(
@@ -131,7 +142,10 @@ class Config:
             yt_client_id=os.environ.get("YT_CLIENT_ID", ""),
             yt_client_secret=os.environ.get("YT_CLIENT_SECRET", ""),
             yt_refresh_token=os.environ.get("YT_REFRESH_TOKEN", ""),
+            claude_enabled=bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")) or os.environ.get("SOF_LLM") == "claude",
         )
+        cfg.claude_writer_model = os.environ.get("CLAUDE_WRITER_MODEL") or cfg.claude_writer_model
+        cfg.claude_fast_model = os.environ.get("CLAUDE_FAST_MODEL") or cfg.claude_fast_model
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)

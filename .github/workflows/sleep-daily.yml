@@ -50,11 +50,14 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-wqy-microhei
       - name: Python deps
         run: pip install -r requirements.txt
+      - name: Claude Code CLI (scripts run on Gian's Claude subscription via CLAUDE_CODE_OAUTH_TOKEN)
+        run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version || echo "claude CLI unavailable; OpenAI/Gemini will write"
       - name: Unit tests
         run: python -m pytest -q
       - name: Run pipeline
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}

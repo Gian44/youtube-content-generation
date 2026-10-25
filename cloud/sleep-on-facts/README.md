@@ -72,9 +72,18 @@ slot (e.g. a manual daytime run) publishes immediately. Comment out the `schedul
 
 Locally (needs ffmpeg + the env vars below): `python run.py --minutes 3 --skip-upload`.
 
+## Who writes the scripts (2026-10-25)
+
+Claude, on Gian's Claude subscription: the workflow installs the Claude Code CLI and the pipeline calls
+`claude -p` (Sonnet for the narration, Haiku for planning/metadata/rewrites), authenticated by the
+`CLAUDE_CODE_OAUTH_TOKEN` secret. Create it once on a computer logged in to the Claude account:
+`claude setup-token`, then `gh secret set CLAUDE_CODE_OAUTH_TOKEN` and paste the token. A preflight call
+checks it each run; if Claude is capped or logged out, OpenAI then Gemini write instead (ledger `llm_calls`).
+The voice (gpt-4o-mini-tts, echo) and the photo checks still use the OpenAI key, so it needs credits.
+
 ## Secrets (repo → Settings → Secrets → Actions)
 
-`OPENAI_API_KEY`, `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
 `YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`. The YouTube token is the Sleep On Facts channel's
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
