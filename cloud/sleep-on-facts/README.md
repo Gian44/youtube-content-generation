@@ -82,7 +82,14 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 
 ## The voice and the photo checks (2026-10-25, after the OpenAI keys ran out of credits)
 
-- **Voice (since the evening of 2026-10-25): our own designed narrator** — `brand/voice/narrator.wav`, an original
+- **Voice (since 2026-10-26): Gemini TTS "Charon"** (`tts_backend="gemini"`, `sof/tts.py` GeminiSpeaker) on
+  gemini-3.8-flash-tts, then gemini-3.8-flash-lite-tts when the first model's day is used up. Free tier on the
+  GEMINI_API_KEY project: 3 requests/min and **10 requests/day per model** (measured 2026-10-26); one request
+  per ~1,250 words (≈ 9 min), so a 2.5 h video + 3 Shorts needs ~17 of the 20. Delivery is tuned toward the
+  gemini-3.1 Charon Gian prefers: pauses × 1.9 (`stretch_pauses`), tempo 0.92 via ffmpeg rubberband
+  (`gemini_tempo`, `gemini_pitch`). A refused or cut-off chunk is split and retried; when every model is out
+  of quota the whole narration falls back to the designed voice below (a Short falls back on its own).
+- **Fallback voice: our own designed narrator** — `brand/voice/narrator.wav`, an original
   voice designed from a text description with Qwen3-TTS VoiceDesign on Gian's PC (he picked "F · Mellow
   Australian"; see `brand/voice/README.md`), spoken nightly by **Kyutai Pocket TTS** on the runner CPU (2 worker
   processes × 2 threads; ~2.3× real time per process measured on Gian's laptop). The model is gated on Hugging

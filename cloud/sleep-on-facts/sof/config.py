@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 WORDS_PER_MINUTE = 150
+GEMINI_WORDS_PER_MINUTE = 112   # Charon on gemini-3.8 after the slower tuning (~110 wpm; raw 143)
 KOKORO_WORDS_PER_MINUTE = 135   # Kokoro at speed 0.88 (smoke 2026-10-25); the Pocket TTS designed voice measured ~137
 SMOKE_MAX_MINUTES = 10  # at/below this the run is a smoke test: always unlisted
 
@@ -41,8 +42,25 @@ class Config:
     max_words_ratio: float = 1.3
     # tts — which voice: "kokoro" (free, open-weights, runs on the runner; default since 2026-10-25 when the
     # OpenAI keys ran out of credits) or "openai" (gpt-4o-mini-tts echo below). Env TTS_BACKEND overrides.
-    tts_backend: str = "pocket"               # 2026-10-25 evening: our designed voice "F · Mellow Australian"
+    tts_backend: str = "gemini"               # 2026-10-26: Charon (free tier first; falls back to our voice F)
     pocket_voice: str = str(Path(__file__).resolve().parents[1] / "brand" / "voice" / "narrator.wav")
+    # Gemini TTS "Charon" (Gian's favourite voice, 2026-10-26): newest models first; same voice on each.
+    gemini_tts_models: tuple = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
+    gemini_tts_voice: str = "Charon"
+    gemini_tts_style: str = (
+        "Read this aloud as a middle-aged man with a soft, educated British accent: a warm, low, unhurried "
+        "late-night documentary host helping the listener drift off to sleep. Calm and even, gentle pauses "
+        "between sentences:")
+    gemini_tts_short_style: str = (
+        "Read this aloud as a middle-aged man with a soft, educated British accent: a warm late-night science "
+        "host recording a short teaser, a little brighter and more awake than at bedtime, clear and unhurried:")
+    gemini_chunk_chars: int = 7500           # ≈ 1,250 words ≈ 13k audio tokens per request (cap 16,384)
+    # Delivery tuned toward the gemini-3.1 Charon Gian prefers (measured 2026-10-26: 111 wpm, 41 % silence,
+    # 126 Hz vs 3.8's 143 wpm, 22 %, ~95 Hz): longer pauses, slower; pitch 1.0 = sample "A", 1.12 = "B".
+    gemini_paid: bool = False                # True once billing is on (cost estimates only)
+    gemini_pause_factor: float = 1.9
+    gemini_tempo: float = 0.92
+    gemini_pitch: float = 1.0
     pocket_workers: int = 2                   # processes; Pocket TTS uses ~2 cores each (runner has 4)
     pocket_threads: int = 2
     # Kokoro voice = our own blend of its British male voices (Gian picked sample 3, George 60 % + Lewis 40 %).
@@ -144,6 +162,8 @@ class Config:
 
     @property
     def target_words(self) -> int:
+        if self.tts_backend == "gemini":
+            return self.minutes * GEMINI_WORDS_PER_MINUTE
         return self.minutes * (KOKORO_WORDS_PER_MINUTE if self.tts_backend in ("kokoro", "pocket") else WORDS_PER_MINUTE)
 
     @property
@@ -171,6 +191,11 @@ class Config:
         cfg.claude_writer_model = os.environ.get("CLAUDE_WRITER_MODEL") or cfg.claude_writer_model
         cfg.claude_fast_model = os.environ.get("CLAUDE_FAST_MODEL") or cfg.claude_fast_model
         cfg.tts_backend = (os.environ.get("TTS_BACKEND") or cfg.tts_backend).strip().lower()
+        if cfg.tts_backend == "gemini":       # one request per ~1,250 words; fixed for the run (chapter timing
+            cfg.tts_chunk_chars = cfg.gemini_chunk_chars      # re-splits with it even after a fallback)
+        for k in ("gemini_pause_factor", "gemini_tempo", "gemini_pitch"):
+            if os.environ.get(k.upper()):
+                setattr(cfg, k, float(os.environ[k.upper()]))
         kdir = Path(os.environ.get("KOKORO_DIR") or Path.home() / ".cache" / "kokoro")
         cfg.kokoro_model_path = os.environ.get("KOKORO_MODEL") or str(kdir / "kokoro-v1.0.onnx")
         cfg.kokoro_voices_path = os.environ.get("KOKORO_VOICES") or str(kdir / "voices-v1.0.bin")

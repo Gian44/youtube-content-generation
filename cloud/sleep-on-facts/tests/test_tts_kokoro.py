@@ -95,7 +95,7 @@ def test_speak_falls_back_to_kokoro_for_the_whole_narration(monkeypatch, tmp_pat
     cfg = Config(tts_backend="pocket")
     tts.speak(["x"], str(tmp_path), cfg)
     assert "kokoro" in seen and cfg.tts_backend == "kokoro" and tts.voice_label(cfg).startswith("kokoro")
-    assert tts.voice_label(Config()).startswith("pocket narrator.wav") and Path(Config().pocket_voice).exists()
+    assert tts.voice_label(Config(tts_backend="pocket")).startswith("pocket narrator.wav") and Path(Config().pocket_voice).exists()
 
 
 def test_pocket_text_splits_only_long_sentences_at_a_natural_break():
@@ -106,3 +106,78 @@ def test_pocket_text_splits_only_long_sentences_at_a_natural_break():
     assert out.startswith("Short one. ") and all(len(x.split()) <= 30 for x in sents)
     assert "Pacific. Until it settled" in out and out.count("Trieste") == 1 and out.endswith("Challenger Deep.")
     assert tts.pocket_text("No breaks here at all " * 4 + "end.") == ("No breaks here at all " * 4 + "end.")
+
+
+class _Resp:
+    def __init__(self, status, payload):
+        self.status_code, self._p = status, payload
+        self.text = str(payload)
+
+    def json(self):
+        return self._p
+
+
+def _audio(nbytes=4800):
+    import base64
+    return _Resp(200, {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"inlineData": {
+        "data": base64.b64encode(b"\x01\x00" * (nbytes // 2)).decode()}}]}}]})
+
+
+def _quota(kind):
+    return _Resp(429, {"error": {"details": [{"violations": [{"quotaId": f"GenerateRequests{kind}PerProjectPerModel-FreeTier"}]},
+                                              {"retryDelay": "3s"}]}})
+
+
+def test_gemini_speaker_moves_to_the_next_model_when_a_day_is_used_up(monkeypatch):
+    sp = tts.GeminiSpeaker(api_key="k", models=["m1", "m2"], voice="Charon", style="Read softly:", sleep=lambda s: None,
+                           clock=lambda: 0.0)
+    script = {"m1": [_audio(), _quota("PerDay")], "m2": [_quota("PerMinute"), _audio()]}
+    seen = []
+
+    def post(model, text):
+        seen.append(model)
+        return script[model].pop(0)
+    monkeypatch.setattr(sp, "_post", post)
+    assert len(sp.say("One. Two.")) == 4800 and len(sp.say("Three. Four.")) == 4800
+    assert seen == ["m1", "m1", "m2", "m2"] and sp.exhausted == {"m1"} and sp.calls == {"m1": 1, "m2": 1}
+    body = tts.gemini_tts_body("Hello.", voice="Charon", style="Read softly:")
+    assert body["contents"][0]["parts"][0]["text"] == "Read softly:\n\nHello."
+    assert body["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] == "Charon"
+
+
+def test_gemini_refusal_is_split_and_exhaustion_falls_back_to_pocket(monkeypatch, tmp_path):
+    sp = tts.GeminiSpeaker(api_key="k", models=["m1"], voice="Charon", style="", sleep=lambda s: None, clock=lambda: 0.0)
+    replies = [_Resp(200, {"candidates": [{"finishReason": "SAFETY"}]}), _audio(100), _audio(100)]
+    monkeypatch.setattr(sp, "_post", lambda m, t: replies.pop(0))
+    assert len(sp.say("First half here. Second half there.")) == 100 + 14400 + 100     # 0.3 s pause between
+    monkeypatch.setattr(tts, "gemini_speaker", lambda cfg: (_ for _ in ()).throw(tts.GeminiTTSUnavailable("quota")))
+    seen = {}
+    monkeypatch.setattr(tts, "synthesize_pocket", lambda chunks, out, **kw: seen.setdefault("pocket", kw) and ["p"])
+    cfg = Config(tts_backend="gemini")
+    tts.speak(["x"], str(tmp_path), cfg)
+    assert "pocket" in seen and cfg.tts_backend == "pocket"
+    short_cfg = Config(tts_backend="gemini")
+    tts.speak(["x"], str(tmp_path), short_cfg, short=True)
+    assert short_cfg.tts_backend == "gemini"                 # a Short's fallback never changes the video's voice
+
+
+def test_a_cut_off_gemini_answer_is_never_kept(monkeypatch):
+    import base64
+    sp = tts.GeminiSpeaker(api_key="k", models=["m1"], voice="Charon", style="", sleep=lambda s: None, clock=lambda: 0.0)
+    cut = _Resp(200, {"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"inlineData": {
+        "data": base64.b64encode(b"\x01\x00" * 50).decode()}}]}}]})
+    replies = [cut, _audio(100), _audio(100)]
+    monkeypatch.setattr(sp, "_post", lambda m, t: replies.pop(0))
+    assert len(sp.say("A long first part. A long second part.")) == 100 + 14400 + 100
+
+
+def test_stretch_pauses_lengthens_only_real_pauses():
+    import numpy as np
+    loud = (np.sin(np.arange(4800) / 3.0) * 12000).astype(np.int16)
+    gap = np.zeros(int(24000 * 0.4), dtype=np.int16)        # a 0.4 s pause
+    tiny = np.zeros(int(24000 * 0.1), dtype=np.int16)       # a 0.1 s breath between words
+    pcm = np.concatenate([loud, tiny, loud, gap, loud]).tobytes()
+    out = tts.stretch_pauses(pcm, factor=2.0)
+    added = (len(out) - len(pcm)) / 2 / 24000
+    assert 0.3 <= added <= 0.45 and tts.stretch_pauses(pcm, factor=1.0) == pcm
+    assert tts.tune_filter(1.0, 1.0) == "" and "0.92" in tts.tune_filter(0.92, 1.0)

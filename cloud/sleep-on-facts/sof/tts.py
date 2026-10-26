@@ -155,6 +155,8 @@ def assemble(paths: list[str], out_dir: str, pre: str = "") -> str:
 def estimate_cost_usd(chars: int, model: str) -> float:
     if model in ("kokoro", "pocket"):
         return 0.0
+    if model == "gemini":          # 3.8 Flash TTS, paid rate: ~10.5 audio tokens/word, $9/M until 2026-12-31
+        return chars / 6.0 * 10.5 / 1_000_000 * 9.0
     return chars / 1_000_000 * PRICE_PER_M_CHARS.get(model, 15.0)
 
 
@@ -217,9 +219,9 @@ def voice_style(engine, spec: str):
     return np.asarray(style, dtype=np.float32)
 
 
-def encode_mp3_cmd(wav: str, out: str) -> list[str]:
-    return ["ffmpeg", "-y", "-loglevel", "error", "-i", wav, "-ac", "1", "-ar", "24000", "-c:a", "libmp3lame",
-            "-b:a", "96k", out]
+def encode_mp3_cmd(wav: str, out: str, af: str = "") -> list[str]:
+    return (["ffmpeg", "-y", "-loglevel", "error", "-i", wav] + (["-af", af] if af else [])
+            + ["-ac", "1", "-ar", "24000", "-c:a", "libmp3lame", "-b:a", "96k", out])
 
 
 def synthesize_kokoro(chunks: list[str], out_dir: str, *, voice: str, speed: float = 0.88, lang: str = "en-gb",
@@ -386,6 +388,210 @@ def synthesize_pocket(chunks: list[str], out_dir: str, *, voice_wav: str, worker
     return paths
 
 
+# ------------------------------------------------------------------ Gemini TTS (Charon, Gian's pick)
+
+GEMINI_TTS_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+class GeminiTTSUnavailable(RuntimeError):
+    """Every Gemini TTS model is out of quota (or refusing): the caller narrates the whole video another way."""
+
+
+def gemini_tts_body(text: str, *, voice: str, style: str) -> dict:
+    prompt = (style.strip() + "\n\n" + text) if style else text
+    return {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["AUDIO"],
+                                 "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}}}
+
+
+def _quota_ids(resp) -> list[str]:
+    try:
+        err = resp.json().get("error") or {}
+        return [str(v.get("quotaId") or "") for d in err.get("details") or [] for v in d.get("violations") or []]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _retry_delay(resp, default: float) -> float:
+    try:
+        for d in (resp.json().get("error") or {}).get("details") or []:
+            rd = str(d.get("retryDelay") or "")
+            if rd.endswith("s"):
+                return min(120.0, float(rd[:-1]) + 1.0)
+    except Exception:  # noqa: BLE001
+        pass
+    return default
+
+
+def _halves(text: str) -> tuple[str, str] | None:
+    sents = [x for x in _SENTENCE.split(" ".join(text.split())) if x]
+    if len(sents) < 2:
+        return None
+    k = len(sents) // 2
+    return " ".join(sents[:k]), " ".join(sents[k:])
+
+
+def write_pcm_wav(path: str, pcm: bytes, rate: int = 24000) -> None:
+    import wave
+
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+
+
+class GeminiSpeaker:
+    """Charon on Gemini TTS: one request per chunk (≤ ~1,300 words ≈ 9 min of speech, under the 16,384-token
+    audio cap). Free tier: 3 requests/min per model (we space requests 21 s apart per model) and a small daily
+    cap per model — when one model's day is used up the next model in ``models`` takes over (same voice); when
+    all are, ``GeminiTTSUnavailable``. A chunk the model refuses (finishReason SAFETY/OTHER, no audio) is split
+    in half and retried, twice at most (2026-10-25: gemini-3.1 refused 400-word chunks; 3.8 did not)."""
+
+    def __init__(self, *, api_key: str, models: list[str], voice: str, style: str, transport=None,
+                 sleep=time.sleep, clock=time.monotonic, min_gap: float = 21.0, timeout: float = 300.0):
+        if not api_key:
+            raise GeminiTTSUnavailable("no GEMINI_API_KEY")
+        self.models, self.voice, self.style = list(models), voice, style
+        self._sleep, self._clock, self.min_gap = sleep, clock, min_gap
+        self._last: dict[str, float] = {}
+        self.exhausted: set[str] = set()
+        self.calls: dict[str, int] = {m: 0 for m in self.models}
+        self._c = httpx.Client(timeout=timeout, transport=transport, headers={"x-goog-api-key": api_key})
+
+    def _post(self, model: str, text: str):
+        wait = self.min_gap - (self._clock() - self._last.get(model, -1e9))
+        if wait > 0:
+            self._sleep(wait)
+        self._last[model] = self._clock()
+        return self._c.post(GEMINI_TTS_URL.format(model=model), json=gemini_tts_body(text, voice=self.voice, style=self.style))
+
+    def _once(self, text: str) -> bytes | None:
+        """PCM for ``text`` from the first model with quota; None if the model answered without audio."""
+        import base64
+
+        for model in [m for m in self.models if m not in self.exhausted]:
+            for attempt in range(6):
+                try:
+                    r = self._post(model, text)
+                except httpx.TransportError as exc:
+                    log.warning("gemini tts %s: %r; retrying", model, exc)
+                    self._sleep(5.0 * (attempt + 1))
+                    continue
+                if r.status_code == 200:
+                    self.calls[model] += 1
+                    data = r.json()
+                    cand = (data.get("candidates") or [{}])[0]
+                    parts = (cand.get("content") or {}).get("parts") or []
+                    finish = str(cand.get("finishReason") or "STOP")
+                    if finish == "STOP" and parts and (parts[0].get("inlineData") or {}).get("data"):
+                        return base64.b64decode(parts[0]["inlineData"]["data"])
+                    # MAX_TOKENS would be audio cut off mid-text: never keep it, split the chunk instead
+                    log.warning("gemini tts %s: no audio (finishReason %s)", model, cand.get("finishReason"))
+                    return None
+                if r.status_code == 429 and any("PerDay" in q for q in _quota_ids(r)):
+                    log.warning("gemini tts %s: daily quota used up after %d calls", model, self.calls[model])
+                    self.exhausted.add(model)
+                    break
+                if r.status_code in (429, 500, 502, 503, 504):
+                    self._sleep(_retry_delay(r, 10.0 * (attempt + 1)))
+                    continue
+                raise GeminiTTSUnavailable(f"gemini tts {model}: HTTP {r.status_code} {r.text[:200]}")
+        raise GeminiTTSUnavailable(f"all Gemini TTS models out of quota ({', '.join(self.models)})")
+
+    def say(self, text: str, depth: int = 0) -> bytes:
+        pcm = self._once(text)
+        if pcm is not None:
+            return pcm
+        halves = _halves(text) if depth < 2 else None
+        if not halves:
+            raise GeminiTTSUnavailable("Gemini refused a chunk that cannot be split further")
+        return self.say(halves[0], depth + 1) + b"\x00\x00" * 7200 + self.say(halves[1], depth + 1)  # 0.3 s pause
+
+
+def stretch_pauses(pcm: bytes, *, factor: float = 1.9, min_gap: float = 0.22, rate: int = 24000,
+                   frame: float = 0.02, floor_db: float = -38.0) -> bytes:
+    """Lengthen the pauses between phrases (silent runs ≥ ``min_gap`` s become ``factor`` × longer).
+    2026-10-26: the gemini-3.1 Charon Gian prefers is ~41 % silence; gemini-3.8 Charon only ~22 %."""
+    import numpy as np
+
+    x = np.frombuffer(pcm, dtype=np.int16)
+    if factor <= 1.0 or x.size == 0:
+        return pcm
+    n = max(1, int(frame * rate))
+    frames = x[: x.size // n * n].astype(np.float32).reshape(-1, n)
+    rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
+    quiet = 20 * np.log10(rms / (rms.max() or 1.0)) < floor_db
+    out, k, run_start = [], 0, None
+    for i, q in enumerate(list(quiet) + [False]):
+        if q and run_start is None:
+            run_start = i
+        elif not q and run_start is not None:
+            a, b = run_start * n, i * n
+            out.append(x[k:b])
+            if (b - a) / rate >= min_gap:
+                out.append(np.zeros(int((b - a) * (factor - 1.0)), dtype=np.int16))
+            k, run_start = b, None
+    out.append(x[k:])
+    return np.concatenate(out).astype(np.int16).tobytes()
+
+
+_HAS_RUBBERBAND: bool | None = None
+
+
+def has_rubberband() -> bool:
+    global _HAS_RUBBERBAND
+    if _HAS_RUBBERBAND is None:
+        try:
+            r = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True, timeout=30)
+            _HAS_RUBBERBAND = " rubberband " in r.stdout
+        except (OSError, subprocess.SubprocessError):
+            _HAS_RUBBERBAND = False
+    return _HAS_RUBBERBAND
+
+
+def tune_filter(tempo: float, pitch: float) -> str:
+    """ffmpeg filter that slows the speech (``tempo`` < 1) and raises/lowers pitch, keeping formants."""
+    if abs(tempo - 1.0) < 1e-3 and abs(pitch - 1.0) < 1e-3:
+        return ""
+    if has_rubberband():
+        return f"rubberband=tempo={tempo}:pitch={pitch}:formant=preserved"
+    return f"atempo={tempo}" if abs(tempo - 1.0) >= 1e-3 else ""
+
+
+def synthesize_gemini(chunks: list[str], out_dir: str, *, speaker: GeminiSpeaker, encode=None,
+                      pause_factor: float = 1.0, tempo: float = 1.0, pitch: float = 1.0) -> list[str]:
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    af = tune_filter(tempo, pitch)
+    encode = encode or (lambda wav, mp3: _run(encode_mp3_cmd(wav, mp3, af), 600))
+    paths = [str(out / f"{i:04d}.mp3") for i in range(len(chunks))]
+    t0, spoken = time.monotonic(), 0.0
+    for i, text in enumerate(chunks):
+        if Path(paths[i]).exists() and Path(paths[i]).stat().st_size > 0:
+            continue
+        pcm = stretch_pauses(speaker.say(text), factor=pause_factor)
+        wav = out / f"{i:04d}.wav"
+        write_pcm_wav(str(wav), pcm)
+        encode(str(wav), paths[i])
+        wav.unlink(missing_ok=True)
+        spoken += len(pcm) / 48000.0
+        log.info("tts chunk %d/%d (gemini %s) · %.0f s audio so far in %.0f s", i + 1, len(chunks), speaker.voice, spoken,
+                 time.monotonic() - t0)
+    return paths
+
+
+_GEMINI_SPEAKER: GeminiSpeaker | None = None
+
+
+def gemini_speaker(cfg) -> GeminiSpeaker:
+    global _GEMINI_SPEAKER
+    if _GEMINI_SPEAKER is None:
+        _GEMINI_SPEAKER = GeminiSpeaker(api_key=cfg.gemini_api_key, models=list(cfg.gemini_tts_models),
+                                        voice=cfg.gemini_tts_voice, style=cfg.gemini_tts_style)
+    return _GEMINI_SPEAKER
+
+
 def _kokoro_speak(chunks, out_dir, cfg, short):
     return synthesize_kokoro(chunks, out_dir, voice=cfg.kokoro_voice,
                              speed=cfg.kokoro_short_speed if short else cfg.kokoro_speed, lang=cfg.kokoro_lang,
@@ -396,7 +602,30 @@ def _kokoro_speak(chunks, out_dir, cfg, short):
 
 def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[str]:
     """Narrate ``chunks`` with the configured voice (``cfg.tts_backend``). If Pocket TTS cannot load, the whole
-    narration switches to Kokoro (``cfg.tts_backend`` is changed so later steps match) — never a mix."""
+    narration switches to Kokoro (``cfg.tts_backend`` is changed so later steps match) — never a mix.
+    Gemini (Charon) falls back to our Pocket TTS voice the same way when its quota runs out; a Short that
+    cannot get Gemini audio is spoken by the fallback without changing the long video's backend."""
+    if cfg.tts_backend == "gemini":
+        try:
+            sp = gemini_speaker(cfg)
+            if short:
+                sp.style = cfg.gemini_tts_short_style
+            try:
+                return synthesize_gemini(chunks, out_dir, speaker=sp, pause_factor=cfg.gemini_pause_factor,
+                                         tempo=cfg.gemini_tempo, pitch=cfg.gemini_pitch)
+            finally:
+                sp.style = cfg.gemini_tts_style
+        except GeminiTTSUnavailable as exc:
+            log.warning("%s — narrating with our Pocket TTS voice instead", exc)
+            for f in Path(out_dir).glob("*.mp3"):
+                f.unlink()
+            if short:
+                import copy
+
+                alt = copy.copy(cfg)
+                alt.tts_backend = "pocket"
+                return speak(chunks, out_dir, alt, short=True)
+            cfg.tts_backend = "pocket"
     if cfg.tts_backend == "pocket":
         try:
             return synthesize_pocket(chunks, out_dir, voice_wav=cfg.pocket_voice, workers=1 if short else cfg.pocket_workers,
@@ -419,10 +648,16 @@ def post_filter(cfg) -> str:
 
 
 def cost_model(cfg) -> str:
+    if cfg.tts_backend == "gemini":
+        return "gemini" if getattr(cfg, "gemini_paid", False) else "kokoro"      # free tier costs nothing
     return "kokoro" if cfg.tts_backend in ("kokoro", "pocket") else cfg.tts_model
 
 
 def voice_label(cfg) -> str:
+    if cfg.tts_backend == "gemini":
+        sp = _GEMINI_SPEAKER
+        used = ",".join(f"{m}×{n}" for m, n in (sp.calls.items() if sp else []) if n)
+        return f"gemini {cfg.gemini_tts_voice}" + (f" ({used})" if used else "")
     if cfg.tts_backend == "pocket":
         return f"pocket {Path(cfg.pocket_voice).name}"
     if cfg.tts_backend == "kokoro":

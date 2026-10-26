@@ -5,9 +5,9 @@ def test_defaults_and_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("PEXELS_API_KEY", "px")
     cfg = Config.from_env(minutes=180)
-    assert cfg.minutes == 180 and cfg.target_words == 24300 and cfg.tts_backend == "pocket"   # our voice speaks ~135 wpm
+    assert cfg.minutes == 180 and cfg.target_words == 180 * 112 and cfg.tts_backend == "gemini" and cfg.tts_chunk_chars == 7500
     assert Config(minutes=180, tts_backend="openai").target_words == 27000
-    assert cfg.tts_model == "gpt-4o-mini-tts" and cfg.tts_instructions and cfg.tts_chunk_chars <= 2000
+    assert cfg.tts_model == "gpt-4o-mini-tts" and cfg.tts_instructions and Config().tts_chunk_chars <= 2000
     assert cfg.script_model == "gpt-5.6-terra" and cfg.fast_model == "gpt-5.6-luna"
     assert cfg.gemini_models == ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
     assert cfg.images_target == 150 and cfg.images_min == 100
