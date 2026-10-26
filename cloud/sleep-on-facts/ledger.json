@@ -517,5 +517,83 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40221291621"
+  },
+  {
+    "date": "2026-10-26",
+    "topic": "Mount Everest",
+    "category": "earth & geology (volcanoes, caves, glaciers, deserts)",
+    "wiki_title": "Mount Everest",
+    "video_id": "DR9BF0Pf5Xg",
+    "title": "Why Two Countries Measured Everest's Height Together | 2-Hour Earth Documentary for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-10-27T00:30:00Z",
+    "duration_seconds": 7736,
+    "words": 18840,
+    "images": 119,
+    "image_sources": {
+      "commons": 68,
+      "nasa": 0,
+      "pexels": 13,
+      "pixabay": 38
+    },
+    "story_format": "story",
+    "title_variant": 1,
+    "timeline": {
+      "slots": 387,
+      "thing_slots": 157,
+      "things_shown": 27,
+      "distinct_photos": 247,
+      "lag_median": 4.22
+    },
+    "short": {
+      "video_id": "S95kLHLnsO8",
+      "title": "Everest's Summit Recorded 280 km/h Winds in 2004 #Shorts",
+      "seconds": 41.7,
+      "publish_at": "2026-10-27T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "S95kLHLnsO8",
+        "title": "Everest's Summit Recorded 280 km/h Winds in 2004 #Shorts",
+        "seconds": 41.7,
+        "publish_at": "2026-10-27T01:30:00Z"
+      },
+      {
+        "video_id": "yfLCSeNMh48",
+        "title": "Everest Base Camp Sits on the Khumbu Glacier #Shorts",
+        "seconds": 36.9,
+        "publish_at": "2026-10-28T01:30:00Z"
+      },
+      {
+        "video_id": "z9wJq46CXLs",
+        "title": "Everest's Upper Rock Formed on an Ancient Seabed #Shorts",
+        "seconds": 37.1,
+        "publish_at": "2026-10-29T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 31,
+      "after": 6,
+      "paragraphs": 272,
+      "rewritten": 23,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 6
+      }
+    },
+    "llm_calls": {
+      "claude": 66,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 75,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40348174348"
   }
 ]
