@@ -104,3 +104,12 @@ def test_subject_phrase_adds_the_article_only_where_english_needs_it():
 
 def test_playlist_description_has_no_ai_line():
     assert "AI-generated" not in seo.playlist_description("space & astronomy")
+
+
+def test_a_morning_run_still_publishes_in_the_evening_slot():
+    from datetime import datetime, timezone
+    from sof.config import Config
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)      # the 08:23 UTC run uploads around midday UTC
+    wait = Config().publish_max_wait_hours
+    assert seo.publish_slot(now, 20, 30, tz="America/New_York", max_wait_hours=wait) == datetime(2026, 10, 28, 0, 30, tzinfo=timezone.utc)
+    assert seo.publish_slot(now, 20, 30, tz="America/New_York") is None       # the old 12 h wait would publish at once

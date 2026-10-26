@@ -398,7 +398,10 @@ class GeminiTTSUnavailable(RuntimeError):
 
 
 def gemini_tts_body(text: str, *, voice: str, style: str) -> dict:
-    prompt = (style.strip() + "\n\n" + text) if style else text
+    """``style`` goes in a director's-notes block above a TRANSCRIPT heading. 2026-10-26: given as a plain
+    "Read this aloud as …:" prefix, gemini-3.8 read the instruction out loud (3 of 4 samples); in this format
+    it does not, and ``systemInstruction`` is rejected ("Developer instruction is not enabled")."""
+    prompt = f"### DIRECTOR'S NOTES\n{style.strip()}\n\n### TRANSCRIPT\n{text}" if style else text
     return {"contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"responseModalities": ["AUDIO"],
                                  "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}}}
@@ -457,6 +460,8 @@ class GeminiSpeaker:
         self._last: dict[str, float] = {}
         self.exhausted: set[str] = set()
         self.calls: dict[str, int] = {m: 0 for m in self.models}
+        self.limits: dict[str, int] = {}     # model → most requests this speaker may make with it (now)
+        self.last_model: str = ""
         self._c = httpx.Client(timeout=timeout, transport=transport, headers={"x-goog-api-key": api_key})
 
     def _post(self, model: str, text: str):
@@ -470,7 +475,8 @@ class GeminiSpeaker:
         """PCM for ``text`` from the first model with quota; None if the model answered without audio."""
         import base64
 
-        for model in [m for m in self.models if m not in self.exhausted]:
+        for model in [m for m in self.models
+                      if m not in self.exhausted and self.calls[m] < self.limits.get(m, 1 << 30)]:
             for attempt in range(6):
                 try:
                     r = self._post(model, text)
@@ -480,6 +486,7 @@ class GeminiSpeaker:
                     continue
                 if r.status_code == 200:
                     self.calls[model] += 1
+                    self.last_model = model
                     data = r.json()
                     cand = (data.get("candidates") or [{}])[0]
                     parts = (cand.get("content") or {}).get("parts") or []
@@ -497,7 +504,7 @@ class GeminiSpeaker:
                     self._sleep(_retry_delay(r, 10.0 * (attempt + 1)))
                     continue
                 raise GeminiTTSUnavailable(f"gemini tts {model}: HTTP {r.status_code} {r.text[:200]}")
-        raise GeminiTTSUnavailable(f"all Gemini TTS models out of quota ({', '.join(self.models)})")
+        raise GeminiTTSUnavailable(f"all Gemini TTS models out of quota or at their limit ({', '.join(self.models)})")
 
     def say(self, text: str, depth: int = 0) -> bytes:
         pcm = self._once(text)
@@ -560,20 +567,28 @@ def tune_filter(tempo: float, pitch: float) -> str:
 
 
 def synthesize_gemini(chunks: list[str], out_dir: str, *, speaker: GeminiSpeaker, encode=None,
-                      pause_factor: float = 1.0, tempo: float = 1.0, pitch: float = 1.0) -> list[str]:
+                      pause_factor: float = 1.0, tempo: float = 1.0, pitch: float = 1.0,
+                      tuning: dict | None = None) -> list[str]:
+    """``tuning`` = {model: (pause_factor, tempo, pitch)} — each chunk is tuned for the model that spoke it,
+    so a video that runs from one free model into the next still sounds like one Charon."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    af = tune_filter(tempo, pitch)
-    encode = encode or (lambda wav, mp3: _run(encode_mp3_cmd(wav, mp3, af), 600))
+    enc = encode or (lambda wav, mp3, af: _run(encode_mp3_cmd(wav, mp3, af), 600))
     paths = [str(out / f"{i:04d}.mp3") for i in range(len(chunks))]
     t0, spoken = time.monotonic(), 0.0
     for i, text in enumerate(chunks):
         if Path(paths[i]).exists() and Path(paths[i]).stat().st_size > 0:
             continue
-        pcm = stretch_pauses(speaker.say(text), factor=pause_factor)
+        raw = speaker.say(text)
+        pf, tp, pt = (tuning or {}).get(speaker.last_model, (pause_factor, tempo, pitch))
+        pcm = stretch_pauses(raw, factor=pf)
+        af = tune_filter(tp, pt)
         wav = out / f"{i:04d}.wav"
         write_pcm_wav(str(wav), pcm)
-        encode(str(wav), paths[i])
+        if encode is None:
+            enc(str(wav), paths[i], af)          # this chunk's own filter (its model may differ from the last)
+        else:
+            encode(str(wav), paths[i])
         wav.unlink(missing_ok=True)
         spoken += len(pcm) / 48000.0
         log.info("tts chunk %d/%d (gemini %s) · %.0f s audio so far in %.0f s", i + 1, len(chunks), speaker.voice, spoken,
@@ -645,8 +660,8 @@ def speak_shorts_together(texts: list[str], out_dir: str, cfg) -> list[str] | No
     out.mkdir(parents=True, exist_ok=True)
     try:
         sp = gemini_speaker(cfg)
-        sp.style = (cfg.gemini_tts_short_style + f" There are {len(texts)} separate short teasers below; leave a "
-                    "clear two-second pause between them.")
+        sp.style = (cfg.gemini_tts_short_style + f"\nStructure: {len(texts)} separate short teasers; leave a clear "
+                    "two-second pause between them.")
         try:
             pcm = sp.say("\n\n".join(t.strip() for t in texts))
         finally:
@@ -654,11 +669,12 @@ def speak_shorts_together(texts: list[str], out_dir: str, cfg) -> list[str] | No
     except GeminiTTSUnavailable as exc:
         log.warning("shorts together: %s", exc)
         return None
+    model = sp.last_model
     pieces = split_at_pauses(pcm, [len(t) for t in texts])
     if not pieces:
         log.warning("shorts together: the pauses did not line up; voicing each Short on its own")
         return None
-    af = tune_filter(1.0, cfg.gemini_pitch)
+    af = tune_filter(1.0, dict(cfg.gemini_tuning).get(model, (1.0, 1.0, cfg.gemini_pitch))[2])
     paths = []
     for i, piece in enumerate(pieces):
         wav, mp3 = out / f"short{i}.wav", out / f"short{i}.mp3"
@@ -688,12 +704,16 @@ def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[
             sp = gemini_speaker(cfg)
             if short:
                 sp.style = cfg.gemini_tts_short_style
+            else:
+                sp.limits = dict(cfg.gemini_long_limits)              # keep Flash requests back for the Shorts
             try:
-                return synthesize_gemini(chunks, out_dir, speaker=sp,      # Shorts: brighter, natural pace
-                                         pause_factor=1.0 if short else cfg.gemini_pause_factor,
-                                         tempo=1.0 if short else cfg.gemini_tempo, pitch=cfg.gemini_pitch)
+                tuning = dict(cfg.gemini_tuning)
+                if short:                                                    # Shorts: brighter, natural pace
+                    tuning = {m: (1.0, 1.0, v[2]) for m, v in tuning.items()}
+                return synthesize_gemini(chunks, out_dir, speaker=sp, pause_factor=1.0 if short else cfg.gemini_pause_factor,
+                                         tempo=1.0 if short else cfg.gemini_tempo, pitch=cfg.gemini_pitch, tuning=tuning)
             finally:
-                sp.style = cfg.gemini_tts_style
+                sp.style, sp.limits = cfg.gemini_tts_style, {}
         except GeminiTTSUnavailable as exc:
             log.warning("%s — narrating with our Pocket TTS voice instead", exc)
             for f in Path(out_dir).glob("*.mp3"):

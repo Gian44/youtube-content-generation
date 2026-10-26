@@ -8,7 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 
 WORDS_PER_MINUTE = 150
-GEMINI_WORDS_PER_MINUTE = 112   # Charon on gemini-3.8 after the slower tuning (~110 wpm; raw 143)
+GEMINI_WORDS_PER_MINUTE = 140   # 3.8 Charon untouched on script text (Lite: 350 words in 136 s raw, ×1/0.9 tuned)
 KOKORO_WORDS_PER_MINUTE = 135   # Kokoro at speed 0.88 (smoke 2026-10-25); the Pocket TTS designed voice measured ~137
 SMOKE_MAX_MINUTES = 10  # at/below this the run is a smoke test: always unlisted
 
@@ -47,19 +47,27 @@ class Config:
     # Gemini TTS "Charon" (Gian's favourite voice, 2026-10-26): newest models first; same voice on each.
     gemini_tts_models: tuple = ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts")
     gemini_tts_voice: str = "Charon"
-    gemini_tts_style: str = (
-        "Read this aloud as a middle-aged man with a soft, educated British accent: a warm, low, unhurried "
-        "late-night documentary host helping the listener drift off to sleep. Calm and even, gentle pauses "
-        "between sentences:")
+    gemini_tts_style: str = (            # director's notes (not read aloud; see tts.gemini_tts_body)
+        "Style: soft, warm, unhurried late-night documentary host, helping the listener drift off to sleep.\n"
+        "Accent: educated British.\nPace: slow and calm, with gentle pauses between sentences.")
     gemini_tts_short_style: str = (
-        "Read this aloud as a middle-aged man with a soft, educated British accent: a warm late-night science "
-        "host recording a short teaser, a little brighter and more awake than at bedtime, clear and unhurried:")
-    gemini_chunk_chars: int = 7500           # ≈ 1,250 words ≈ 13k audio tokens per request (cap 16,384)
-    # Delivery tuned toward the gemini-3.1 Charon Gian prefers (measured 2026-10-26: 111 wpm, 41 % silence,
-    # 126 Hz vs 3.8's 143 wpm, 22 %, ~95 Hz): longer pauses, slower; pitch 1.0 = sample "A", 1.12 = "B".
+        "Style: warm late-night science host recording a short teaser, a little brighter and more awake than at "
+        "bedtime.\nAccent: educated British.\nPace: clear and unhurried.")
+    # Free tier (2026-10-26): 10 requests/day per model, reset at midnight Pacific; ≤ 16,384 audio tokens
+    # (~25/s ≈ 10.9 min) per request. A day's video must fit in 20 requests: movements + closing + 1 for Shorts.
+    gemini_chunk_chars: int = 8000           # ≈ 1,350 words ≈ 14.5k audio tokens (a longer movement splits in two)
+    gemini_words_per_movement: int = 1150    # one request per movement, with room for the writer to run long
+    gemini_max_minutes: int = 130            # 16 movements + closing + Shorts = 18 of 20 requests (2 spare)
+    # Flash speaks the long video until 9 requests, then Flash-Lite; the 10th Flash request is kept for the Shorts.
+    gemini_long_limits: tuple = (("gemini-3.8-flash-tts", 9),)
     gemini_paid: bool = False                # True once billing is on (cost estimates only)
-    gemini_pause_factor: float = 1.9
-    gemini_tempo: float = 0.92
+    # Per-model (pause factor, tempo, pitch). Gian, 2026-10-26: the untouched 3.8 Flash Charon ("R") is the
+    # best — so Flash is left as is, and Flash-Lite is tuned to sound like it ("R2"; same 104 words:
+    # Flash 41.9 s / 105 Hz, Lite 37.5 s / 115 Hz → tuned 41.7 s / 106 Hz).
+    gemini_tuning: tuple = (("gemini-3.8-flash-tts", (1.0, 1.0, 1.0)),
+                            ("gemini-3.8-flash-lite-tts", (1.0, 0.90, 0.91)))
+    gemini_pause_factor: float = 1.0         # for a model not in gemini_tuning
+    gemini_tempo: float = 1.0
     gemini_pitch: float = 1.0
     pocket_workers: int = 2                   # processes; Pocket TTS uses ~2 cores each (runner has 4)
     pocket_threads: int = 2
@@ -121,7 +129,8 @@ class Config:
     publish_tz: str = "America/New_York"   # scheduled publish slot: 8:30 PM US Eastern, all year (DST-aware)
     publish_hour: int = 20
     publish_minute: int = 30
-    schedule_publish: bool = True   # upload private + publishAt; a run that is >12 h from the slot publishes at once
+    schedule_publish: bool = True   # upload private + publishAt; a run further than the wait below publishes at once
+    publish_max_wait_hours: float = 20.0   # the run starts ~08:30 UTC (after the Gemini quota reset), slot ~00:30 UTC
     playlists: bool = True          # add each video to its category playlist (created on first use)
     upload_check_seconds: int = 300  # after upload, poll up to this long for a rejection ("Video is too long", duplicate…)
     photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos (no external credits page)
@@ -209,6 +218,8 @@ class Config:
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)
+        if cfg.tts_backend == "gemini" and not cfg.is_smoke:
+            cfg.minutes = min(cfg.minutes, cfg.gemini_max_minutes)      # what the free daily requests can voice
         if cfg.is_smoke:
             cfg.privacy = "unlisted"
         return cfg

@@ -5,7 +5,12 @@ def test_defaults_and_env(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setenv("PEXELS_API_KEY", "px")
     cfg = Config.from_env(minutes=180)
-    assert cfg.minutes == 180 and cfg.target_words == 180 * 112 and cfg.tts_backend == "gemini" and cfg.tts_chunk_chars == 7500
+    # Gemini's free day voices ~130 min (16 movements + closing + Shorts in 20 requests)
+    assert cfg.minutes == 130 and cfg.target_words == 130 * 140 and cfg.tts_backend == "gemini" and cfg.tts_chunk_chars == 8000
+    assert Config.from_env(minutes=5).minutes == 5 and Config.from_env(minutes=120).minutes == 120
+    monkeypatch.setenv("TTS_BACKEND", "pocket")
+    assert Config.from_env(minutes=180).minutes == 180
+    monkeypatch.delenv("TTS_BACKEND")
     assert Config(minutes=180, tts_backend="openai").target_words == 27000
     assert cfg.tts_model == "gpt-4o-mini-tts" and cfg.tts_instructions and Config().tts_chunk_chars <= 2000
     assert cfg.script_model == "gpt-5.6-terra" and cfg.fast_model == "gpt-5.6-luna"

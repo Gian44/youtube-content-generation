@@ -140,8 +140,9 @@ def test_gemini_speaker_moves_to_the_next_model_when_a_day_is_used_up(monkeypatc
     monkeypatch.setattr(sp, "_post", post)
     assert len(sp.say("One. Two.")) == 4800 and len(sp.say("Three. Four.")) == 4800
     assert seen == ["m1", "m1", "m2", "m2"] and sp.exhausted == {"m1"} and sp.calls == {"m1": 1, "m2": 1}
-    body = tts.gemini_tts_body("Hello.", voice="Charon", style="Read softly:")
-    assert body["contents"][0]["parts"][0]["text"] == "Read softly:\n\nHello."
+    body = tts.gemini_tts_body("Hello.", voice="Charon", style="Style: soft.")
+    assert body["contents"][0]["parts"][0]["text"] == "### DIRECTOR'S NOTES\nStyle: soft.\n\n### TRANSCRIPT\nHello."
+    assert tts.gemini_tts_body("Hello.", voice="Charon", style="")["contents"][0]["parts"][0]["text"] == "Hello."
     assert body["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] == "Charon"
 
 
@@ -194,3 +195,26 @@ def test_split_at_pauses_cuts_one_recording_back_into_its_texts():
     secs = [len(p) / 2 / 24000 for p in pieces]
     assert abs(secs[0] - 20.3) < 0.2 and abs(secs[1] - 15) < 0.2 and abs(secs[2] - 12) < 0.2
     assert tts.split_at_pauses(np.concatenate([speech(30)]).tobytes(), [1, 1]) is None    # no pause → None
+
+
+def test_long_video_leaves_a_flash_request_for_the_shorts(monkeypatch, tmp_path):
+    sp = tts.GeminiSpeaker(api_key="k", models=["flash", "lite"], voice="Charon", style="", sleep=lambda s: None,
+                           clock=lambda: 0.0)
+    seen, cmds = [], []
+
+    def post(model, text):
+        seen.append(model)
+        return _audio(4800)
+    monkeypatch.setattr(sp, "_post", post)
+    monkeypatch.setattr(tts, "gemini_speaker", lambda cfg: sp)
+    monkeypatch.setattr(tts, "_run", lambda cmd, timeout: (cmds.append(cmd), Path(cmd[-1]).write_bytes(b"x")))
+    cfg = Config(tts_backend="gemini", gemini_long_limits=(("flash", 2),),
+                 gemini_tuning=(("flash", (1.0, 1.0, 1.0)), ("lite", (1.0, 0.9, 0.91))))
+    tts.speak(["One.", "Two.", "Three."], str(tmp_path / "long"), cfg)
+    assert seen == ["flash", "flash", "lite"] and sp.limits == {}
+    filters = [" ".join(c) for c in cmds]
+    assert "rubberband" not in filters[0] and "rubberband" not in filters[1]     # Flash chunks untouched ("R")
+    assert ("tempo=0.9" in filters[2] and "pitch=0.91" in filters[2]) or not tts.has_rubberband()   # Lite chunk = "R2"
+    seen.clear()
+    tts.speak(["Teaser."], str(tmp_path / "short"), cfg, short=True)
+    assert seen == ["flash"]                                     # the kept request voices the Shorts

@@ -135,10 +135,11 @@ def generate_script(
     story_format: str = "journey",
     closing_words: int = 180,
     slop_rounds: int = 2,
+    words_per_movement: int = 1200,
 ) -> Script:
     fmt = STORY_FORMATS.get(story_format) or STORY_FORMATS["journey"]
     # Scale the plan to the target so a 3-minute smoke run does not get 16×600-word movements.
-    num_movements = max(2, min(num_movements, round(target_words / 1200)))
+    num_movements = max(2, min(num_movements, round(target_words / max(300, words_per_movement))))
     per_words = max(150, min(_MAX_SEG, target_words // num_movements))
     bodies: list[str] = []
     covered: list[str] = []

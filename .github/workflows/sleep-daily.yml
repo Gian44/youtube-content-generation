@@ -2,11 +2,13 @@ name: sleep-on-facts daily
 
 on:
   schedule:
-    # Daily at 15:17 UTC (23:17 Manila) — one long video a day (Gian, 2026-10-25; Mon/Wed/Fri before).
+    # Daily at 08:23 UTC (16:23 Manila) — one long video a day (Gian, 2026-10-25; Mon/Wed/Fri before).
+    # 2026-10-26: moved from 15:17 UTC to just after the Gemini free-tier reset (midnight Pacific = 07:00
+    # UTC in summer, 08:00 in winter), so the day's Charon requests are all still there when it starts.
     # GitHub starts scheduled jobs late (3-5 h seen), and an off-the-hour minute helps; the video is
     # uploaded private and YouTube publishes it at 8:30 PM US Eastern, with its first Shorts teaser an
     # hour later and two more on the following days (2026-10-19).
-    - cron: "17 15 * * *"
+    - cron: "23 8 * * *"
   workflow_dispatch:
     inputs:
       minutes:

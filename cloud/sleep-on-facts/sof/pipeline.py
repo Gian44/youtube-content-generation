@@ -126,6 +126,7 @@ def run(cfg: Config) -> int:
             segment_max_tokens=cfg.segment_max_tokens, writer_model=cfg.script_model, fast_model=cfg.fast_model,
             story_format=STORY_ORDER[len(rows) % len(STORY_ORDER)],      # rotates one shape per published video
             slop_rounds=cfg.slop_rounds,
+            words_per_movement=cfg.gemini_words_per_movement if cfg.tts_backend == "gemini" else 1200,
         )
         script_path.write_text(json.dumps(sc.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"script: {sc.word_count} words, {sc.movements} movements · shape: {sc.story_format or 'n/a'}", flush=True)
@@ -316,7 +317,8 @@ def run(cfg: Config) -> int:
     tags = seo.build_tags(name, seo_category, sc.tags)
     publish_at = None
     if cfg.schedule_publish and not cfg.is_smoke and cfg.privacy == "public":
-        slot = seo.publish_slot(datetime.now(timezone.utc), cfg.publish_hour, cfg.publish_minute, tz=cfg.publish_tz)
+        slot = seo.publish_slot(datetime.now(timezone.utc), cfg.publish_hour, cfg.publish_minute, tz=cfg.publish_tz,
+                                 max_wait_hours=cfg.publish_max_wait_hours)
         publish_at = seo.rfc3339(slot) if slot else None
     body = upload.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy, publish_at=publish_at)
     video_id = upload.upload_video(yt, str(final), body, str(thumb))
