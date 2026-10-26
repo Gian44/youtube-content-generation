@@ -552,9 +552,15 @@ def make_all(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], pla
         items = write_shorts(llm, topic=topic, sections=sections, words=cfg.shorts_words, model=cfg.fast_model,
                              count=max(1, int(count)))
         plan_path.write_text(json.dumps(items, indent=1, ensure_ascii=False), encoding="utf-8")
+    items = items[:max(1, int(count))]
+    if getattr(cfg, "tts_backend", "") == "gemini" and len(items) > 1 and not all(
+            (work / f"{file_stem(i)}.mp3").exists() for i in range(len(items))):
+        together = tts.speak_shorts_together([str(it.get("narration") or "") for it in items], str(work / "shorts_tts"), cfg)
+        for i, part in enumerate(together or []):
+            render.run(loudnorm_cmd(part, str(work / f"{file_stem(i)}.mp3"), tts.post_filter(cfg)), 300)
     metas: list[dict] = []
     used: set[str] = set()
-    for i, item in enumerate(items[:max(1, int(count))]):
+    for i, item in enumerate(items):
         try:
             meta = make(cfg, llm=llm, work=work, topic=topic, sections=sections, plan=plan, reel=reel, labels=labels,
                         credits=credits, index=i, item=item, avoid=frozenset(used))

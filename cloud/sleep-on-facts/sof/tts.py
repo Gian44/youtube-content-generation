@@ -592,6 +592,84 @@ def gemini_speaker(cfg) -> GeminiSpeaker:
     return _GEMINI_SPEAKER
 
 
+def split_at_pauses(pcm: bytes, weights: list[float], *, rate: int = 24000, frame: float = 0.02,
+                    floor_db: float = -40.0, min_gap: float = 0.5, window: float = 0.3) -> list[bytes] | None:
+    """Cut one recording of several texts back into one piece per text: at the silent run nearest each
+    expected boundary (expected from ``weights`` — the texts' lengths), within ``window`` × the total length.
+    None when the pauses do not line up (each piece must be 0.5–1.8 × its expected length)."""
+    import numpy as np
+
+    x = np.frombuffer(pcm, dtype=np.int16)
+    n = max(1, int(frame * rate))
+    if len(weights) < 2 or x.size < n * 10:
+        return None
+    frames = x[: x.size // n * n].astype(np.float32).reshape(-1, n)
+    rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
+    quiet = 20 * np.log10(rms / rms.max()) < floor_db
+    runs, start = [], None
+    for i, q in enumerate(list(quiet) + [False]):
+        if q and start is None:
+            start = i
+        elif not q and start is not None:
+            if (i - start) * frame >= min_gap:
+                runs.append((start, i))
+            start = None
+    total = len(quiet)
+    cum, cuts = 0.0, []
+    wsum = float(sum(weights))
+    for w in weights[:-1]:
+        cum += w / wsum
+        target = cum * total
+        near = [r for r in runs if abs((r[0] + r[1]) / 2 - target) <= window * total and (not cuts or r[0] > cuts[-1][1])]
+        if not near:
+            return None
+        best = max(near, key=lambda r: (r[1] - r[0]) - 0.002 * abs((r[0] + r[1]) / 2 - target))
+        cuts.append(best)
+    pieces, prev = [], 0
+    for a, b in cuts:
+        pieces.append(x[prev * n: a * n])
+        prev = b
+    pieces.append(x[prev * n:])
+    expect = [w / wsum * total * n for w in weights]
+    if any(not (0.5 * e <= len(p) <= 1.8 * e) for p, e in zip(pieces, expect)):
+        return None
+    return [p.astype(np.int16).tobytes() for p in pieces]
+
+
+def speak_shorts_together(texts: list[str], out_dir: str, cfg) -> list[str] | None:
+    """All Shorts voiced in ONE Gemini request (Gian, 2026-10-26: saves 2 of the 3 daily free requests),
+    split back at the pauses. None when that does not work cleanly — each Short is then voiced on its own."""
+    if cfg.tts_backend != "gemini" or len(texts) < 2:
+        return None
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        sp = gemini_speaker(cfg)
+        sp.style = (cfg.gemini_tts_short_style + f" There are {len(texts)} separate short teasers below; leave a "
+                    "clear two-second pause between them.")
+        try:
+            pcm = sp.say("\n\n".join(t.strip() for t in texts))
+        finally:
+            sp.style = cfg.gemini_tts_style
+    except GeminiTTSUnavailable as exc:
+        log.warning("shorts together: %s", exc)
+        return None
+    pieces = split_at_pauses(pcm, [len(t) for t in texts])
+    if not pieces:
+        log.warning("shorts together: the pauses did not line up; voicing each Short on its own")
+        return None
+    af = tune_filter(1.0, cfg.gemini_pitch)
+    paths = []
+    for i, piece in enumerate(pieces):
+        wav, mp3 = out / f"short{i}.wav", out / f"short{i}.mp3"
+        write_pcm_wav(str(wav), piece)
+        _run(encode_mp3_cmd(str(wav), str(mp3), ",".join(f for f in (af, "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse") if f)), 600)
+        wav.unlink(missing_ok=True)
+        paths.append(str(mp3))
+    log.info("shorts together: %d Shorts from 1 Gemini request", len(paths))
+    return paths
+
+
 def _kokoro_speak(chunks, out_dir, cfg, short):
     return synthesize_kokoro(chunks, out_dir, voice=cfg.kokoro_voice,
                              speed=cfg.kokoro_short_speed if short else cfg.kokoro_speed, lang=cfg.kokoro_lang,
@@ -611,8 +689,9 @@ def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[
             if short:
                 sp.style = cfg.gemini_tts_short_style
             try:
-                return synthesize_gemini(chunks, out_dir, speaker=sp, pause_factor=cfg.gemini_pause_factor,
-                                         tempo=cfg.gemini_tempo, pitch=cfg.gemini_pitch)
+                return synthesize_gemini(chunks, out_dir, speaker=sp,      # Shorts: brighter, natural pace
+                                         pause_factor=1.0 if short else cfg.gemini_pause_factor,
+                                         tempo=1.0 if short else cfg.gemini_tempo, pitch=cfg.gemini_pitch)
             finally:
                 sp.style = cfg.gemini_tts_style
         except GeminiTTSUnavailable as exc:

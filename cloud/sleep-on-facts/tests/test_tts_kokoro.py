@@ -181,3 +181,16 @@ def test_stretch_pauses_lengthens_only_real_pauses():
     added = (len(out) - len(pcm)) / 2 / 24000
     assert 0.3 <= added <= 0.45 and tts.stretch_pauses(pcm, factor=1.0) == pcm
     assert tts.tune_filter(1.0, 1.0) == "" and "0.92" in tts.tune_filter(0.92, 1.0)
+
+
+def test_split_at_pauses_cuts_one_recording_back_into_its_texts():
+    import numpy as np
+    speech = lambda sec: (np.sin(np.arange(int(24000 * sec)) / 3.0) * 12000).astype(np.int16)
+    gap = np.zeros(int(24000 * 2.0), dtype=np.int16)
+    breath = np.zeros(int(24000 * 0.3), dtype=np.int16)
+    pcm = np.concatenate([speech(10), breath, speech(10), gap, speech(15), gap, speech(12)]).tobytes()
+    pieces = tts.split_at_pauses(pcm, [200, 150, 120])
+    assert pieces is not None and len(pieces) == 3
+    secs = [len(p) / 2 / 24000 for p in pieces]
+    assert abs(secs[0] - 20.3) < 0.2 and abs(secs[1] - 15) < 0.2 and abs(secs[2] - 12) < 0.2
+    assert tts.split_at_pauses(np.concatenate([speech(30)]).tobytes(), [1, 1]) is None    # no pause → None
