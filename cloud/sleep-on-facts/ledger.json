@@ -595,5 +595,85 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40348174348"
+  },
+  {
+    "date": "2026-10-27",
+    "topic": "Abyssal Zone",
+    "category": "oceans & the deep sea",
+    "wiki_title": "Abyssal zone",
+    "video_id": "p7CUOEma78k",
+    "title": "Why Sunlight Fades Long Before the Abyssal Zone | Fall Asleep to 2 Hours of Ocean Facts",
+    "privacy": "public",
+    "publish_at": "2026-10-28T00:30:00Z",
+    "duration_seconds": 7748,
+    "words": 19332,
+    "images": 30,
+    "image_sources": {
+      "commons": 1,
+      "nasa": 0,
+      "pexels": 29,
+      "pixabay": 0
+    },
+    "story_format": "day",
+    "title_variant": 2,
+    "timeline": {
+      "slots": 388,
+      "thing_slots": 56,
+      "cue_slots": 76,
+      "things_shown": 11,
+      "distinct_photos": 76,
+      "lag_median": 2.71
+    },
+    "short": {
+      "video_id": "154pFQw-YtY",
+      "title": "The Abyssal Zone Covers 83% of Ocean Area #Shorts",
+      "seconds": 40.2,
+      "publish_at": "2026-10-28T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "154pFQw-YtY",
+        "title": "The Abyssal Zone Covers 83% of Ocean Area #Shorts",
+        "seconds": 40.2,
+        "publish_at": "2026-10-28T01:30:00Z"
+      },
+      {
+        "video_id": "KMdSASNbSA4",
+        "title": "Abyssal Water Presses at 11,000 Pounds per Square Inch #Shorts",
+        "seconds": 32.8,
+        "publish_at": "2026-10-29T01:30:00Z"
+      },
+      {
+        "video_id": "K5ZaRFVdUrs",
+        "title": "Abyssal Water's Oxygen Comes From Polar Ice #Shorts",
+        "seconds": 35.7,
+        "publish_at": "2026-10-30T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 48,
+      "after": 9,
+      "paragraphs": 277,
+      "rewritten": 36,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 8,
+        "metadiscourse": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 87,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 118,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40523763314"
   }
 ]
