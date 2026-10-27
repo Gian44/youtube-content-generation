@@ -109,7 +109,7 @@ class Config:
     claude_vision_model: str = "haiku"
     images_commons: bool = True                 # Wikimedia Commons: the article's own photos + its Commons category
     images_nasa: str = "auto"                   # "auto" = space topics only, "on", "off"
-    images_setting_share: float = 0.3           # at most this share of the reel may be setting/scenery shots
+    images_setting_share: float = 0.1           # at most this share of the reel may be setting/scenery shots
     # render
     width: int = 1920
     height: int = 1080
@@ -117,7 +117,7 @@ class Config:
     dwell_seconds: float = 20.0
     crossfade_seconds: float = 1.5
     xfade_batch: int = 20
-    video_dim: float = 0.95         # 2026-10-25: brighter, closer to the vivid look of the niche's leaders (was 0.75)
+    video_dim: float = 0.5          # 2026-10-27: very dark for sleep, Gian's call (0.95 on 10-25 was too bright; thumbnails/Shorts unaffected)
     # moving footage between the photos (sof/footage.py): Pexels + Pixabay video, vision-checked preview frames
     footage_enabled: bool = True
     footage_every: int = 3              # every 3rd filler slot (no named thing on screen) shows a clip
@@ -139,8 +139,8 @@ class Config:
     timeline_max_entities: int = 80     # things per video that get their own photos
     timeline_per_entity: int = 6        # vision-approved photos per thing
     timeline_lead: float = 5.0          # a photo may appear at most this many seconds before its thing is named
-    timeline_hold: float = 75.0         # a named thing stays on screen up to this long unless something else is named
-    timeline_recall: float = 150.0      # filler may recall a thing named this recently; later, neutral subject photos
+    timeline_hold: float = 240.0        # a named thing stays on screen up to this long unless something else is named
+    timeline_recall: float = 600.0     # filler may recall a thing named this recently; later, neutral subject photos
     timeline_canvas: float = 3.0        # zoom canvas for the timeline renderer: 3× measured as smooth as 4× at ~0.7× CPU
     timeline_photo_budget: float = 900.0  # seconds for fetching per-thing photos; later things go without
     # Shorts teasers (sof/shorts.py): ~50 s vertical clips per long video; the first an hour after it goes

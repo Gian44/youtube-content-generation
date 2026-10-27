@@ -146,7 +146,9 @@ def gather(candidates: list[dict], out_dir: str, *, classify_fn, want: int = 30,
             if p.exists() or _get(c, it["preview"], p, max_bytes=5_000_000, deadline=20):
                 previews[str(p)] = it
         labels = classify_fn(list(previews)) if previews else {}
-        keep = [(lab, path) for path, lab in labels.items() if lab in ("subject", "setting", "unknown")]
+        # 2026-10-27: only clips the vision check says show the subject itself; generic scenery ("setting")
+        # and unchecked clips read as off-topic against the narration (Gian: "stop wrong shots")
+        keep = [(lab, path) for path, lab in labels.items() if lab == "subject"]
         keep.sort(key=lambda x: {"subject": 0, "unknown": 1, "setting": 2}[x[0]])
         for lab, preview in keep:
             if len(rows) >= want or time.monotonic() - t0 > budget_seconds:
@@ -183,8 +185,8 @@ def mix_into_slots(slots: list[str], plan: list[dict] | None, clips: list[str], 
     ci = 0
     for k in range(1, len(out)):
         row = plan[k] if plan and k < len(plan) else {}
-        if row.get("entity"):
-            continue
+        if row.get("entity") or str(row.get("why") or "").startswith("section photo"):
+            continue                       # a chapter's own photo is closer to the words than any stock clip
         eligible += 1
         if eligible % every:
             continue

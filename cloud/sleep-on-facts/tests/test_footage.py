@@ -46,7 +46,7 @@ def test_gather_downloads_only_clips_whose_preview_passes(tmp_path):
     order = sorted(str(tmp_path / f) for f in [])                         # noqa: F841
     clips = footage.gather(cands, str(tmp_path), classify_fn=classify, want=5, transport=httpx.MockTransport(handler))
     rows = json.loads((tmp_path / "footage.json").read_text())
-    assert len(clips) == 2 and {r["label"] for r in rows} == {"subject", "setting"} and rows[0]["label"] == "subject"
+    assert len(clips) == 1 and {r["label"] for r in rows} == {"subject"}   # scenery clips read as off-topic: dropped
     assert all(c.endswith(".mp4") for c in clips)
 
 
@@ -61,3 +61,11 @@ def test_mix_gives_every_third_filler_slot_to_footage_and_spaces_clips():
         ks = [k for k in vids if out[k] == c]
         assert len(ks) <= 3 and all(b - a > 4 for a, b in zip(ks, ks[1:]))
     assert footage.mix_into_slots(slots, plan, []) == (slots, 0)
+
+
+def test_mix_never_replaces_a_chapter_photo():
+    slots = [f"p{k}.jpg" for k in range(30)]
+    plan = [{"entity": None, "why": "section photo" if k < 15 else "subject reel"} for k in range(30)]
+    out, n = footage.mix_into_slots(slots, plan, ["a.mp4", "b.mp4"], every=1, max_uses=9, gap=1)
+    vids = [k for k, s in enumerate(out) if s.endswith(".mp4")]
+    assert n > 0 and all(k >= 15 for k in vids)

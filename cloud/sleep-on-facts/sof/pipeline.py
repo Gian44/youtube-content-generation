@@ -219,7 +219,7 @@ def run(cfg: Config) -> int:
                 slots = _plan_timeline(cfg, work=work, llm=llm, topic=name, article=article or "", sections=secs,
                                        duration=duration, chapters=chapters, reel=image_paths, used=used,
                                        use_nasa=use_nasa, out=plan_path, vis=vis,
-                                       footage_queries=[name, *sc.image_queries[:8], *sc.setting_queries[:4]])
+                                       footage_queries=[name, *sc.image_queries[:8]])
         except Exception as exc:  # noqa: BLE001 — never lose the video over the better visuals
             log.exception("timeline planning failed")
             print(f"! narration-matched photos unavailable ({exc}); using the looped subject reel", flush=True)
