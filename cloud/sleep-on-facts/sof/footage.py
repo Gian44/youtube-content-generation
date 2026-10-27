@@ -185,7 +185,7 @@ def mix_into_slots(slots: list[str], plan: list[dict] | None, clips: list[str], 
     ci = 0
     for k in range(1, len(out)):
         row = plan[k] if plan and k < len(plan) else {}
-        if row.get("entity") or str(row.get("why") or "").startswith("section photo"):
+        if row.get("entity") or row.get("cue") or str(row.get("why") or "").startswith("section photo"):
             continue                       # a chapter's own photo is closer to the words than any stock clip
         eligible += 1
         if eligible % every:

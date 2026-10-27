@@ -143,6 +143,13 @@ class Config:
     timeline_recall: float = 600.0     # filler may recall a thing named this recently; later, neutral subject photos
     timeline_canvas: float = 3.0        # zoom canvas for the timeline renderer: 3× measured as smooth as 4× at ~0.7× CPU
     timeline_photo_budget: float = 900.0  # seconds for fetching per-thing photos; later things go without
+    # per-passage shots (sof/cues.py, 2026-10-27): pictures for the narration that names nothing photographable
+    cues_enabled: bool = True
+    cues_max: int = 70                  # passages that get their own search + vision check per video
+    cues_per: int = 3                   # approved pictures kept per passage
+    cues_hold_after: float = 60.0       # a held named thing gives way to the passage after this many seconds
+    cues_budget: float = 1500.0         # seconds for searching, checking and downloading cue pictures
+    cues_workers: int = 3
     # Shorts teasers (sof/shorts.py): ~50 s vertical clips per long video; the first an hour after it goes
     # live, the rest one a day after that (2026-10-19: Shorts out-reach the long videos ~6×)
     shorts_enabled: bool = True

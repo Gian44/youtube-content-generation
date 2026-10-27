@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import (captions, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
+from sof import (captions, cues, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
                  topics, tts, upload, vision, visuals)
 from sof.config import Config
 from sof.llm import LLM
@@ -430,6 +430,28 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
                                      fallback=reel_abs, section_pools=visuals.build_section_pools(timed, photos),
                                      lead=cfg.timeline_lead, hold=cfg.timeline_hold, recall=cfg.timeline_recall)
     stats = visuals.plan_stats(plan)
+    if cfg.cues_enabled and vis.active:    # per-passage shots for the narration that names nothing (sof/cues.py)
+        try:
+            t0 = time.monotonic()
+            rows = cues.write_cues(llm, sections, topic=topic, model=cfg.fast_model)
+            rows = cues.time_cues(rows, chunks=chunks, owner=owner, chunk_durations=[d * scale for d in durs],
+                                  total=duration)
+            picked = cues.select(rows, plan, dwell=cfg.dwell_seconds, max_cues=cfg.cues_max,
+                                 hold_after=cfg.cues_hold_after)
+            media = cues.fetch_cue_media(picked, str(work / "entities"), topic=topic, vis=vis,
+                                         pexels_key=cfg.pexels_api_key, pixabay_key=cfg.pixabay_api_key,
+                                         per_cue=cfg.cues_per, workers=cfg.cues_workers,
+                                         budget_seconds=cfg.cues_budget,
+                                         exclude_urls={str(r.get("url")) for r in used if r.get("url")})
+            slots, plan, changed = cues.apply_cues(slots, plan, picked, media, dwell=cfg.dwell_seconds,
+                                                   hold_after=cfg.cues_hold_after)
+            stats.update(cue_passages=len(rows), cues_checked=len(picked), cues_with_pictures=len(media),
+                         cue_slots=changed)
+            print(f"cues: {len(rows)} passages · {len(picked)} checked · {len(media)} with pictures · "
+                  f"{changed} of {len(slots)} slots · {time.monotonic() - t0:.0f} s", flush=True)
+        except Exception as exc:  # noqa: BLE001 — the named-thing plan alone still makes the video
+            log.exception("cues failed")
+            print(f"! per-passage shots skipped ({exc})", flush=True)
     if cfg.footage_enabled:                # moving footage in some filler slots (sof/footage.py, 2026-10-25)
         try:
             cands = footage.search(footage_queries or [topic], pexels_key=cfg.pexels_api_key,
@@ -470,7 +492,8 @@ def _slot_captions(slots: list[str], used: list[dict], img_dir: Path, entity_dir
 def _timeline_stats(plan_path: Path) -> dict | None:
     try:
         st = json.loads(plan_path.read_text(encoding="utf-8")).get("stats") or {}
-        return {k: st.get(k) for k in ("slots", "thing_slots", "things_shown", "distinct_photos", "lag_median")}
+        return {k: st.get(k) for k in ("slots", "thing_slots", "cue_slots", "things_shown", "distinct_photos",
+                                       "lag_median")}
     except Exception:  # noqa: BLE001
         return None
 

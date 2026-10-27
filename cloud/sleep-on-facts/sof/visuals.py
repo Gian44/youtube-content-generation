@@ -841,7 +841,8 @@ def plan_slots(n_slots: int, *, dwell: float, mentions: list[dict], entity_photo
         last_used[img] = k
         slots.append(img)
         plan.append({"slot": k, "start": round(k * dwell, 3), "image": img, "entity": cur,
-                     "name": cur_name if cur else None, "section": sec, "mention_time": answered, "why": why})
+                     "name": cur_name if cur else None, "section": sec, "mention_time": answered, "why": why,
+                     "held_for": round(k * dwell - cur_t, 1) if why.startswith("holding") else None})
     return slots, plan
 
 
