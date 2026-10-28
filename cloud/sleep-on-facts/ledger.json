@@ -675,5 +675,86 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40523763314"
+  },
+  {
+    "date": "2026-10-28",
+    "topic": "Jupiter",
+    "category": "space & astronomy",
+    "wiki_title": "Jupiter",
+    "video_id": "5MtpKyeAG94",
+    "title": "Why Jupiter Outshines Every Star in the Night Sky | Space Facts for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-10-29T00:30:00Z",
+    "duration_seconds": 7943,
+    "words": 19319,
+    "images": 125,
+    "image_sources": {
+      "commons": 100,
+      "nasa": 25,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "parts",
+    "title_variant": 3,
+    "timeline": {
+      "slots": 398,
+      "thing_slots": 202,
+      "cue_slots": 99,
+      "things_shown": 28,
+      "distinct_photos": 225,
+      "lag_median": 1.53
+    },
+    "short": {
+      "video_id": "JcUBfbMmWK0",
+      "title": "Jupiter Completes a Full Turn in Under 10 Hours #Shorts",
+      "seconds": 33.1,
+      "publish_at": "2026-10-29T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "JcUBfbMmWK0",
+        "title": "Jupiter Completes a Full Turn in Under 10 Hours #Shorts",
+        "seconds": 33.1,
+        "publish_at": "2026-10-29T01:30:00Z"
+      },
+      {
+        "video_id": "0K1D9KtvmRM",
+        "title": "The Great Red Spot Spans Two or Three Earths #Shorts",
+        "seconds": 26.4,
+        "publish_at": "2026-10-30T01:30:00Z"
+      },
+      {
+        "video_id": "QUgjLZXl7wo",
+        "title": "Jupiter's Radio Bursts Were Found in 1955 #Shorts",
+        "seconds": 27.5,
+        "publish_at": "2026-10-31T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 43,
+      "after": 12,
+      "paragraphs": 286,
+      "rewritten": 28,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 9,
+        "metadiscourse": 2,
+        "robotic_rhythm": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 96,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 175,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40713966979"
   }
 ]
