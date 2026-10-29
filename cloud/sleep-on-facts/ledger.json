@@ -756,5 +756,85 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40713966979"
+  },
+  {
+    "date": "2026-10-29",
+    "topic": "Pompeii",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Pompeii",
+    "video_id": "su5wzA8BHNk",
+    "title": "How Pompeii Carried Water to Its Baths and Fountains | 2 Hours of History to Fall Asleep To",
+    "privacy": "public",
+    "publish_at": "2026-10-30T00:30:00Z",
+    "duration_seconds": 7561,
+    "words": 19327,
+    "images": 89,
+    "image_sources": {
+      "commons": 37,
+      "nasa": 0,
+      "pexels": 21,
+      "pixabay": 31
+    },
+    "story_format": "journey",
+    "title_variant": 0,
+    "timeline": {
+      "slots": 379,
+      "thing_slots": 198,
+      "cue_slots": 62,
+      "things_shown": 33,
+      "distinct_photos": 225,
+      "lag_median": 2.67
+    },
+    "short": {
+      "video_id": "vLCLKv1hCbQ",
+      "title": "Pompeii Had at Least 31 Bakeries #Shorts",
+      "seconds": 34.9,
+      "publish_at": "2026-10-30T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "vLCLKv1hCbQ",
+        "title": "Pompeii Had at Least 31 Bakeries #Shorts",
+        "seconds": 34.9,
+        "publish_at": "2026-10-30T01:30:00Z"
+      },
+      {
+        "video_id": "LC-FYPCxF6c",
+        "title": "Pompeii Carts Wore Grooves Deep Enough for a Hand #Shorts",
+        "seconds": 32.7,
+        "publish_at": "2026-10-31T01:30:00Z"
+      },
+      {
+        "video_id": "jNLM_r8MezY",
+        "title": "Giuseppe Fiorelli Divided Pompeii Into Nine Areas #Shorts",
+        "seconds": 25.2,
+        "publish_at": "2026-11-01T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 37,
+      "after": 7,
+      "paragraphs": 283,
+      "rewritten": 29,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 6,
+        "robotic_rhythm": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 87,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 149,
+      "claude": 1,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40900396473"
   }
 ]
