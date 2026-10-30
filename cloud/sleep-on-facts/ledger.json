@@ -836,5 +836,86 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/40900396473"
+  },
+  {
+    "date": "2026-10-30",
+    "topic": "Black Holes",
+    "category": "space & astronomy",
+    "wiki_title": "Black hole",
+    "video_id": "8UlSb3YZtHY",
+    "title": "How Hawking Radiation Could Slowly Shrink a Black Hole | 2-Hour Space Documentary for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-10-31T00:30:00Z",
+    "duration_seconds": 7566,
+    "words": 18711,
+    "images": 150,
+    "image_sources": {
+      "commons": 103,
+      "nasa": 47,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "story",
+    "title_variant": 1,
+    "timeline": {
+      "slots": 379,
+      "thing_slots": 119,
+      "cue_slots": 155,
+      "things_shown": 22,
+      "distinct_photos": 268,
+      "lag_median": 4.54
+    },
+    "short": {
+      "video_id": "dr9qLyd-Mj4",
+      "title": "Our Galaxy's Black Hole Lies 26,000 Light-Years Away #Shorts",
+      "seconds": 40.8,
+      "publish_at": "2026-10-31T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "dr9qLyd-Mj4",
+        "title": "Our Galaxy's Black Hole Lies 26,000 Light-Years Away #Shorts",
+        "seconds": 40.8,
+        "publish_at": "2026-10-31T01:30:00Z"
+      },
+      {
+        "video_id": "QyHQyCH62tM",
+        "title": "Stars of 8 Solar Masses Fuse Up to Iron #Shorts",
+        "seconds": 32.4,
+        "publish_at": "2026-11-01T01:30:00Z"
+      },
+      {
+        "video_id": "chR2tXWknzk",
+        "title": "John Michell Proposed Light-Trapping Gravity in 1784 #Shorts",
+        "seconds": 43.5,
+        "publish_at": "2026-11-02T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 32,
+      "after": 10,
+      "paragraphs": 260,
+      "rewritten": 21,
+      "rounds": 2,
+      "remaining": {
+        "weasel": 5,
+        "kicker": 4,
+        "robotic_rhythm": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 80,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 155,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41077914766"
   }
 ]
