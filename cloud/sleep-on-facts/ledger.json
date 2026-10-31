@@ -917,5 +917,86 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41077914766"
+  },
+  {
+    "date": "2026-10-31",
+    "topic": "The Great Pyramid of Giza",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Great Pyramid of Giza",
+    "video_id": "jdmL5pkzX8k",
+    "title": "The Great Pyramid of Giza: The Great Pyramid Once Wore a Smooth White Casing | History for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-01T00:30:00Z",
+    "duration_seconds": 7132,
+    "words": 18967,
+    "images": 150,
+    "image_sources": {
+      "commons": 150,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "day",
+    "title_variant": 2,
+    "timeline": {
+      "slots": 357,
+      "thing_slots": 134,
+      "cue_slots": 54,
+      "things_shown": 17,
+      "distinct_photos": 208,
+      "lag_median": 3.38
+    },
+    "short": {
+      "video_id": "RoDSwDAywD4",
+      "title": "Great Pyramid Blocks Hold Fossil Shells #Shorts",
+      "seconds": 29.6,
+      "publish_at": "2026-11-01T01:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "RoDSwDAywD4",
+        "title": "Great Pyramid Blocks Hold Fossil Shells #Shorts",
+        "seconds": 29.6,
+        "publish_at": "2026-11-01T01:30:00Z"
+      },
+      {
+        "video_id": "Ol7k2kXSuck",
+        "title": "Great Pyramid Crews Averaged 13,200 Workers #Shorts",
+        "seconds": 30.8,
+        "publish_at": "2026-11-02T01:30:00Z"
+      },
+      {
+        "video_id": "2fKuHYbxR7s",
+        "title": "Great Pyramid's Entrance Sat 17 Metres Up #Shorts",
+        "seconds": 28.3,
+        "publish_at": "2026-11-03T01:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 40,
+      "after": 10,
+      "paragraphs": 261,
+      "rewritten": 29,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 5,
+        "weasel": 3,
+        "robotic_rhythm": 2
+      }
+    },
+    "llm_calls": {
+      "claude": 89,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 132,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×11)",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41211003072"
   }
 ]
