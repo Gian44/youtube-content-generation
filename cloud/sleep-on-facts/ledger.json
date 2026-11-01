@@ -998,5 +998,22 @@
     "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×11)",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41211003072"
+  },
+  {
+    "date": "2026-11-01",
+    "kind": "marathon",
+    "topic": "Marathon: Pompeii, Black Holes, The Great Pyramid of Giza",
+    "category": "mix",
+    "video_id": "Gd_FFAI-tMQ",
+    "title": "6 Hours of Random Facts to Fall Asleep To | Pompeii, Black Holes & The Great Pyramid of Giza",
+    "privacy": "public",
+    "publish_at": "2026-11-02T00:30:00Z",
+    "duration_seconds": 22259,
+    "segments": [
+      "su5wzA8BHNk",
+      "8UlSb3YZtHY",
+      "jdmL5pkzX8k"
+    ],
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41334026833"
   }
 ]
