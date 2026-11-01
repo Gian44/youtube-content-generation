@@ -1015,5 +1015,84 @@
       "jdmL5pkzX8k"
     ],
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41334026833"
+  },
+  {
+    "date": "2026-11-01",
+    "topic": "Atlantic Ocean",
+    "category": "oceans & the deep sea",
+    "wiki_title": "Atlantic Ocean",
+    "video_id": "tLIi9S0zW4c",
+    "title": "Why the Atlantic Keeps Widening Each Year | Ocean Facts for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-02T01:30:00Z",
+    "duration_seconds": 7425,
+    "words": 18533,
+    "images": 150,
+    "image_sources": {
+      "commons": 150,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "parts",
+    "title_variant": 3,
+    "timeline": {
+      "slots": 372,
+      "thing_slots": 77,
+      "cue_slots": 120,
+      "things_shown": 12,
+      "distinct_photos": 216,
+      "lag_median": -0.29
+    },
+    "short": {
+      "video_id": "l4b2dPSMx5g",
+      "title": "The Sargasso Sea Has No Land Boundary #Shorts",
+      "seconds": 34.5,
+      "publish_at": "2026-11-02T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "l4b2dPSMx5g",
+        "title": "The Sargasso Sea Has No Land Boundary #Shorts",
+        "seconds": 34.5,
+        "publish_at": "2026-11-02T02:30:00Z"
+      },
+      {
+        "video_id": "I_GU-Z9d4J4",
+        "title": "Mid-Atlantic Ridge Ends 300 km From North Pole #Shorts",
+        "seconds": 31.2,
+        "publish_at": "2026-11-03T02:30:00Z"
+      },
+      {
+        "video_id": "fbj64lBA3SU",
+        "title": "The Atlantic Covers 17 Percent of Earth #Shorts",
+        "seconds": 33.5,
+        "publish_at": "2026-11-04T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 41,
+      "after": 11,
+      "paragraphs": 260,
+      "rewritten": 29,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 11
+      }
+    },
+    "llm_calls": {
+      "claude": 92,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 126,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41320697238"
   }
 ]
