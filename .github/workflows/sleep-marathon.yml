@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   marathon:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: ubuntu-latest moved to 26.04 (FFmpeg 8) on 2026-11-02 and broke the render tests
     timeout-minutes: 300
     defaults:
       run:

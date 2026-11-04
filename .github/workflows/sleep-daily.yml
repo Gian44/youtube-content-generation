@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   render:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: ubuntu-latest moved to 26.04 (FFmpeg 8) on 2026-11-02 and broke the render tests
     timeout-minutes: 360          # GitHub's maximum; the Kokoro voice runs on this machine's CPU
     defaults:
       run:
