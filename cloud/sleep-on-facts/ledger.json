@@ -1175,5 +1175,88 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/41756564584"
+  },
+  {
+    "date": "2026-11-05",
+    "topic": "Jet Engine",
+    "category": "how things work (machines, materials, everyday engineering)",
+    "wiki_title": "Jet engine",
+    "video_id": "cugzRz9dZsE",
+    "title": "How a Jet Engine Turns Air Into Thrust | 2-Hour Science Documentary for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-06T01:30:00Z",
+    "duration_seconds": 6930,
+    "words": 17376,
+    "images": 50,
+    "image_sources": {
+      "commons": 50,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "story",
+    "title_variant": 1,
+    "timeline": {
+      "slots": 347,
+      "thing_slots": 68,
+      "cue_slots": 121,
+      "things_shown": 11,
+      "distinct_photos": 109,
+      "lag_median": 0.04
+    },
+    "short": {
+      "video_id": "Ioqvm09rw7M",
+      "title": "Jet Engine Combustor Gas Reaches 1500 Kelvin #Shorts",
+      "seconds": 20.5,
+      "publish_at": "2026-11-06T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "Ioqvm09rw7M",
+        "title": "Jet Engine Combustor Gas Reaches 1500 Kelvin #Shorts",
+        "seconds": 20.5,
+        "publish_at": "2026-11-06T02:30:00Z"
+      },
+      {
+        "video_id": "B2zRDQXUKxY",
+        "title": "Earliest Jet Propulsion Was a Wooden Bird, 400 BC #Shorts",
+        "seconds": 22.4,
+        "publish_at": "2026-11-07T02:30:00Z"
+      },
+      {
+        "video_id": "E9G8n9Be5FY",
+        "title": "Frank Whittle's Jet Patent Filed January 16, 1930 #Shorts",
+        "seconds": 29.0,
+        "publish_at": "2026-11-08T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 43,
+      "after": 10,
+      "paragraphs": 229,
+      "rewritten": 32,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 5,
+        "robotic_rhythm": 2,
+        "binary_contrast": 1,
+        "metadiscourse": 1,
+        "fragmentation": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 81,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 98,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42066019297"
   }
 ]
