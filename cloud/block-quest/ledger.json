@@ -1,1 +1,68 @@
-[]
+[
+  {
+    "date": "2026-11-07",
+    "kind": "shorts",
+    "topic": "3 shorts: cheating, workplace_drama, aita",
+    "video_id": "W0bl9wV-NoY",
+    "stories": [
+      {
+        "video_id": "W0bl9wV-NoY",
+        "title": "My Sister's Voicemail Meant for My Husband #Shorts",
+        "category": "cheating",
+        "persona": "dramatic",
+        "hook": "The voicemail on my phone said, \"Greg, call me back, I'm still at the lake house and I miss you.\"",
+        "words": 142,
+        "seconds": 57,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "vPmtJrnGGr4",
+        "title": "My Boss Docked Me Five Dollars #Shorts",
+        "category": "workplace_drama",
+        "persona": "sarcastic",
+        "hook": "Carl sent an email at 8:02 a.m. saying anyone who badged in after eight would lose fifteen minutes of pay.",
+        "words": 141,
+        "seconds": 62,
+        "publish_at": "2026-11-08T00:25:32Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "2UcyvA9QRvM",
+        "title": "I Took Grandma's Skillet From My Aunt #Shorts",
+        "category": "aita",
+        "persona": "confession",
+        "hook": "Aunt Roz was wrapping Grandma's cast iron skillet in a dish towel when I pulled it out of her hands.",
+        "words": 134,
+        "seconds": 51,
+        "publish_at": "2026-11-08T08:25:32Z",
+        "slop": {
+          "before": 1,
+          "after": 0,
+          "rewritten": 1
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42390146739"
+  }
+]
