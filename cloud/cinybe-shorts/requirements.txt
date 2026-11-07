@@ -1,0 +1,2 @@
+# Same stack as cloud/sleep-on-facts (the sof package is imported from there); keep the two files in step.
+-r ../sleep-on-facts/requirements.txt

@@ -1,0 +1,43 @@
+# The film queue (Gian, 2026-11-07: back catalogue by theme, Nolan first). The daily run takes the first film
+# below without a ledger row, one film every 2nd day. Order within a theme = the order they go out; the
+# biggest titles first so the channel's first videos have search demand.
+#
+# A film whose Wikipedia plot is too thin (< 250 words) gets a `kind: skipped` ledger row and is passed
+# over until `plots/<slug>.md` exists (slug = lower-case title, non-alphanumerics → "-", then "-<year>";
+# e.g. plots/the-dark-knight-2008.md). Add themes at the end; never reorder published ones.
+themes:
+  - name: Christopher Nolan
+    films:
+      - {title: Inception, year: 2010}
+      - {title: Interstellar, year: 2014}
+      - {title: The Dark Knight, year: 2008}
+      - {title: The Prestige, year: 2006}
+      - {title: Memento, year: 2000}
+      - {title: Tenet, year: 2020}
+      - {title: Oppenheimer, year: 2023}
+      - {title: Dunkirk, year: 2017}
+      - {title: Batman Begins, year: 2005}
+      - {title: The Dark Knight Rises, year: 2012}
+      - {title: Insomnia, year: 2002}
+      - {title: Following, year: 1998}
+  - name: Denis Villeneuve
+    films:
+      - {title: Arrival, year: 2016}
+      - {title: Prisoners, year: 2013}
+      - {title: Sicario, year: 2015}
+      - {title: Blade Runner 2049, year: 2017}
+      - {title: Dune, year: 2021}
+      - {title: "Dune: Part Two", year: 2024}
+      - {title: Enemy, year: 2013}
+      - {title: Incendies, year: 2010}
+  - name: David Fincher
+    films:
+      - {title: Se7en, year: 1995}
+      - {title: Fight Club, year: 1999}
+      - {title: Gone Girl, year: 2014}
+      - {title: The Social Network, year: 2010}
+      - {title: Zodiac, year: 2007}
+      - {title: The Game, year: 1997}
+      - {title: Panic Room, year: 2002}
+      - {title: The Girl with the Dragon Tattoo, year: 2011}
+      - {title: The Killer, year: 2023}

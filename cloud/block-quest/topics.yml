@@ -1,0 +1,26 @@
+# Story categories for Block Quest Daily (the StoryFactory fiction defaults, content_defaults.py, 2026-06).
+# weight = how often a category is drawn; hints = what the writer is pointed at. A day's stories are drawn from
+# distinct categories, avoiding the ones used in the last two days.
+categories:
+  aita:                   {weight: 15, hints: "moral dilemmas, family conflicts, social etiquette, boundary-setting", persona: confession}
+  relationships:          {weight: 12, hints: "dating drama, long-term relationship issues, breakups, trust", persona: calm}
+  cheating:               {weight: 10, hints: "infidelity discovery, betrayal, confrontation, aftermath", persona: dramatic}
+  revenge:                {weight: 12, hints: "creative revenge, karma, justice served, petty retribution", persona: sarcastic}
+  workplace_drama:        {weight: 10, hints: "toxic bosses, coworker conflicts, unfair policies, quitting stories", persona: sarcastic}
+  entitled_parents:       {weight: 8,  hints: "outrageous parenting, public meltdowns, unreasonable demands", persona: dramatic}
+  family_drama:           {weight: 8,  hints: "inheritance disputes, favoritism, toxic relatives, holiday disasters", persona: calm}
+  confessions:            {weight: 5,  hints: "secret reveals, guilty consciences, hidden truths, cathartic admissions", persona: confession}
+  scary_stories:          {weight: 5,  hints: "supernatural encounters, unexplained events, eerie discoveries", persona: horror}
+  creepy_encounters:      {weight: 3,  hints: "stalkers, strange strangers, unsettling experiences", persona: horror}
+  wholesome:              {weight: 5,  hints: "kindness from strangers, heartwarming surprises, found family", persona: warm}
+  mysteries:              {weight: 3,  hints: "unexplained disappearances, cold cases, strange coincidences", persona: calm}
+  customer_service_drama: {weight: 4,  hints: "Karens, impossible demands, retail horror stories", persona: sarcastic}
+
+# How each persona tells it (writing style only; one narrator voice reads them all)
+personas:
+  calm: "level, matter-of-fact, lets the events land on their own"
+  dramatic: "tense, short sentences at the turns, builds to the reveal"
+  sarcastic: "dry, deadpan, one eyebrow raised, never cruel"
+  confession: "first person, slightly ashamed, honest about the part they played"
+  horror: "quiet, concrete, the ordinary details that make it unsettling"
+  warm: "gentle, specific, earns the feeling instead of announcing it"

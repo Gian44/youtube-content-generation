@@ -1,0 +1,134 @@
+name: cinybe-shorts daily
+
+on:
+  schedule:
+    # Daily at 09:41 UTC (17:41 Manila); the pipeline itself keeps to one film every 2nd day (films.ran_recently,
+    # gap 36 h), so a late GitHub start never skips a day for good. After the sleep run (08:23) so the two
+    # never queue on the same minute. Gian, 2026-11-07.
+    - cron: "41 9 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Target recap minutes (<=3 = smoke run, always unlisted)"
+        default: "10"
+      film:
+        description: "Force a film title (optional; with year)"
+        default: ""
+      year:
+        description: "The film's year (with film)"
+        default: ""
+      privacy:
+        description: "public | unlisted | private"
+        default: "public"
+      skip_upload:
+        description: "true = render only, no YouTube"
+        default: "false"
+      shorts:
+        description: "false = no Shorts for this run"
+        default: "true"
+
+concurrency:
+  group: cinybe-daily
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04  # pinned like the sleep workflow: ubuntu-latest (26.04, FFmpeg 8) broke the render tests
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: cloud/cinybe-shorts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: cloud/sleep-on-facts/requirements.txt
+      - name: System deps
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-wqy-microhei
+      - name: Python deps (shared with cloud/sleep-on-facts; CPU-only torch for the Pocket TTS voice)
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
+      - name: Claude Code CLI (scripts run on Gian's Claude subscription via CLAUDE_CODE_OAUTH_TOKEN)
+        run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version || echo "claude CLI unavailable; OpenAI/Gemini will write"
+      - name: Unit tests (this channel, then the shared cloud/common helpers)
+        run: python -m pytest -q && (cd ../common && python -m pytest -q)
+      - name: Kokoro voice model (fallback voice; cached between runs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/kokoro
+          key: kokoro-v1.0
+      - name: Pocket TTS model (voice F; gated on Hugging Face, cached between runs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub
+          key: pocket-tts-4.0.1
+      - name: Download the Kokoro model if the cache is empty
+        working-directory: .
+        run: |
+          set -e
+          mkdir -p ~/.cache/kokoro && cd ~/.cache/kokoro
+          base=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          [ -s kokoro-v1.0.onnx ] || curl -fsSL --retry 3 -o kokoro-v1.0.onnx "$base/kokoro-v1.0.onnx"
+          [ -s voices-v1.0.bin ] || curl -fsSL --retry 3 -o voices-v1.0.bin "$base/voices-v1.0.bin"
+          echo "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5  kokoro-v1.0.onnx" | sha256sum -c -
+          echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin" | sha256sum -c -
+      - name: Codex CLI (footage checks on Gian's ChatGPT plan; Claude takes over without it)
+        working-directory: cloud/sleep-on-facts
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          if [ -z "$CODEX_AUTH_JSON" ]; then echo "no CODEX_AUTH_JSON secret; footage checks go to Claude"; exit 0; fi
+          npm install -g @openai/codex >/dev/null 2>&1 && codex --version || { echo "codex CLI unavailable; Claude checks the footage"; exit 0; }
+          export CODEX_HOME="$RUNNER_TEMP/codex"
+          if python -c "import os, sys; from sof.vision import prepare_codex_home as p; why = p(os.environ['CODEX_AUTH_JSON'], os.environ['CODEX_HOME']); print(why or 'codex login ready'); sys.exit(1 if why else 0)"; then
+            echo "CODEX_HOME=$CODEX_HOME" >> "$GITHUB_ENV"
+          fi
+      - name: Run pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_CINYBE: ${{ secrets.GEMINI_API_KEY_CINYBE }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN_CINYBE: ${{ secrets.YT_REFRESH_TOKEN_CINYBE }}
+          # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_CINYBE exists (Charon, free tier).
+          TTS_BACKEND: pocket
+          IN_MINUTES: ${{ github.event.inputs.minutes || '10' }}
+          IN_FILM: ${{ github.event.inputs.film || '' }}
+          IN_YEAR: ${{ github.event.inputs.year || '' }}
+          IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
+          IN_SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || 'false' }}
+          IN_SHORTS: ${{ github.event.inputs.shorts || 'true' }}
+        run: |
+          set -e
+          ARGS=(--minutes "$IN_MINUTES" --privacy "$IN_PRIVACY")
+          if [ -n "$IN_FILM" ]; then ARGS+=(--film "$IN_FILM"); fi
+          if [ -n "$IN_YEAR" ]; then ARGS+=(--year "$IN_YEAR"); fi
+          if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
+          if [ "$IN_SHORTS" = "false" ]; then ARGS+=(--no-shorts); fi
+          python run.py "${ARGS[@]}"
+      - name: Keep small run artifacts (plan, plot, chapters, visuals, thumbnail, stills, the Shorts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinybe-run-${{ github.run_id }}
+          path: |
+            cloud/cinybe-shorts/work/**/plan.json
+            cloud/cinybe-shorts/work/**/plot.json
+            cloud/cinybe-shorts/work/**/meta.json
+            cloud/cinybe-shorts/work/**/chapters.json
+            cloud/cinybe-shorts/work/**/visuals.json
+            cloud/cinybe-shorts/work/**/thumb.jpg
+            cloud/cinybe-shorts/work/**/frames/*.jpg
+            cloud/cinybe-shorts/work/**/short*.mp4
+          if-no-files-found: ignore
+          retention-days: 30
