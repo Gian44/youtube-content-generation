@@ -82,3 +82,10 @@ def test_used_ids_and_footage_for_reads_cache(tmp_path):
     assert got == [str((d / "x.mp4").resolve())]
     assert broll.footage_for(queries=[], summary="s", out_dir=str(tmp_path / "none"), vis=FakeVision([], None), pexels_key="",
                              pixabay_key="", want=3, candidates=5, budget=1.0) == []
+
+
+def test_interleave_round_robins_by_query():
+    cands = [{"id": "a1", "query": "a"}, {"id": "a2", "query": "a"}, {"id": "a3", "query": "a"}, {"id": "b1", "query": "b"},
+             {"id": "c1", "query": "c"}, {"id": "c2", "query": "c"}]
+    assert [c["id"] for c in broll.interleave(cands)] == ["a1", "b1", "c1", "a2", "c2", "a3"]
+    assert broll.interleave([]) == []

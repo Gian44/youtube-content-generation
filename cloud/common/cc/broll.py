@@ -69,11 +69,28 @@ def footage_for(*, queries: list[str], summary: str, out_dir: str, vis: vision.V
     except Exception as exc:  # noqa: BLE001
         log.warning("footage search failed for %s: %s", queries, exc)
         cands = []
-    cands = [c for c in cands if c["id"] not in (exclude_ids or set())]
+    cands = interleave(c for c in cands if c["id"] not in (exclude_ids or set()))
     if not cands:
         return []
-    return footage.gather(cands, str(out), classify_fn=lambda ps: label_broll(vis, ps, query=queries[0], summary=summary, kind=kind),
+    return footage.gather(cands, str(out), classify_fn=lambda ps: label_broll(vis, ps, query=" / ".join(queries), summary=summary, kind=kind),
                           want=want, budget_seconds=budget)
+
+
+def interleave(cands) -> list[dict]:
+    """Round-robin the candidates by their search query so the kept clips cover every query (``footage.search``
+    returns all of query 1's hits first, and ``gather`` keeps the first ``want`` approved ones — 2026-11-07 a
+    Short got four café clips and no truck, no receipt)."""
+    by_q: dict[str, list[dict]] = {}
+    for c in cands:
+        by_q.setdefault(str(c.get("query") or ""), []).append(c)
+    out: list[dict] = []
+    queues = list(by_q.values())
+    while queues:
+        for q in list(queues):
+            out.append(q.pop(0))
+            if not q:
+                queues.remove(q)
+    return out
 
 
 def used_ids(out_dir: str) -> set[str]:
