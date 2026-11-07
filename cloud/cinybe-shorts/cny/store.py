@@ -98,3 +98,18 @@ def fetch_film(cfg, slug: str, work: Path) -> FilmFiles | None:
         log.warning("film store unavailable for %s: %s", slug, exc)
         print(f"! film store unavailable ({str(exc)[:160]}); using stock footage", flush=True)
         return None
+
+
+def delete_film(cfg, files: FilmFiles) -> bool:
+    """Remove the film (and its .srt) from the bucket once its recap is published — 10 GB holds 3-4 films, so
+    the bucket is a queue, not a library. Never raises."""
+    if not configured(cfg) or not files.video_key:
+        return False
+    try:
+        s3 = client(cfg)
+        s3.delete_objects(Bucket=cfg.r2_bucket, Delete={"Objects": [{"Key": k} for k in (files.video_key, files.srt_key) if k]})
+        log.info("deleted %s from r2://%s", files.video_key, cfg.r2_bucket)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        log.warning("could not delete %s from the bucket: %s", files.video_key, exc)
+        return False

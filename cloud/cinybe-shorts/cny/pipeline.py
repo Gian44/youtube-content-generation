@@ -298,5 +298,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     ledger.append_entry(cfg.ledger_path, entry)
     if os.environ.get("GITHUB_ACTIONS"):
         ledger.git_commit_and_push(cfg.ledger_path, entry)
+    if film_files and cfg.r2_delete_after and store.delete_film(cfg, film_files):
+        print(f"removed {film_files.video_key} from the bucket (published)", flush=True)
     print(f"✓ {film.label} → https://youtu.be/{video_id} · {(time.time() - t0) / 60:.1f} min total", flush=True)
     return EXIT_OK

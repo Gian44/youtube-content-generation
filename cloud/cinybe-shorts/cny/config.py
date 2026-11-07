@@ -73,6 +73,7 @@ class Config:
     scene_threshold: float = 0.3         # ffmpeg scene-change score (0.3 = clear cuts only)
     whisper_model: str = "small"         # faster-whisper, CPU int8, only when there is no .srt
     film_dim: float = 1.0                # film shots are not dimmed (stock b-roll is, video_dim)
+    r2_delete_after: bool = True         # the bucket is a queue: a published film's file is removed
     sof: SofConfig = field(default_factory=SofConfig)
 
     @property
