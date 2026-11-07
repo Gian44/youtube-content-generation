@@ -37,9 +37,9 @@ Locally: `python run.py --count 1 --skip-upload` (ffmpeg, the Python deps and th
 
 Shared with the other channels: `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `HF_TOKEN`, `GEMINI_API_KEY`,
 `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `OPENAI_API_KEY` (optional). This
-channel's own: `YT_REFRESH_TOKEN_BLOCKQUEST` (the Block Quest Daily channel's OAuth refresh token — from the
-StoryFactory DB while it is alive, else `channel connect-youtube --channel default` on the PC) and optional
-`GEMINI_API_KEY_BLOCKQUEST`.
+channel's own: `YT_CLIENT_ID_BLOCKQUEST`, `YT_CLIENT_SECRET_BLOCKQUEST`, `YT_REFRESH_TOKEN_BLOCKQUEST` (the
+channel's own OAuth client and token — copied from the StoryFactory DB while alive, else `channel connect-youtube
+--channel default` on the PC) and optional `GEMINI_API_KEY_BLOCKQUEST`.
 
 ## Ledger
 

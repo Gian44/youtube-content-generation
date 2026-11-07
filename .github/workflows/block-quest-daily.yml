@@ -94,6 +94,8 @@ jobs:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_CLIENT_ID_BLOCKQUEST: ${{ secrets.YT_CLIENT_ID_BLOCKQUEST }}
+          YT_CLIENT_SECRET_BLOCKQUEST: ${{ secrets.YT_CLIENT_SECRET_BLOCKQUEST }}
           YT_REFRESH_TOKEN_BLOCKQUEST: ${{ secrets.YT_REFRESH_TOKEN_BLOCKQUEST }}
           # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_BLOCKQUEST exists (Charon, free tier).
           TTS_BACKEND: pocket

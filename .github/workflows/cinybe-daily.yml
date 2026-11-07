@@ -99,6 +99,8 @@ jobs:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_CLIENT_ID_CINYBE: ${{ secrets.YT_CLIENT_ID_CINYBE }}
+          YT_CLIENT_SECRET_CINYBE: ${{ secrets.YT_CLIENT_SECRET_CINYBE }}
           YT_REFRESH_TOKEN_CINYBE: ${{ secrets.YT_REFRESH_TOKEN_CINYBE }}
           # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_CINYBE exists (Charon, free tier).
           TTS_BACKEND: pocket

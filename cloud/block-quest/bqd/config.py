@@ -50,10 +50,12 @@ class Config:
         for k, v in overrides.items():
             if v is not None:
                 setattr(cfg, k, v)
-        if os.environ.get("GEMINI_API_KEY_BLOCKQUEST"):
-            os.environ["GEMINI_API_KEY"] = os.environ["GEMINI_API_KEY_BLOCKQUEST"]
-        if os.environ.get("YT_REFRESH_TOKEN_BLOCKQUEST"):
-            os.environ["YT_REFRESH_TOKEN"] = os.environ["YT_REFRESH_TOKEN_BLOCKQUEST"]
+        # This channel's own secrets win over the shared ones: its YouTube OAuth client + refresh token (each
+        # StoryFactory channel was authorised with a different Google Cloud OAuth client), and optionally its own
+        # Gemini key (a free TTS quota of its own).
+        for name in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN", "GEMINI_API_KEY"):
+            if os.environ.get(f"{name}_BLOCKQUEST"):
+                os.environ[name] = os.environ[f"{name}_BLOCKQUEST"]
         os.environ.setdefault("TTS_BACKEND", DEFAULT_TTS_BACKEND)
         cfg.sof = SofConfig.from_env(minutes=150, skip_upload=cfg.skip_upload, work_dir=cfg.work_dir)
         cfg.sof.shorts_brand = cfg.brand

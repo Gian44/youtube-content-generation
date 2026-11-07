@@ -46,10 +46,11 @@ and the env below; Pocket TTS needs `HF_TOKEN`).
 
 Shared with the sleep channel: `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `HF_TOKEN`, `GEMINI_API_KEY`
 (script fallback), `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `OPENAI_API_KEY`
-(optional). This channel's own: `YT_REFRESH_TOKEN_CINYBE` (re-authorise with the StoryFactory CLI
-`channel connect-youtube --channel cinybe-shorts` on the PC, copy the refresh token), optional
-`GEMINI_API_KEY_CINYBE` (a key from a Google Cloud project of its own, for the Charon voice) and
-`TMDB_API_KEY`.
+(optional). This channel's own: `YT_CLIENT_ID_CINYBE`, `YT_CLIENT_SECRET_CINYBE`, `YT_REFRESH_TOKEN_CINYBE` (each StoryFactory
+channel was authorised with its own Google OAuth client; re-authorise with the StoryFactory CLI
+`channel connect-youtube --channel cinybe-shorts` on the PC, then `_cowork_tmp/two-channels/set_channel_secrets.py`
+copies them), optional `GEMINI_API_KEY_CINYBE` (a key from a Google Cloud project of its own, for the Charon
+voice) and `TMDB_API_KEY`.
 
 ## Queue and ledger
 
