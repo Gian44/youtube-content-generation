@@ -36,8 +36,15 @@ def long_title(film: str, year: int | None, *, minutes: int, writer_title: str =
     return t[:100]
 
 
+FOOTAGE_LINES = {
+    "stock": "Footage: Pexels and Pixabay (licence-free stock); no film footage is used.",
+    "film": "Clips from the film are used briefly for the purpose of commentary, criticism and review; all rights remain "
+            "with the copyright holders.",
+}
+
+
 def long_description(*, film: str, year: int | None, blurb: str, chapters: list[dict], plot_url: str, director: str | None,
-                     theme: str) -> str:
+                     theme: str, footage: str = "stock") -> str:
     fy = f"{film} ({year})" if year else film
     parts = [f"{blurb.strip()}" if blurb else f"The whole story of {fy}, start to finish, in one narrated recap.",
              "Spoilers: this recap tells the entire plot, including the ending."]
@@ -50,7 +57,7 @@ def long_description(*, film: str, year: int | None, blurb: str, chapters: list[
         parts.append(f"Part of our series: {theme}.")
     src = (f"Plot summarised from the Wikipedia article ({plot_url}), text available under CC BY-SA 4.0."
            if plot_url else "Plot summarised from published synopses.")
-    parts.append(src + " Footage: Pexels and Pixabay (licence-free stock); no film footage is used.")
+    parts.append(src + " " + FOOTAGE_LINES.get(footage, FOOTAGE_LINES["stock"]))
     parts.append("#movierecap #filmrecap #plotexplained")
     return "\n\n".join(parts)[:4900]
 
@@ -80,10 +87,10 @@ def short_title(title: str, film: str) -> str:
     return t if len(t) <= 100 else f"{film[:80]} #Shorts"
 
 
-def short_description(*, film: str, year: int | None, long_video_id: str, hook: str, tags: list[str]) -> str:
+def short_description(*, film: str, year: int | None, long_video_id: str, hook: str, tags: list[str], footage: str = "stock") -> str:
     fy = f"{film} ({year})" if year else film
     return (f"{hook.strip()}\n\nThe full recap of {fy}, start to finish: https://youtu.be/{long_video_id}\n\n"
-            "Footage: Pexels and Pixabay (stock); no film footage is used.\n\n"
+            + FOOTAGE_LINES.get(footage, FOOTAGE_LINES["stock"]) + "\n\n"
             + " ".join("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (["shorts", "movierecap", film] + tags[:3]) if t))[:4900]
 
 

@@ -59,6 +59,20 @@ class Config:
     shorts_delay_minutes: int = 60      # Short 1 an hour after the long video, then one a day
     shorts_spacing_hours: float = 24.0
     upload_check_seconds: int = 300
+    # the film itself (Gian, 2026-11-08: "use clips from the movies/shows"): files he supplies in a private R2 bucket;
+    # acts aligned via the .srt (writer call) or faster-whisper on the runner; a few shots per act under the narration.
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = "cinybe-films"
+    film_window_min: float = 45.0        # seconds of the film one act may draw from
+    film_window_max: float = 180.0
+    shots_per_act: int = 5
+    shot_min_seconds: float = 3.0
+    shot_max_seconds: float = 8.0
+    scene_threshold: float = 0.3         # ffmpeg scene-change score (0.3 = clear cuts only)
+    whisper_model: str = "small"         # faster-whisper, CPU int8, only when there is no .srt
+    film_dim: float = 1.0                # film shots are not dimmed (stock b-roll is, video_dim)
     sof: SofConfig = field(default_factory=SofConfig)
 
     @property
@@ -88,6 +102,10 @@ class Config:
             if os.environ.get(f"{name}_CINYBE"):
                 os.environ[name] = os.environ[f"{name}_CINYBE"]
         os.environ.setdefault("TTS_BACKEND", DEFAULT_TTS_BACKEND)
+        cfg.r2_account_id = os.environ.get("R2_ACCOUNT_ID", cfg.r2_account_id)
+        cfg.r2_access_key_id = os.environ.get("R2_ACCESS_KEY_ID", cfg.r2_access_key_id)
+        cfg.r2_secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY", cfg.r2_secret_access_key)
+        cfg.r2_bucket = os.environ.get("R2_BUCKET") or cfg.r2_bucket
         cfg.sof = SofConfig.from_env(minutes=cfg.minutes, skip_upload=cfg.skip_upload, work_dir=cfg.work_dir)
         cfg.sof.shorts_brand = cfg.brand
         cfg.sof.images_vision_check = True

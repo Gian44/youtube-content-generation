@@ -19,7 +19,7 @@ from sof import ledger, music, tts, upload, vision
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from cny import films, meta as meta_mod, plot as plot_mod, planner, render, seo, thumbnail, visuals
+from cny import films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, thumbnail, visuals
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
@@ -176,9 +176,21 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         soundtrack = mixed
 
     _stage("footage")
-    vis_plan = visuals.gather_all(cfg, acts=plan.acts, work=work, vis=vis)
+    source, film_info = "stock", {}
+    film_files = store.fetch_film(cfg, film.slug, work) if store.configured(cfg) else None
+    if film_files and film_files.video_path:
+        vis_plan, film_info = visuals.film_visuals(cfg, acts=plan.acts, work=work, llm=llm, title=film.label,
+                                                   video=film_files.video_path, srt=film_files.srt_path)
+        source = "film"
+        cfg.video_dim = cfg.film_dim
+        print(f"film: {Path(film_files.video_path).name} ({film_files.size / 1e9:.2f} GB) · {film_info.get('how')} alignment"
+              + (f" · {film_info.get('cues')} subtitle cues" if film_info.get("cues") else ""), flush=True)
+    else:
+        if store.configured(cfg):
+            print(f"no file for {film.slug} in r2://{cfg.r2_bucket}; stock b-roll", flush=True)
+        vis_plan = visuals.gather_all(cfg, acts=plan.acts, work=work, vis=vis)
     n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
-    print(f"footage: {n_clips} clips over {len(plan.acts)} acts · "
+    print(f"footage ({source}): {n_clips} clips over {len(plan.acts)} acts · "
           f"{sum(1 for v in vis_plan.values() if v.get('photos'))} acts on photos · "
           f"{sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
 
@@ -223,6 +235,9 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
             short_files.append(str(out))
             print(f"short {k + 1}: {tts.duration_seconds(audio):.0f} s · \"{s['title']}\"", flush=True)
 
+    if film_files and film_files.video_path and Path(film_files.video_path).exists():
+        Path(film_files.video_path).unlink(missing_ok=True)        # 2-4 GB on a small runner disk; the shots are cut
+
     if cfg.skip_upload:
         print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
         return EXIT_OK
@@ -232,7 +247,8 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     title = seo.long_title(film.title, film.year or meta.year, minutes=seo.fmt_minutes(duration),
                            writer_title=str(plan.long_form.get("title") or ""), variant=variant)
     description = seo.long_description(film=film.title, year=film.year or meta.year, blurb=str(plan.long_form.get("description") or ""),
-                                       chapters=chapters, plot_url=plot.url, director=meta.director, theme=film.theme)
+                                       chapters=chapters, plot_url=plot.url, director=meta.director, theme=film.theme,
+                                       footage=source)
     tags = seo.long_tags(film.title, director=meta.director, genres=meta.genres, cast=meta.cast,
                          extra=list(plan.long_form.get("tags") or []), theme=film.theme)
     body = seo.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy)
@@ -254,7 +270,8 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                       now=uploaded_at) if cfg.privacy == "public" and not cfg.is_smoke else None
             sbody = seo.video_body(title=seo.short_title(str(s["title"]), film.title),
                                    description=seo.short_description(film=film.title, year=film.year or meta.year, long_video_id=video_id,
-                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or [])),
+                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or []),
+                                                                     footage=source),
                                    tags=seo.short_tags(film.title, list(s.get("tags") or [])), privacy=cfg.privacy, publish_at=at)
             sid = upload.upload_video(yt, path, sbody, None)
             short_entries.append({"video_id": sid, "title": sbody["snippet"]["title"], "seconds": round(tts.duration_seconds(short_audio[k])),
@@ -268,7 +285,8 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "topic": film.label, "video_id": video_id, "title": title, "privacy": cfg.privacy,
         "uploaded_at": uploaded_at.isoformat(timespec="seconds"), "duration_seconds": round(duration), "words": words,
         "acts": len(plan.acts), "plot_source": plot.source, "plot_url": plot.url, "plot_words": plot.word_count,
-        "footage_clips": n_clips, "shorts": short_entries, "slop": plan.slop or None,
+        "footage_clips": n_clips, "footage": source, "alignment": film_info.get("how"), "shorts": short_entries,
+        "slop": plan.slop or None,
         "llm_calls": dict(getattr(llm, "stats", {}) or {}), "vision_calls": dict(vis.stats), "voice": tts.voice_label(cfg.sof),
         "run_url": _run_url(),
     }

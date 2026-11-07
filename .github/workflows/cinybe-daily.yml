@@ -37,7 +37,7 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-24.04  # pinned like the sleep workflow: ubuntu-latest (26.04, FFmpeg 8) broke the render tests
-    timeout-minutes: 180
+    timeout-minutes: 300          # a film without .srt adds a CPU transcription
     defaults:
       run:
         working-directory: cloud/cinybe-shorts
@@ -66,6 +66,11 @@ jobs:
         with:
           path: ~/.cache/huggingface/hub
           key: pocket-tts-4.0.1
+      - name: faster-whisper model (only used when a film has no .srt; cached once downloaded)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface/hub/models--Systran--faster-whisper-small
+          key: faster-whisper-small
       - name: Download the Kokoro model if the cache is empty
         working-directory: .
         run: |
@@ -97,6 +102,11 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # the film files Gian supplies (private R2 bucket, S3 API); without these the run uses stock b-roll
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: cinybe-films
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_CLIENT_ID_CINYBE: ${{ secrets.YT_CLIENT_ID_CINYBE }}
@@ -129,6 +139,7 @@ jobs:
             cloud/cinybe-shorts/work/**/meta.json
             cloud/cinybe-shorts/work/**/chapters.json
             cloud/cinybe-shorts/work/**/visuals.json
+            cloud/cinybe-shorts/work/**/windows.json
             cloud/cinybe-shorts/work/**/thumb.jpg
             cloud/cinybe-shorts/work/**/frames/*.jpg
             cloud/cinybe-shorts/work/**/short*.mp4
