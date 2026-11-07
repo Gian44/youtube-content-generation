@@ -49,6 +49,14 @@ def test_title_description_and_chapters():
     assert "- Saturn: https://youtu.be/s1" in d and "Thumbnail photo: Ann" in d and d.rstrip().endswith("#sleepdocumentary")
     many = [{"start": i * 60.0, "title": f"A fairly long chapter title number {i}"} for i in range(400)]
     assert len(marathon.build_description("space & astronomy", segs, 9, many).encode()) <= 4900
+    assert "author and licence on screen" in d
+    paged = [{**s, "credits_url": f"https://c.workers.dev/{s['video_id']}"} for s in segs]
+    d2 = marathon.build_description("space & astronomy", paged, 9, ch)
+    assert "Photo credits for each part: https://c.workers.dev/s1 · https://c.workers.dev/s2 · https://c.workers.dev/s3" in d2
+    assert "on screen" not in d2
+    mixed = [segs[0], *paged[1:]]                                  # one older part still carries on-screen credits
+    d3 = marathon.build_description("space & astronomy", mixed, 9, ch)
+    assert "on screen" in d3 and "Photo credits for the other parts: https://c.workers.dev/s2 · https://c.workers.dev/s3" in d3
 
 
 def test_available_runs_asks_github_per_run():

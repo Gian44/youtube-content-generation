@@ -133,7 +133,12 @@ class Config:
     publish_max_wait_hours: float = 20.0   # the run starts ~08:30 UTC (after the Gemini quota reset), slot ~00:30 UTC
     playlists: bool = True          # add each video to its category playlist (created on first use)
     upload_check_seconds: int = 300  # after upload, poll up to this long for a rejection ("Video is too long", duplicate…)
-    photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos (no external credits page)
+    photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos — only when no credits page (below)
+    # photo credits page (sof/credits_site.py, 2026-11-07): one page per video on Cloudflare Workers KV, linked from
+    # the description, so the frame carries no credit text. Needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.
+    credits_site: bool = True
+    credits_worker: str = "sleep-on-facts-credits"   # → https://<credits_worker>.<account subdomain>.workers.dev/<run id>
+    credits_namespace: str = "sof-credits"           # KV namespace title (created on first use)
     # narration-matched photos (sof/visuals.py + sof/timeline.py): named things get their own photos when named
     photo_timeline: bool = True
     timeline_max_entities: int = 80     # things per video that get their own photos
@@ -175,6 +180,8 @@ class Config:
     yt_client_id: str = ""
     yt_client_secret: str = ""
     yt_refresh_token: str = ""
+    cloudflare_api_token: str = ""   # Workers Scripts + Workers KV Storage edit ("Edit Cloudflare Workers" template)
+    cloudflare_account_id: str = ""
 
     @property
     def target_words(self) -> int:
@@ -202,6 +209,8 @@ class Config:
             yt_client_id=os.environ.get("YT_CLIENT_ID", ""),
             yt_client_secret=os.environ.get("YT_CLIENT_SECRET", ""),
             yt_refresh_token=os.environ.get("YT_REFRESH_TOKEN", ""),
+            cloudflare_api_token=os.environ.get("CLOUDFLARE_API_TOKEN", ""),
+            cloudflare_account_id=os.environ.get("CLOUDFLARE_ACCOUNT_ID", ""),
             claude_enabled=bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")) or os.environ.get("SOF_LLM") == "claude",
         )
         cfg.claude_writer_model = os.environ.get("CLAUDE_WRITER_MODEL") or cfg.claude_writer_model

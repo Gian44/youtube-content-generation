@@ -445,3 +445,80 @@ def test_planner_failure_falls_back_to_the_looped_reel(tmp_path, monkeypatch, ca
     assert pipeline.run(_cfg(tmp_path, photo_timeline=True)) == 0
     assert "render" in calls and "timeline-render" not in calls
     assert "narration-matched photos unavailable (LLM down)" in capsys.readouterr().out
+
+
+class _Site:
+    """Stands in for credits_site.Site: records every page; ``fail`` makes publishing raise like Cloudflare down."""
+    worker = "sleep-on-facts-credits"
+
+    def __init__(self, fail=False):
+        self.pages, self.fail = [], fail
+
+    def publish(self, key, page, **kw):
+        if self.fail:
+            raise pipeline.credits_site.SiteError("kv down")
+        self.pages.append((key, page))
+        return f"https://sleep-on-facts-credits.gian.workers.dev/{key}"
+
+
+def _with_credits(monkeypatch, calls, site, **kw):
+    _fakes(monkeypatch, calls, **kw)
+    monkeypatch.setattr(pipeline.credits_site.Site, "from_config", classmethod(lambda cls, cfg: site))
+    seen = {}
+    orig_reel = pipeline.render.build_reel
+    monkeypatch.setattr(pipeline.render, "build_reel", lambda imgs, tmp, **k: (seen.update(captions=k.get("captions")), orig_reel(imgs, tmp, **k))[1])
+    monkeypatch.setattr(pipeline.shorts, "upload_short", lambda yt, cfg, *, meta, long_video_id, index=0, **k: (
+        seen.update(short_credits_url=k.get("credits_url"), short_rows=k.get("credit_rows")),
+        (f"short{index + 1}", meta["hook_title"] + " #Shorts", None))[1])
+    return seen
+
+
+def test_credits_page_replaces_on_screen_credits(tmp_path, monkeypatch, capsys):
+    calls, site = [], _Site()
+    seen = _with_credits(monkeypatch, calls, site)
+    monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"), [
+        {"url": "u0", "credit": "c", "source": "commons", "artist": "Ann", "license": "CC BY-SA 4.0", "title": "Hive",
+         "page": "https://commons.wikimedia.org/wiki/File:Hive.jpg"},
+        {"url": "u1", "credit": "c", "source": "commons", "artist": "Bo", "license": "Public domain"},
+        {"url": "u2", "credit": "c", "source": "pexels", "artist": "Cy", "license": "Pexels License"}])[1])
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "photo credits: page on Cloudflare (sleep-on-facts-credits); none on screen" in out
+    assert "on-screen credits: 0 of 3 photos" in out and "credits page: https://sleep-on-facts-credits.gian.workers.dev/" in out
+    assert seen["captions"] == {}                                         # nothing burned into the frame
+    desc = pipeline._UPLOADS[0]["snippet"]["description"]
+    url = "https://sleep-on-facts-credits.gian.workers.dev/2026-"
+    assert "Photo credits (authors and licences): " + url in desc and "on screen" not in desc and "Ann" not in desc
+    assert seen["short_credits_url"].startswith(url)
+    rows = json.loads((tmp_path / "ledger.json").read_text())
+    assert rows[0]["credits_url"].startswith(url) and rows[0]["credits_url"].endswith("-whales")
+    # the page: written before the upload, then again with the video link; it names Ann with her licence
+    assert [k for k, _ in site.pages] == [rows[0]["credits_url"].rsplit("/", 1)[1]] * 2
+    first, second = site.pages[0][1], site.pages[1][1]
+    assert "Ann" in first and "CC BY-SA 4.0" in first and "Hive" in first and "youtu.be" not in first
+    assert 'href="https://youtu.be/vid123"' in second and "1 public-domain or CC0 photo" in second and "Pexels" in second
+
+
+def test_credits_page_failure_names_the_authors_in_the_description(tmp_path, monkeypatch, capsys):
+    calls, site = [], _Site(fail=True)
+    seen = _with_credits(monkeypatch, calls, site)
+    monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"), [
+        {"url": f"u{i}", "credit": "c", "source": "commons", "artist": f"Author {i}", "license": "CC BY 4.0"} for i in range(3)])[1])
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    assert "! credits page unavailable (kv down); credits go in the description" in capsys.readouterr().out
+    desc = pipeline._UPLOADS[0]["snippet"]["description"]
+    assert "Photo credits (Wikimedia Commons): Author 0 (CC BY 4.0); Author 1 (CC BY 4.0); Author 2 (CC BY 4.0)." in desc
+    assert "workers.dev" not in desc and "on screen" not in desc
+    assert seen["captions"] == {} and seen["short_credits_url"] == ""   # the Short lists its own authors
+    assert "credits_url" not in json.loads((tmp_path / "ledger.json").read_text())[0]
+
+
+def test_no_cloudflare_secrets_keeps_the_on_screen_credits(tmp_path, monkeypatch, capsys):
+    calls = []
+    seen = _with_credits(monkeypatch, calls, None)
+    monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"), [
+        {"url": f"u{i}", "credit": "c", "source": "commons", "artist": "Ann", "license": "CC BY 4.0"} for i in range(2)])[1])
+    assert pipeline.run(_cfg(tmp_path)) == 0
+    assert "photo credits: on screen (no CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)" in capsys.readouterr().out
+    assert len(seen["captions"]) == 2 and all(v.startswith("Photo: Ann · CC BY 4.0") for v in seen["captions"].values())
+    assert "author and licence on screen" in pipeline._UPLOADS[0]["snippet"]["description"]

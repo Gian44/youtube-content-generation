@@ -19,8 +19,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import (captions, cues, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail, timeline, topicgen,
-                 topics, tts, upload, vision, visuals)
+from sof import (captions, credits_site, cues, footage, images, ledger, music, render, research, script, seo, shorts, thumbnail,
+                 timeline, topicgen, topics, tts, upload, vision, visuals)
 from sof.config import Config
 from sof.llm import LLM
 from sof.prompts import STORY_FORMATS, STORY_ORDER
@@ -77,6 +77,12 @@ def run(cfg: Config) -> int:
           flush=True)
     vis = vision.Vision.from_config(cfg)
     print(f"photo checks: {vis.describe()}", flush=True)
+    # Photo credits: on the video's own page (clean frame) when Cloudflare is configured, else on screen.
+    site = credits_site.Site.from_config(cfg)
+    on_screen = cfg.photo_captions and site is None
+    print("photo credits: " + (f"page on Cloudflare ({site.worker}); none on screen" if site else
+                               "on screen" + ("" if cfg.photo_captions else " off") +
+                               ("" if not cfg.credits_site else " (no CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)")), flush=True)
     print(f"voice: {tts.voice_label(cfg)}" + (" (free, on the runner)" if cfg.tts_backend in ("kokoro", "pocket") else ""),
           flush=True)
     seeds = topics.load_topics(cfg.topics_path)
@@ -233,7 +239,7 @@ def run(cfg: Config) -> int:
         if not reel.exists():
             built = None
             if slots:
-                caps = _slot_captions(slots, used, img_dir, work / "entities") if cfg.photo_captions else {}
+                caps = _slot_captions(slots, used, img_dir, work / "entities") if on_screen else {}
                 print(f"on-screen credits: {len(caps)} of {len(set(slots))} photos", flush=True)
                 try:
                     built = timeline.build_timeline_reel(
@@ -244,7 +250,7 @@ def run(cfg: Config) -> int:
                     log.exception("timeline render failed")
                     print(f"! timeline render failed ({exc}); falling back to the looped subject reel", flush=True)
             if built is None:
-                caps = captions.captions_for(image_paths, used) if cfg.photo_captions else {}
+                caps = captions.captions_for(image_paths, used) if on_screen else {}
                 print(f"on-screen credits: {len(caps)} of {len(image_paths)} photos", flush=True)
                 built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
                                           crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
@@ -291,7 +297,7 @@ def run(cfg: Config) -> int:
         try:
             plan = json.loads(plan_path.read_text(encoding="utf-8")).get("plan") if plan_path.exists() else None
             creds = _slot_captions(list(set([p for p in image_paths] + [str(r.get("image")) for r in (plan or []) if r.get("image")])),
-                                   used, img_dir, work / "entities")
+                                   used, img_dir, work / "entities") if on_screen else {}
             short_metas = shorts.make_all(cfg, llm=llm, work=work, topic=name, sections=secs, plan=plan, reel=image_paths,
                                           labels=labels, credits=creds, count=cfg.shorts_count)
             for m in short_metas:
@@ -306,6 +312,17 @@ def run(cfg: Config) -> int:
     if cfg.skip_upload:
         print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
         return EXIT_OK
+    # 5c. The photo-credits page: every photo the long video and its Shorts show, published before the
+    # upload so the description can link it. Fails soft: the authors then go into the description.
+    credit_rows = _credit_rows([*(slots or image_paths), *[p for m in short_metas for p in m.get("photos", [])]],
+                               used, img_dir, work / "entities")
+    page_key = credits_site.page_key(run_id, smoke=cfg.is_smoke)
+    credits_url = credits_site.publish_credits(site, key=page_key, rows=credit_rows, title=name, date=today)
+    if site is not None:
+        photos_line = captions.description_line(credits_url) if credits_url else captions.inline_credits(credit_rows)
+    else:
+        photos_line = captions.DESCRIPTION_LINE
+
     _stage("upload")
     variant = len(rows) % seo.TITLE_VARIANTS             # a different title shape from one video to the next
     title = seo.build_title(name, seo_category, hours, hook=sc.title_hook, variant=variant)
@@ -313,7 +330,7 @@ def run(cfg: Config) -> int:
     blurb = (f"Tonight: {shape['opening'].format(subject=name)}. " if shape else "") + (sc.blurb or "")
     description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=blurb,
                                         chapters=chapters, footer=sc.footer or sc.description,
-                                        photos=captions.DESCRIPTION_LINE, extra=_thumbnail_credit(thumb, used))
+                                        photos=photos_line, extra=_thumbnail_credit(thumb, used))
     tags = seo.build_tags(name, seo_category, sc.tags)
     publish_at = None
     if cfg.schedule_publish and not cfg.is_smoke and cfg.privacy == "public":
@@ -348,7 +365,7 @@ def run(cfg: Config) -> int:
             rows_for_credit += [r for p, r in visuals.credits_by_path(str(work / "entities")).items() if Path(p).resolve() in mine]
             sid, stitle, s_at = shorts.upload_short(yt, cfg, meta=short_meta, long_video_id=video_id, long_publish_at=publish_at,
                                                     topic=name, category=seo_category, hours=hours,
-                                                    credit_rows=rows_for_credit, index=k)
+                                                    credit_rows=rows_for_credit, index=k, credits_url=credits_url)
             short_entries.append({"video_id": sid, "title": stitle, "seconds": short_meta["seconds"], "publish_at": s_at})
             print(f"short {k + 1} uploaded https://youtu.be/{sid}: {stitle}" + (f" · scheduled for {s_at}" if s_at else ""),
                   flush=True)
@@ -370,6 +387,10 @@ def run(cfg: Config) -> int:
                                       else 0.80) + 0.03 * len(short_entries), 2),
         "run_url": _run_url(),
     }
+    if credits_url:                        # the page now also links the video it credits (best-effort)
+        entry["credits_url"] = credits_url
+        credits_site.publish_credits(site, key=page_key, rows=credit_rows, title=name, date=today,
+                                     video_url=f"https://youtu.be/{video_id}", shorts=len(short_entries), quiet=True)
     if cfg.is_smoke:
         print(f"smoke run uploaded as https://youtu.be/{video_id} (unlisted); ledger not written", flush=True)
         return EXIT_OK
@@ -477,15 +498,37 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
     return slots
 
 
-def _slot_captions(slots: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, str]:
-    """path → on-screen credit for every slot photo whose licence needs one (reel + per-thing photos)."""
+def _rows_by_path(used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, dict]:
+    """absolute photo path → credits.json row, for the reel and the per-thing / per-passage photos."""
     rows = {str((img_dir / str(r.get("file"))).resolve()): r for r in used if r.get("file")}
     rows.update(visuals.credits_by_path(str(entity_dir)))           # missing folder → {}
+    return rows
+
+
+def _slot_captions(slots: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, str]:
+    """path → on-screen credit for every slot photo whose licence needs one (reel + per-thing photos)."""
+    rows = _rows_by_path(used, img_dir, entity_dir)
     out = {}
     for p in set(slots):
         row = rows.get(str(Path(p).resolve()))
         if row and captions.needs_credit(row):
             out[p] = captions.caption_text(row)
+    return out
+
+
+def _credit_rows(paths: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> list[dict]:
+    """Credit rows (all sources, credited or not) for the photos in ``paths``, in order of first appearance —
+    what the credits page lists. Footage clips and unknown files have no row and are skipped."""
+    rows = _rows_by_path(used, img_dir, entity_dir)
+    out, seen = [], set()
+    for p in paths:
+        key = str(Path(str(p)).resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        row = rows.get(key)
+        if row:
+            out.append(row)
     return out
 
 

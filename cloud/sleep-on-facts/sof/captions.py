@@ -1,9 +1,12 @@
-"""On-screen photo credits.
+"""Photo credits: on screen, on the credits page, or in the description.
 
 Wikimedia Commons photos under CC BY / CC BY-SA (and the Commons "Attribution" licence) must credit
-their author. The channel does not link an external credits page (Gian, 2026-10-11: no link that leads
-to the code), so each such photo carries a small, dim caption while it is on screen, and every
-description carries one licence line. Public-domain, CC0, NASA, Pexels and Pixabay photos need no credit.
+their author. Since 2026-11-07 the credit lives on the video's own page (sof/credits_site.py, on
+Cloudflare — nothing there leads to the code, which was the 2026-10-11 objection to a credits page) and
+the description carries one line with the link; the frame stays clean. Without that page (secrets
+missing, or Cloudflare down for the run) the older forms still apply: a small, dim caption while the
+photo is on screen when the video is yet to be rendered, else the author list in the description.
+Public-domain, CC0, NASA, Pexels and Pixabay photos need no credit.
 """
 
 from __future__ import annotations
@@ -13,9 +16,43 @@ from pathlib import Path
 
 _ATTRIBUTION = re.compile(r"\bCC[ -]?BY\b|^Attribution\b", re.I)
 
-DESCRIPTION_LINE = ("Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay; footage: Pexels and Pixabay. "
-                    "Photos that need a credit show their author and licence on screen. "
-                    "Licences: https://creativecommons.org/licenses/")
+SOURCES = "Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay; footage: Pexels and Pixabay."
+LICENCES = "Licences: https://creativecommons.org/licenses/"
+DESCRIPTION_LINE = f"{SOURCES} Photos that need a credit show their author and licence on screen. {LICENCES}"
+
+
+def description_line(urls: list[str] | str | None = None) -> str:
+    """The description's photo line: with credits-page URL(s) it points there; without, the on-screen form."""
+    urls = [u for u in ([urls] if isinstance(urls, str) else (urls or [])) if u]
+    if not urls:
+        return DESCRIPTION_LINE
+    if len(urls) == 1:
+        return f"{SOURCES} Photo credits (authors and licences): {urls[0]}"
+    return f"{SOURCES} Photo credits for each part: " + " · ".join(urls)
+
+
+def inline_credits(rows: list[dict], *, budget: int = 1800) -> str:
+    """Fallback description line naming every author that must be credited, within ``budget``
+    characters (one entry per author + licence; cut with "and others" rather than mid-name)."""
+    parts: list[str] = []
+    for r in rows:
+        if not needs_credit(r):
+            continue
+        part = f"{_short(_clean(r.get('artist')), 60) or 'Unknown author'} ({str(r.get('license') or '').strip()})"
+        if part not in parts:
+            parts.append(part)
+    if not parts:
+        return DESCRIPTION_LINE.replace(" Photos that need a credit show their author and licence on screen.", "")
+    head, tail = f"{SOURCES} Photo credits (Wikimedia Commons): ", f". {LICENCES}"
+    body, kept = "", 0
+    for p in parts:
+        trial = body + ("; " if body else "") + p
+        if len(head) + len(trial) + len(tail) + len("; and others") > budget:
+            break
+        body, kept = trial, kept + 1
+    if kept < len(parts):
+        body += "; and others"
+    return head + body + tail
 
 
 def needs_credit(row: dict) -> bool:

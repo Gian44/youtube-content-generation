@@ -152,6 +152,28 @@ def test_upload_short_schedules_after_the_long_video():
     assert "https://youtu.be/LONG1" in seen["body"]["snippet"]["description"] and "Ann" in seen["body"]["snippet"]["description"]
 
 
+def test_short_description_links_the_credits_page_instead_of_naming_authors():
+    d = shorts.short_description(long_video_id="L", topic="Venice", category="cities", hours=3,
+                                 credit_lines=["Ann · CC BY-SA 4.0 · Wikimedia Commons"], credits_url="https://c.workers.dev/2026-11-07-venice")
+    assert "Photo credits (authors and licences): https://c.workers.dev/2026-11-07-venice" in d and "Ann" not in d
+    assert d.rstrip().endswith("#sleep #geography #Venice") or "#Shorts" in d
+
+
+def test_title_band_keeps_every_word(tmp_path):
+    from PIL import Image, ImageDraw
+    d = ImageDraw.Draw(Image.new("RGBA", (1080, 1920)))
+    long = "Earliest Jet Propulsion Was a Wooden Bird, 400 BC"      # 2026-11-07: lost its "BC" to a 2-line cut
+    lines, size = shorts.title_lines(d, long, width=1080, height=1920)
+    assert " ".join(lines) == long.upper() and len(lines) <= 3 and size >= 46
+    short, size2 = shorts.title_lines(d, "Venice Stands on 10 Million Logs", width=1080, height=1920)
+    assert len(short) <= 2 and size2 == 58                          # two lines at full size, as before
+    silly, _ = shorts.title_lines(d, "word " * 40, width=1080, height=1920)
+    assert len(silly) == 3 and silly[-1].endswith(" …")
+    out = shorts.title_png(long, "Sleep On Facts", str(tmp_path / "t.png"), width=1080, height=1920)
+    box = Image.open(out).getchannel("A").getbbox()
+    assert box and box[3] / 1920 <= 0.26                            # the band ends above the photo (28 % down)
+
+
 THREE = [{"heading": "The Lagoon", "body": "The city sits on 118 islands. " * 20},
          {"heading": "Wooden Foundations", "body": "Millions of alder logs hold the city up. " * 20},
          {"heading": "Glass", "body": "Murano glassmakers were not allowed to leave. " * 20}]

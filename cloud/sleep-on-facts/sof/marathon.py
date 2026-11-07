@@ -110,9 +110,13 @@ def build_description(category: str, segments: list[dict], hours: int, chapters:
     originals = "The original videos:\n" + "\n".join(f"- {n}: https://youtu.be/{s['video_id']}" for n, s in zip(names, segments))
     from sof import captions
 
+    # Parts made since 2026-11-07 carry no on-screen credit: their ledger row links the credits page.
+    pages = [str(s.get("credits_url") or "") for s in segments if s.get("credits_url")]
     parts = [head, ("Chapters\n" + "\n".join(lines)) if lines else "", originals,
              "Facts in these videos are drawn from Wikipedia (CC BY-SA 4.0); each original video lists its sources.",
-             captions.DESCRIPTION_LINE, *[c for c in (thumb_credits or []) if c],
+             captions.description_line(pages) if len(pages) == len(segments) else
+             (captions.DESCRIPTION_LINE + (" Photo credits for the other parts: " + " · ".join(pages) if pages else "")),
+             *[c for c in (thumb_credits or []) if c],
              " ".join(["#sleep", f"#{p.hashtag}", "#sleepdocumentary"])]
     text = "\n\n".join(x for x in parts if x)
     while len(text.encode("utf-8")) > 4900 and lines:

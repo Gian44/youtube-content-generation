@@ -116,9 +116,26 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 ## Secrets (repo → Settings → Secrets → Actions)
 
 `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `HF_TOKEN`, `OPENAI_API_KEY` (optional now), `GEMINI_API_KEY`, `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`,
-`YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`. The YouTube token is the Sleep On Facts channel's
+`YT_CLIENT_SECRET`, `YT_REFRESH_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`. The YouTube token is the Sleep On Facts channel's
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
+
+## Photo credits page (2026-11-07)
+
+CC BY / CC BY-SA photos must name their author. Until 2026-11-07 that credit was burned into the frame
+(the old GitHub Pages credits page gave the repo away); now each video gets its own page on Cloudflare —
+`https://sleep-on-facts-credits.<account subdomain>.workers.dev/<run id>` — listing every credited photo
+with author, licence link and Commons file page, plus the sources that need no credit and what was changed.
+The description carries one line with the link (the CC licences accept a link to a page that holds the
+attribution); the Shorts link the same page; a marathon links each part's page. The frame carries nothing.
+
+Setup, once: a Cloudflare API token from the **Edit Cloudflare Workers** template (Workers Scripts + Workers
+KV Storage edit) → secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` → run the
+**sleep-on-facts credits site** workflow (or `python -m sof.credits_site deploy` with both in the
+environment). It creates the `sof-credits` KV namespace, deploys the `sleep-on-facts-credits` Worker and
+writes a `test` page. The daily run checks the site's root before every upload and re-deploys the Worker
+itself if it stopped answering. Without the two secrets the video keeps the on-screen credits; with them
+but Cloudflare down for the run, the authors are listed in the description instead (`sof/captions.py`).
 
 ## Cost per video
 
@@ -135,9 +152,9 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 | `repackage.py`, `sof/repackage.py` | re-title / re-thumbnail / rename chapters of live videos |
 | `marathon.py`, `sof/marathon.py` | weekly ~9-hour compilation from kept media artifacts |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
-| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, render, thumbnail, seo, credits, upload, ledger, pipeline`) |
+| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, render, thumbnail, seo, captions, credits_site, upload, ledger, pipeline`) |
+| `sof/credits_site.py` | the per-video photo-credits page on Cloudflare (Workers KV + Worker), published before each upload |
 | `sof/noslop.py` | the no-AI-slop lint + targeted rewrite + the prompt text of the rules; rules ported from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) (MIT) and adapted for spoken narration. Vendored verbatim into `apps/worker/storyfactory/services/noslop.py` (a worker test keeps the two identical) |
-| `../../docs/credits/` | one photo-credits page per video (GitHub Pages), linked from its description — required for CC BY/BY-SA photos |
 | `tests/` | unit tests (mocked HTTP) + one real-ffmpeg render test |
 
 Each run works in `work/<date>-<topic>/` and resumes from existing stage outputs if re-run

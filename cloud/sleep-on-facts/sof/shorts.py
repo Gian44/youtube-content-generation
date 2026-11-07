@@ -299,15 +299,36 @@ def caption_png(text: str, out: str, *, width: int, height: int) -> str:
     return out
 
 
+def title_lines(d, title: str, *, width: int, height: int, max_lines: int = 3) -> tuple[list[str], int]:
+    """(lines, font size) for the title band: two lines at full size when they fit, else the font steps
+    down, else a third line; only a title too long for three lines at the smallest size is cut, with "…"
+    (2026-11-07: "… A Wooden Bird, 400 BC" lost its "BC" to a hard two-line cut)."""
+    sizes = [max(36, round(height * f)) for f in (0.03, 0.027, 0.024)]
+    max_w = int(width * 0.84)
+    best: tuple[list[str], int] | None = None
+    for limit in (2, max_lines):
+        for size in sizes:
+            lines = _wrap(d, title.upper(), _font(size), max_w)
+            if len(lines) <= limit:
+                return lines, size
+            best = (lines, size)
+    lines, size = best or ([title.upper()], sizes[-1])
+    lines = lines[:max_lines]
+    font, last = _font(size), lines[-1]
+    while last and d.textlength(last + " …", font=font) > max_w:
+        last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
+    lines[-1] = last.rstrip(" ,;") + " …"
+    return lines, size
+
+
 def title_png(title: str, brand: str, out: str, *, width: int, height: int) -> str:
     """Persistent top band: the Short's title plus the channel name, under the Shorts' own top UI."""
     from PIL import Image, ImageDraw
 
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    size = max(36, round(height * 0.03))
+    lines, size = title_lines(d, title, width=width, height=height)
     font, small = _font(size), _font(max(24, round(height * 0.018)), bold=False)
-    lines = _wrap(d, title.upper(), font, int(width * 0.84))[:2]
     y = round(height * 0.12)
     for line in lines:
         x = (width - d.textlength(line, font=font)) / 2
@@ -470,12 +491,17 @@ def short_title(hook_title: str, topic: str) -> str:
     return t
 
 
-def short_description(*, long_video_id: str, topic: str, category: str, hours: int, credit_lines: list[str]) -> str:
+def short_description(*, long_video_id: str, topic: str, category: str, hours: int, credit_lines: list[str],
+                      credits_url: str = "") -> str:
+    """``credits_url`` (the long video's credits page, which lists the Shorts' photos too) replaces the
+    author list; without it the authors are named here, as before 2026-11-07."""
     p = seo.profile(category)
     lines = [f"Full video — {seo.hours_label(hours).lower()} of calm {p.phrase.lower()} about {seo._clean(topic)} to fall asleep to:",
              f"https://youtu.be/{long_video_id}", "",
              "Sleep On Facts: long, gentle, true narrations to drift off to. New long video several nights a week."]
-    if credit_lines:
+    if credits_url:
+        lines += ["", f"Photo credits (authors and licences): {credits_url}"]
+    elif credit_lines:
         lines += ["", "Photos: " + "; ".join(credit_lines)[:600] + ". Licences: https://creativecommons.org/licenses/"]
     lines += ["", " ".join(["#Shorts", *seo.hashtags(topic, category)])]
     return seo._clean("\n".join(lines))[:4900]
@@ -576,13 +602,14 @@ def make_all(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], pla
 
 
 def upload_short(yt, cfg, *, meta: dict, long_video_id: str, long_publish_at: str | None, topic: str, category: str,
-                 hours: int, credit_rows: list[dict], index: int = 0) -> tuple[str, str, str | None]:
+                 hours: int, credit_rows: list[dict], index: int = 0, credits_url: str = "") -> tuple[str, str, str | None]:
     """Upload the rendered Short; returns ``(video_id, title, publish_at)``."""
     from sof import upload
 
     title = short_title(meta["hook_title"], topic)
     credit_lines = sorted({cap_mod.caption_text(r).removeprefix("Photo: ") for r in credit_rows if cap_mod.needs_credit(r)})
-    desc = short_description(long_video_id=long_video_id, topic=topic, category=category, hours=hours, credit_lines=credit_lines)
+    desc = short_description(long_video_id=long_video_id, topic=topic, category=category, hours=hours, credit_lines=credit_lines,
+                             credits_url=credits_url)
     publish_at = (short_publish_at(long_publish_at, delay_minutes=cfg.shorts_delay_minutes, index=index,
                                    spacing_hours=cfg.shorts_spacing_hours) if cfg.privacy == "public" else None)
     body = upload.video_body(title=title, description=desc, tags=short_tags(topic, category), privacy=cfg.privacy,
