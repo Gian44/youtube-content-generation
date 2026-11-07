@@ -1339,5 +1339,85 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42248644322"
+  },
+  {
+    "date": "2026-11-07",
+    "topic": "Mars",
+    "category": "space & astronomy",
+    "wiki_title": "Mars",
+    "video_id": "k_ON3Xlxthk",
+    "title": "Why Mars Looks Red in the Night Sky | Space Facts for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-08T01:30:00Z",
+    "duration_seconds": 7775,
+    "words": 19006,
+    "images": 139,
+    "image_sources": {
+      "commons": 111,
+      "nasa": 28,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "parts",
+    "title_variant": 3,
+    "timeline": {
+      "slots": 389,
+      "thing_slots": 188,
+      "cue_slots": 116,
+      "things_shown": 39,
+      "distinct_photos": 275,
+      "lag_median": 1.79
+    },
+    "short": {
+      "video_id": "DLdHKlrw0Ps",
+      "title": "Olympus Mons Rises 21.9 Kilometres Above Mars #Shorts",
+      "seconds": 35.6,
+      "publish_at": "2026-11-08T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "DLdHKlrw0Ps",
+        "title": "Olympus Mons Rises 21.9 Kilometres Above Mars #Shorts",
+        "seconds": 35.6,
+        "publish_at": "2026-11-08T02:30:00Z"
+      },
+      {
+        "video_id": "kth2Fs43yTU",
+        "title": "Phobos and Deimos Are Shaped Like Potatoes #Shorts",
+        "seconds": 41.6,
+        "publish_at": "2026-11-09T02:30:00Z"
+      },
+      {
+        "video_id": "-v64l0x07vo",
+        "title": "Mars's Polar Ice Could Cover It 11 Metres Deep #Shorts",
+        "seconds": 31.2,
+        "publish_at": "2026-11-10T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 39,
+      "after": 9,
+      "paragraphs": 252,
+      "rewritten": 27,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 6,
+        "robotic_rhythm": 3
+      }
+    },
+    "llm_calls": {
+      "claude": 81,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 192,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42384037879"
   }
 ]
