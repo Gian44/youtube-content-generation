@@ -1,1 +1,69 @@
-[]
+[
+  {
+    "date": "2026-11-07",
+    "kind": "video",
+    "film": "Inception",
+    "year": 2010,
+    "theme": "Christopher Nolan",
+    "topic": "Inception (2010)",
+    "video_id": "ZOYe-hdO_S4",
+    "title": "Inception 2010 and the Idea Cobb Must Plant | Full Recap",
+    "privacy": "public",
+    "uploaded_at": "2026-11-07T17:16:16+00:00",
+    "duration_seconds": 490,
+    "words": 1209,
+    "acts": 13,
+    "plot_source": "wikipedia",
+    "plot_url": "https://en.wikipedia.org/wiki/Inception#Plot",
+    "plot_words": 677,
+    "footage_clips": 39,
+    "shorts": [
+      {
+        "video_id": "4TuxB0KjMSo",
+        "title": "Inception (2010) The Rain Level Goes Wrong #Shorts",
+        "seconds": 20,
+        "publish_at": "2026-11-07T18:16:16Z",
+        "act_index": 4
+      },
+      {
+        "video_id": "K-rrLmKGst0",
+        "title": "Inception (2010) What Happened to Mal #Shorts",
+        "seconds": 20,
+        "publish_at": "2026-11-08T18:16:16Z",
+        "act_index": 6
+      },
+      {
+        "video_id": "Aquf0BFdZFk",
+        "title": "Inception (2010) The Fortress Falls Apart #Shorts",
+        "seconds": 19,
+        "publish_at": "2026-11-09T18:16:16Z",
+        "act_index": 8
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 2,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 13,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42393280771"
+  }
+]
