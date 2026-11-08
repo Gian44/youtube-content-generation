@@ -55,8 +55,9 @@ class Config:
     shorts_spacing_hours: float = 24.0
     upload_check_seconds: int = 300
     # the film itself (Gian, 2026-11-08: "use clips from the movies/shows" — and "if it is not from the movie itself, do
-    # not post anything"): files he supplies in a private R2 bucket; acts aligned via the .srt (writer call) or
-    # faster-whisper on the runner; a few shots per act under the narration. No stock fallback.
+    # not post anything"): files he drops in the Drive folder (or an R2 bucket), or public-domain prints the run
+    # fetches from the Internet Archive; the .srt (supplied, OpenSubtitles, or whisper) is the transcript the
+    # script is written from. No stock fallback.
     gdrive_service_account_json: str = ""   # the service account key file's content (GDRIVE_SERVICE_ACCOUNT_JSON)
     gdrive_folder_id: str = ""              # GDRIVE_FOLDER_ID, or the folder is found by name:
     gdrive_folder: str = "cinybe-films"
@@ -74,6 +75,14 @@ class Config:
     transcript_max_chars: int = 90000    # ≈ 22k tokens of "[mm:ss] dialogue" lines for the acts call
     film_dim: float = 1.0
     delete_after: bool = True            # the store is a queue: a published film's file is removed
+    # films the pipeline fetches itself (Gian, 2026-11-08): public-domain prints on the Internet Archive, one
+    # `archive: <item identifier>` per film in films.yml; subtitles from OpenSubtitles (hash match first) when the
+    # item ships none; faster-whisper last
+    archive_max_bytes: int = 5_000_000_000      # the runner disk: ~14 GB free minus deps, models, shots
+    opensubtitles_api_key: str = ""      # OPENSUBTITLES_API_KEY (+ USERNAME / PASSWORD: downloads need a login)
+    opensubtitles_username: str = ""
+    opensubtitles_password: str = ""
+    opensubtitles_languages: str = "en"
     sof: SofConfig = field(default_factory=SofConfig)
 
     @property
@@ -114,6 +123,9 @@ class Config:
         cfg.r2_access_key_id = os.environ.get("R2_ACCESS_KEY_ID", cfg.r2_access_key_id)
         cfg.r2_secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY", cfg.r2_secret_access_key)
         cfg.r2_bucket = os.environ.get("R2_BUCKET") or cfg.r2_bucket
+        cfg.opensubtitles_api_key = os.environ.get("OPENSUBTITLES_API_KEY", "")
+        cfg.opensubtitles_username = os.environ.get("OPENSUBTITLES_USERNAME", "")
+        cfg.opensubtitles_password = os.environ.get("OPENSUBTITLES_PASSWORD", "")
         cfg.sof = SofConfig.from_env(minutes=cfg.minutes, skip_upload=cfg.skip_upload, work_dir=cfg.work_dir)
         cfg.sof.shorts_brand = cfg.brand
         if cfg.is_smoke:

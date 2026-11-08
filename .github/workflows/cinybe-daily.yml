@@ -4,8 +4,9 @@ on:
   schedule:
     # Daily at 09:41 UTC (17:41 Manila); the pipeline itself keeps to one film every 2nd day (films.ran_recently,
     # gap 36 h), so a late GitHub start never skips a day for good. After the sleep run (08:23) so the two
-    # never queue on the same minute. Gian, 2026-11-07. A run with no film file in the Drive folder exits before
-    # any narration is spent and posts nothing (Gian, 2026-11-08: no stock fallback, ever).
+    # never queue on the same minute. Gian, 2026-11-07. The film is Gian's file in the Drive folder or, when that is
+    # empty, the next public-domain print from the Internet Archive (films.yml `archive:`); nothing else, ever
+    # (Gian, 2026-11-08: no stock fallback). No film to be had → the run exits before any narration is spent.
     - cron: "41 9 * * *"
   workflow_dispatch:
     inputs:
@@ -97,6 +98,10 @@ jobs:
           GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
           GDRIVE_FOLDER: cinybe-films
+          # subtitles for a film file that has none (hash match first); without these the runner transcribes on the CPU
+          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          OPENSUBTITLES_USERNAME: ${{ secrets.OPENSUBTITLES_USERNAME }}
+          OPENSUBTITLES_PASSWORD: ${{ secrets.OPENSUBTITLES_PASSWORD }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -124,7 +129,7 @@ jobs:
           rc=0; python run.py "${ARGS[@]}" || rc=$?
           if [ "$rc" = "5" ]; then
             # no film in the store: by design nothing is posted — a green run with a notice, not a daily red X
-            echo "::notice title=cinybe: nothing posted::no queued film has its file in Drive/cinybe-films — drop <slug>.mkv + <slug>.srt there"
+            echo "::notice title=cinybe: nothing posted::no queued film could be had (Drive folder empty, archive queue exhausted or skipped)"
             exit 0
           fi
           exit "$rc"

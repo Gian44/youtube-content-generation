@@ -1,8 +1,9 @@
 """The film queue is a committed file: ``films.yml`` lists themes in order, each with its films in order.
 
-The run takes the first film that has no ledger row (``kind: video`` published it; ``kind: skipped`` means its
-plot was too thin — add ``plots/<slug>.md`` and the next run takes it again). The ledger, not the YAML, holds
-the state, so the operator task only ever appends films to the YAML or synopses to ``plots/``.
+The run takes the first film that has no ledger row (``kind: video`` published it; ``kind: skipped`` means the
+run gave up on it — too few dialogue cues, no usable shots — and it is passed over until its ledger row is
+removed). A film with ``archive: <identifier>`` is a public-domain print the run downloads itself from the
+Internet Archive; the others wait for Gian's file in the store. The ledger, not the YAML, holds the state.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ class Film:
     title: str
     year: int | None
     theme: str
+    archive: str | None = None      # Internet Archive item identifier: the run fetches this public-domain print itself
 
     @property
     def slug(self) -> str:
@@ -41,12 +43,14 @@ def load_films(path: str) -> list[Film]:
     for theme in data.get("themes") or []:
         name = str(theme.get("name") or "").strip()
         for row in theme.get("films") or []:
+            archive = None
             if isinstance(row, str):
                 title, year = row, None
             else:
                 title, year = str(row.get("title") or "").strip(), row.get("year")
+                archive = (str(row.get("archive") or "").strip() or None)
             if title:
-                out.append(Film(title=title, year=int(year) if year else None, theme=name))
+                out.append(Film(title=title, year=int(year) if year else None, theme=name, archive=archive))
     return out
 
 

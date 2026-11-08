@@ -1,5 +1,6 @@
-"""Orchestration, recap-channel style: the next queued film whose file is in the bucket → its subtitles become the
-transcript (faster-whisper when there is no .srt) → Wikipedia plot as optional reference → acts with their time
+"""Orchestration, recap-channel style: the next queued film whose file is in the store — or a public-domain print
+the run fetches from the Internet Archive itself — → its subtitles become the transcript (OpenSubtitles when the
+file has none, faster-whisper last) → Wikipedia plot as optional reference → acts with their time
 ranges + the narration (Claude) → shots cut from the film, in order, before any narration is spent → voice →
 long recap + Shorts → upload → ledger.
 
@@ -23,7 +24,7 @@ from sof import ledger, music, tts, upload
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from cny import align, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, thumbnail, visuals
+from cny import align, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, subs, thumbnail, visuals
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
@@ -41,20 +42,38 @@ def _run_url() -> str:
 
 
 def pick_film(cfg: Config, rows: list[dict], keys: list[str]) -> tuple[films.Film, store.FilmFiles] | None:
-    """The first queued film whose file is in the bucket (``keys``); None when no queued film has one."""
+    """The first queued film the run can have: its file is in the store (``keys``), or it is an ``archive:`` film
+    the run downloads itself. None when no queued film has either."""
     all_films = films.load_films(cfg.films_path)
     cands = [films.find_film(all_films, cfg.film, cfg.year)] if cfg.film else films.next_films(all_films, rows, limit=cfg.max_candidates)
     missing: list[str] = []
     for f in cands:
         files = store.match_keys(f.slug, keys)
+        if not files.video_key and f.archive:
+            files = store.archive_files(f.slug, f.archive)
         if files.video_key:
             if missing:
-                print("queued, no file in the bucket yet: " + "; ".join(missing[:8]), flush=True)
+                print("queued, no file in the store yet: " + "; ".join(missing[:8]), flush=True)
             return f, files
         missing.append(f.label)
     if missing:
-        print("queued, no file in the bucket yet: " + "; ".join(missing[:8]) + (" …" if len(missing) > 8 else ""), flush=True)
+        print("queued, no file in the store yet: " + "; ".join(missing[:8]) + (" …" if len(missing) > 8 else ""), flush=True)
     return None
+
+
+def give_up(cfg: Config, film: films.Film, files: store.FilmFiles, *, today: str, reason: str) -> int:
+    """A dead end (too few cues, no shots, planning failed). An Archive film gets a ``kind: skipped`` ledger row so
+    the queue moves on instead of downloading it again tomorrow; Gian's own file stays queued (he fixes the file,
+    the next run tries again). Always EXIT_NO_FILM: nothing was posted."""
+    print(f"✗ {reason}; nothing posted", flush=True)
+    if files.source == "archive" and not cfg.film and not cfg.is_smoke:
+        entry = {"date": today, "kind": "skipped", "film": film.title, "year": film.year, "theme": film.theme, "topic": film.label,
+                 "video_id": f"skipped-{film.slug}-{today}", "reason": reason, "film_file": files.video_key, "run_url": _run_url()}
+        ledger.append_entry(cfg.ledger_path, entry)
+        if os.environ.get("GITHUB_ACTIONS"):
+            ledger.git_commit_and_push(cfg.ledger_path, entry)
+        print(f"ledger: {film.label} skipped ({reason}); remove the row to retry", flush=True)
+    return EXIT_NO_FILM
 
 
 def reference_plot(cfg: Config, film: films.Film, work: Path) -> tuple[meta_mod.MovieMeta, plot_mod.PlotText | None]:
@@ -113,42 +132,60 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     print(f"voice: {tts.voice_label(cfg.sof)}", flush=True)
 
     _stage("film")
-    if not store.configured(cfg):
-        print("✗ no film store: set GDRIVE_SERVICE_ACCOUNT_JSON (+ GDRIVE_FOLDER_ID) or the R2_* secrets — nothing is posted "
-              "without the film itself", flush=True)
-        return EXIT_NO_FILM
-    try:
-        keys = store.list_keys(cfg)
-    except Exception as exc:  # noqa: BLE001
-        print(f"✗ cannot list {store.label(cfg)}: {str(exc)[:200]}", flush=True)
-        return EXIT_NO_FILM
-    print(f"store {store.label(cfg)}: {len(keys)} files", flush=True)
+    keys: list[str] = []
+    if store.configured(cfg):
+        try:
+            keys = store.list_keys(cfg)
+            print(f"store {store.label(cfg)}: {len(keys)} files", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"! cannot list {store.label(cfg)}: {str(exc)[:200]} — only archive films can run", flush=True)
+    else:
+        print("no film store configured (GDRIVE_SERVICE_ACCOUNT_JSON or R2_*): only archive films can run", flush=True)
     picked = pick_film(cfg, rows, keys)
     if picked is None:
-        print("no queued film has its file in the store; nothing posted — upload <slug>.mp4 + <slug>.srt", flush=True)
+        print("no queued film has a file (store or archive); nothing posted — upload <slug>.mkv + <slug>.srt to the store", flush=True)
         return EXIT_NO_FILM
     film, files = picked
     work = Path(cfg.work_dir) / f"{today}-{film.slug}"
     work.mkdir(parents=True, exist_ok=True)
-    film_files = store.fetch_film(cfg, film.slug, work)
+    film_files = store.fetch_film(cfg, files, work)
     if not film_files or not film_files.video_path:
-        print(f"✗ could not download {files.video_key}; nothing posted", flush=True)
-        return EXIT_NO_FILM
+        return give_up(cfg, film, files, today=today, reason=f"could not download {files.video_key}")
     duration_film = cut.duration_seconds(film_files.video_path)
-    print(f"film: {film.label} · {files.video_key} ({film_files.size / 1e9:.2f} GB, {duration_film / 60:.0f} min)"
-          + (f" + {files.srt_key}" if files.srt_key else " (no .srt: transcribing on the CPU)"), flush=True)
+    print(f"film: {film.label} · {film_files.video_key} ({film_files.size / 1e9:.2f} GB, {duration_film / 60:.0f} min)"
+          + (f" + {film_files.srt_key}" if film_files.srt_key else " (no .srt)"), flush=True)
 
     _stage("transcript")
     cues: list[align.Cue] = []
     how = "srt"
-    if film_files.srt_path and Path(film_files.srt_path).exists():
-        cues = align.parse_srt(Path(film_files.srt_path).read_text(encoding="utf-8", errors="replace"))
+    # timed to THIS file first (the act ranges become shot ranges, so drift puts shots in the wrong scenes):
+    # own human .srt → OpenSubtitles hash match → the Archive's ASR .srt made from this file → whisper on the file
+    # → an OpenSubtitles title match only when everything else came up short
+    own_srt = film_files.srt_path if film_files.srt_path and Path(film_files.srt_path).exists() else None
+    if own_srt and not film_files.srt_asr:
+        cues = align.parse_srt(Path(own_srt).read_text(encoding="utf-8", errors="replace"))
+    if not cues and subs.configured(cfg):
+        got = subs.fetch_srt(cfg, title=film.title, year=film.year, video_path=film_files.video_path,
+                             dest=str(work / "film" / "opensubtitles.srt"), mode="hash")
+        if got:
+            cues = align.parse_srt(Path(got).read_text(encoding="utf-8", errors="replace"))
+            how = "opensubtitles-hash"
+    if not cues and own_srt:                                    # the Archive's own machine transcript of this file
+        cues = align.parse_srt(Path(own_srt).read_text(encoding="utf-8", errors="replace"))
+        how = "archive-asr"
     if not cues:
+        print("transcribing on the CPU (faster-whisper)…", flush=True)
         cues = align.transcribe(film_files.video_path, work, model=cfg.whisper_model)
         how = "whisper"
+    if len(cues) < cfg.min_cues and subs.configured(cfg):
+        got = subs.fetch_srt(cfg, title=film.title, year=film.year, video_path=film_files.video_path,
+                             dest=str(work / "film" / "opensubtitles-title.srt"), mode="title")
+        if got:
+            more = align.parse_srt(Path(got).read_text(encoding="utf-8", errors="replace"))
+            if len(more) > len(cues):
+                cues, how = more, "opensubtitles-title"
     if len(cues) < cfg.min_cues:
-        print(f"✗ only {len(cues)} dialogue cues ({how}); the recap is written from the dialogue, so nothing is posted", flush=True)
-        return EXIT_NO_FILM
+        return give_up(cfg, film, film_files, today=today, reason=f"only {len(cues)} dialogue cues ({how}); the recap is written from the dialogue")
     transcript = align.transcript_lines(cues, max_chars=cfg.transcript_max_chars)
     (work / "transcript.txt").write_text(transcript, encoding="utf-8")
     print(f"transcript: {len(cues)} cues ({how}) · {len(transcript) // 1000}k chars", flush=True)
@@ -168,6 +205,8 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                      short_max_words=cfg.short_max_words, noslop_rounds=cfg.noslop_rounds,
                                      fast_model=cfg.sof.fast_model)
         except planner.PlanError as exc:
+            if film_files.source == "archive":
+                return give_up(cfg, film, film_files, today=today, reason=f"planning failed: {str(exc)[:200]}")
             print(f"✗ planning failed: {exc}", flush=True)
             return EXIT_PLAN
         plan_path.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
@@ -183,8 +222,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
     print(f"shots: {n_clips} over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
     if n_clips == 0 or any(not v.get("clips") for v in vis_plan.values()):
-        print("✗ the film yielded no usable shots for every act; nothing posted", flush=True)
-        return EXIT_NO_FILM
+        return give_up(cfg, film, film_files, today=today, reason="the film yielded no usable shots for every act")
 
     _stage("tts")
     narration = work / "narration.mp3"
@@ -261,8 +299,10 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
 
     _stage("upload")
     title = seo.long_title(str(plan.long_form.get("title") or ""), fallback=f"{film.title} explained")
+    footage = "public-domain" if film_files.source == "archive" else "film"
     description = seo.long_description(film=film.title, year=film.year or meta.year, blurb=str(plan.long_form.get("description") or ""),
-                                       chapters=chapters, director=meta.director, theme=film.theme, plot_url=plot.url if plot else "")
+                                       chapters=chapters, director=meta.director, theme=film.theme, plot_url=plot.url if plot else "",
+                                       footage=footage, archive=film_files.archive)
     tags = seo.long_tags(film.title, director=meta.director, genres=meta.genres, cast=meta.cast,
                          extra=list(plan.long_form.get("tags") or []), theme=film.theme)
     body = seo.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy)
@@ -284,7 +324,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                       now=uploaded_at) if cfg.privacy == "public" and not cfg.is_smoke else None
             sbody = seo.video_body(title=seo.short_title(str(s["title"]), film.title),
                                    description=seo.short_description(film=film.title, year=film.year or meta.year, long_video_id=video_id,
-                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or [])),
+                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or []), footage=footage),
                                    tags=seo.short_tags(film.title, list(s.get("tags") or [])), privacy=cfg.privacy, publish_at=at)
             sid = upload.upload_video(yt, path, sbody, None)
             short_entries.append({"video_id": sid, "title": sbody["snippet"]["title"], "seconds": round(tts.duration_seconds(short_audio[k])),
@@ -298,7 +338,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "topic": film.label, "video_id": video_id, "title": title, "privacy": cfg.privacy,
         "uploaded_at": uploaded_at.isoformat(timespec="seconds"), "duration_seconds": round(duration), "words": words,
         "acts": len(plan.acts), "transcript": how, "cues": len(cues), "plot_reference": bool(plot),
-        "shots": n_clips, "film_file": files.video_key, "shorts": short_entries, "slop": plan.slop or None,
+        "shots": n_clips, "film_file": film_files.video_key, "source": film_files.source, "shorts": short_entries, "slop": plan.slop or None,
         "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "run_url": _run_url(),
     }
     if cfg.is_smoke:

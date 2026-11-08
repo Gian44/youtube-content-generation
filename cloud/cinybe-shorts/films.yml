@@ -2,9 +2,13 @@
 # below without a ledger row, one film every 2nd day. Order within a theme = the order they go out; the
 # biggest titles first so the channel's first videos have search demand.
 #
-# A film whose Wikipedia plot is too thin (< 250 words) gets a `kind: skipped` ledger row and is passed
-# over until `plots/<slug>.md` exists (slug = lower-case title, non-alphanumerics → "-", then "-<year>";
-# e.g. plots/the-dark-knight-2008.md). Add themes at the end; never reorder published ones.
+# A film runs only when the run can have its file: Gian's `<slug>.mkv` + `<slug>.srt` in the Drive folder
+# (slug = lower-case title, non-alphanumerics → "-", then "-<year>"; e.g. the-dark-knight-2008.mkv), or an
+# `archive: <identifier>` — a public-domain print on the Internet Archive the run downloads itself (Gian,
+# 2026-11-08: "have the pipeline get the files"). Queue order decides: a film without a file is passed over, so the
+# public-domain theme at the end runs whenever the Drive folder is empty. An archive film the run gives up on (too
+# few dialogue cues, no shots) gets a `kind: skipped` ledger row; delete the row to retry it.
+# Add themes at the end; never reorder published ones.
 themes:
   - name: Christopher Nolan
     films:
@@ -41,3 +45,52 @@ themes:
       - {title: Panic Room, year: 2002}
       - {title: The Girl with the Dragon Tattoo, year: 2011}
       - {title: The Killer, year: 2023}
+  # Public domain (US), prints from the Internet Archive — curated 2026-11-08 from archive.org (talkies only: the
+  # script is written from the dialogue). Item = `archive:`; the run takes the item's largest proper video under
+  # 5 GB (never the 512 kb derivatives), its human .srt when it ships one, else OpenSubtitles, else the Archive's
+  # own ASR .srt, else whisper. Resolutions vary (480p DVD transfers to 1080p); 4:3 prints are pillarboxed.
+  - name: Public domain classics
+    films:
+      - {title: Night of the Living Dead, year: 1968, archive: Night.Of.The.Living.Dead_1080p}
+      - {title: Charade, year: 1963, archive: charade-1963-cary-grant-audrey-hepburn-walter-matthau-1080p-reup}
+      - {title: His Girl Friday, year: 1940, archive: his_girl_friday}
+      - {title: The Last Man on Earth, year: 1964, archive: the-last-man-on-earth-1964_202409}
+      - {title: House on Haunted Hill, year: 1959, archive: house_on_haunted_hill_1959-fhd}
+      - {title: Carnival of Souls, year: 1962, archive: CarnivalofSouls}
+      - {title: The Little Shop of Horrors, year: 1960, archive: The_Little_Shop_of_Horrors.mpeg}
+      - {title: D.O.A., year: 1950, archive: doa-1950_202506}
+      - {title: Detour, year: 1945, archive: Detour}
+      - {title: The Stranger, year: 1946, archive: TheStranger_0}
+      - {title: Scarlet Street, year: 1945, archive: ScarletStreet}
+      - {title: Plan 9 from Outer Space, year: 1959, archive: plan-9-from-outer-space_202009}
+      - {title: The 39 Steps, year: 1935, archive: the-39-steps-1935}
+      - {title: Meet John Doe, year: 1941, archive: meet_john_doe}
+      - {title: My Man Godfrey, year: 1936, archive: my-man-godfrey-1936-criterion-bluray.-1080p.-dts}
+      - {title: Dementia 13, year: 1963, archive: dementia.-13.1963}
+      - {title: The Terror, year: 1963, archive: TheTerror}
+      - {title: Beat the Devil, year: 1953, archive: beat-the-devil-1953_202406}
+      - {title: Suddenly, year: 1954, archive: suddenly}
+      - {title: The Hitch-Hiker, year: 1953, archive: Hitch_Hiker}
+      - {title: Kansas City Confidential, year: 1952, archive: kansascityconfidencial}
+      - {title: A Star Is Born, year: 1937, archive: a-star-is-born-1937-720p-blu-rayx-64}
+      - {title: Nothing Sacred, year: 1937, archive: nothing-sacred-1937_202405}
+      - {title: "McLintock!", year: 1963, archive: mclintok_widescreen}
+      - {title: Royal Wedding, year: 1951, archive: royal_wedding}
+      - {title: Penny Serenade, year: 1941, archive: penny_serenade}
+      - {title: Of Human Bondage, year: 1934, archive: humanbondage}
+      - {title: The Man with the Golden Arm, year: 1955, archive: the-man-with-the-golden-arm-1955-1080p-bluray-x265}
+      - {title: Dressed to Kill, year: 1946, archive: dressed_to_kill}
+      - {title: Terror by Night, year: 1946, archive: TerrorByNight1946}
+      - {title: Jamaica Inn, year: 1939, archive: Jamaica_Inn}
+      - {title: Sabotage, year: 1936, archive: Sabotage_1936}
+      - {title: Cyrano de Bergerac, year: 1950, archive: Cyrano_DeBergerac}
+      - {title: Life with Father, year: 1947, archive: LifeWithFather}
+      - {title: The Inspector General, year: 1949, archive: the_inspector_general}
+      - {title: Made for Each Other, year: 1939, archive: made_for_each_other_film}
+      - {title: Angel and the Badman, year: 1947, archive: angel_and_the_badman}
+      - {title: Santa Claus Conquers the Martians, year: 1964, archive: SantaClausConquerstheMartians1964}
+      - {title: Teenagers from Outer Space, year: 1959, archive: teenagers_from_outerspace}
+      - {title: Reefer Madness, year: 1936, archive: reefer-madness-1936-by-louis-j.-gasnier}
+      - {title: "Gulliver's Travels", year: 1939, archive: gullivers_travels1939}
+      - {title: "The Brain That Wouldn't Die", year: 1962, archive: the_brain_that_wouldnt_die}
+      - {title: The Big Combo, year: 1955, archive: The_Big_Combo_1955}

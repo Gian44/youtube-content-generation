@@ -1,4 +1,6 @@
-"""The film files Gian supplies. Two stores, picked by which secrets exist:
+"""Where the film file comes from. Gian's own files sit in one of two stores, picked by which secrets exist, and a
+film marked ``archive:`` in films.yml is a public-domain print the run downloads from the Internet Archive itself
+(``cny.archive``) — no store needed for those.
 
 * **Google Drive** (Gian, 2026-11-08: no card, 15 GB free on the channel's own Gmail): a folder shared with a
   service account; ``GDRIVE_SERVICE_ACCOUNT_JSON`` (the key file's content) + ``GDRIVE_FOLDER_ID`` (or the folder is
@@ -32,6 +34,13 @@ class FilmFiles:
     video_path: str | None = None
     srt_path: str | None = None
     size: int = 0
+    source: str = "store"            # "store" (Drive / R2) or "archive" (Internet Archive item ``archive``)
+    archive: str | None = None
+    srt_asr: bool = False            # the .srt is the Archive's machine transcript (OpenSubtitles is tried first)
+
+
+def archive_files(slug: str, identifier: str) -> FilmFiles:
+    return FilmFiles(slug=slug, video_key=f"archive.org/{identifier}", source="archive", archive=identifier)
 
 
 def match_keys(slug: str, keys: list[str]) -> FilmFiles:
@@ -169,15 +178,20 @@ def list_keys(cfg) -> list[str]:
     return _drive(cfg).list_keys() if backend(cfg) == "drive" else r2_list_keys(cfg)
 
 
-def fetch_film(cfg, slug: str, work: Path) -> FilmFiles | None:
-    """Download the film (and its subtitles) for ``slug`` into ``work/film/``; None when the store has no video for
-    it or is not configured. Never raises — a store problem means nothing is posted, not a dead run."""
-    if not configured(cfg):
-        return None
+def fetch_film(cfg, files: FilmFiles, work: Path) -> FilmFiles | None:
+    """Download the film (and its subtitles) into ``work/film/``: from the Internet Archive for an ``archive`` film,
+    else from the store. None when it cannot be had. Never raises — a fetch problem means nothing is posted, not a
+    dead run."""
     try:
-        files = match_keys(slug, list_keys(cfg))
-        if not files.video_key:
-            log.info("no film file for %s in %s", slug, label(cfg))
+        if files.source == "archive":
+            from cny import archive
+
+            video, srt, chosen, asr = archive.fetch(files.archive, work, max_bytes=cfg.archive_max_bytes)
+            files.video_path, files.srt_path, files.size, files.srt_asr = video, srt, chosen.size, asr
+            files.video_key = f"archive.org/{files.archive}/{chosen.name}"
+            files.srt_key = f"archive.org/{files.archive}/source.srt" if srt else None
+            return files
+        if not configured(cfg) or not files.video_key:
             return None
         d = work / "film"
         d.mkdir(parents=True, exist_ok=True)
@@ -206,14 +220,15 @@ def fetch_film(cfg, slug: str, work: Path) -> FilmFiles | None:
             files.srt_path = str(srt_dest)
         return files
     except Exception as exc:  # noqa: BLE001
-        log.warning("film store unavailable for %s: %s", slug, exc)
-        print(f"! film store unavailable ({str(exc)[:160]})", flush=True)
+        log.warning("could not fetch the film for %s: %s", files.slug, exc)
+        print(f"! could not fetch {files.video_key} ({str(exc)[:160]})", flush=True)
         return None
 
 
 def delete_film(cfg, files: FilmFiles) -> bool:
-    """Remove the film (and its subtitles) from the store once its recap is published. Never raises."""
-    if not configured(cfg) or not files.video_key:
+    """Remove the film (and its subtitles) from the store once its recap is published. Never raises. An Archive
+    print is not ours to remove."""
+    if files.source == "archive" or not configured(cfg) or not files.video_key:
         return False
     try:
         if backend(cfg) == "drive":

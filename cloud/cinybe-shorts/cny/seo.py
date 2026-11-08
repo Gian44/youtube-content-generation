@@ -14,6 +14,8 @@ _BAD = re.compile(r"[!#@\"“”]|\b(shocking|insane|unbelievable|you won't beli
 FOOTAGE_LINES = {
     "film": ("Footage: short excerpts from the film, used for the purpose of commentary, criticism and review. "
              "Narration and editing are our own."),
+    "public-domain": ("Footage: this film is in the public domain; the print comes from the Internet Archive. "
+                      "Narration and editing are our own."),
 }
 
 
@@ -36,7 +38,7 @@ def long_title(hook: str, *, fallback: str = "", suffix: str = " | Movie Recap")
 
 
 def long_description(*, film: str, year: int | None, blurb: str, chapters: list[dict], director: str | None, theme: str,
-                     plot_url: str = "", footage: str = "film") -> str:
+                     plot_url: str = "", footage: str = "film", archive: str | None = None) -> str:
     fy = f"{film} ({year})" if year else film
     parts = [f"Film: {fy}" + (f" · directed by {director}" if director else ""),
              blurb.strip() or f"The whole story of {fy}, start to finish, in one narrated recap.",
@@ -47,6 +49,7 @@ def long_description(*, film: str, year: int | None, blurb: str, chapters: list[
     if theme:
         parts.append(f"Part of our series: {theme}.")
     parts.append(FOOTAGE_LINES.get(footage, FOOTAGE_LINES["film"])
+                 + (f" Full film: https://archive.org/details/{archive}" if archive else "")
                  + (f" Plot reference: Wikipedia ({plot_url}), CC BY-SA 4.0." if plot_url else ""))
     parts.append("#movierecap #filmrecap #recap")
     return "\n\n".join(parts)[:4900]

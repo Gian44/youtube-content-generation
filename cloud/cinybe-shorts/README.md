@@ -8,12 +8,16 @@ stock fallback: a queued film whose file is not in the store is passed over, and
 (Gian, 2026-11-08: "If it is not from the movie itself, do not post anything").
 
 ```
-films.yml (themes in order; the first film without a ledger row whose file is in the store)
-  → the film (cny/store.py): `<slug>.mkv|mp4` + `<slug>.srt` downloaded from the Google Drive folder shared
-    with the service account (or an R2 bucket); deleted from the runner after the shots are cut, trashed in
-    the store once the recap is published
-  → transcript (cny/align.py): the .srt as "[mm:ss] dialogue" lines (one per 10 s), trimmed to ~90k chars;
-    faster-whisper on the runner's CPU when there is no .srt; fewer than 120 cues → nothing posted
+films.yml (themes in order; the first film without a ledger row that the run can have)
+  → the film (cny/store.py): Gian's `<slug>.mkv|mp4` + `<slug>.srt` from the Google Drive folder shared with the
+    service account (or an R2 bucket) — or, for a film marked `archive: <identifier>`, a public-domain print the
+    run downloads itself from the Internet Archive (cny/archive.py: the item's largest proper video under 5 GB,
+    resume on drops). Deleted from the runner after the shots are cut; Gian's file trashed in Drive once published
+  → transcript (cny/align.py): the .srt as "[mm:ss] dialogue" lines (one per 10 s), trimmed to ~90k chars. Timed
+    to this very file first, because the act ranges become shot ranges: the file's own human .srt → an
+    OpenSubtitles hash match (cny/subs.py) → the Archive's ASR .srt made from that file → faster-whisper on the
+    runner's CPU → an OpenSubtitles title match only when all of that came up short; fewer than 120 cues →
+    nothing posted (an archive film then gets a `kind: skipped` ledger row so the queue moves on)
   → reference (cny/meta.py, cny/plot.py): Wikidata/TMDB metadata; Wikipedia's Plot section as an optional
     reference the writer may use — never the source of the script; unavailable → the run goes on
   → plan (cny/planner.py): call 1 reads the transcript → 16–22 acts for 20 min, each with its own time range
@@ -67,6 +71,10 @@ The folder lives in the channel's own Google Drive and is shared with the servic
 Alternative, **Cloudflare R2**: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (`R2_BUCKET` is a
 workflow env, default `cinybe-films`).
 
+Subtitles when a file has none: `OPENSUBTITLES_API_KEY` (opensubtitles.com → API consumers → new consumer),
+`OPENSUBTITLES_USERNAME`, `OPENSUBTITLES_PASSWORD` (downloads need a login; the free tier allows a few a day, a
+film needs one). Without them the runner transcribes with faster-whisper (slower, ASR quality).
+
 ## The film files
 
 Drop two files into the Drive folder `cinybe-films`: `<slug>.mkv` (or `.mp4`, `.mov`, `.m4v`, `.webm`) plus
@@ -79,10 +87,22 @@ delete those by hand). Trashed files still count toward the 15 GB until the tras
 is missing is transcribed on the CPU (slower, ~1 min per 10 min of film). Descriptions name the film and
 carry the commentary/criticism line.
 
+## Public-domain films (no file from Gian)
+
+The theme "Public domain classics" at the end of `films.yml` (43 US-public-domain talkies, curated 2026-11-08)
+carries an `archive:` identifier per film; the run fetches that print itself, so the channel keeps posting
+whenever the Drive folder is empty. Queue order rules: a Drive film earlier in the file is passed over while it
+has no file, and the first archive film runs. Descriptions say the film is in the public domain and link the
+Archive item. Caveats: prints are 480p–1080p and often 4:3 (pillarboxed in the 16:9 recap); the Archive is slow
+(a 4 GB download takes ~10 min); public-domain status is per film in the US and distributors do file bogus
+Content ID claims on them (dispute with the Archive link). Finding items: `_cowork_tmp/two-channels/ia_find2.py`
+(archive.org advanced search → best item per title).
+
 ## Queue and ledger
 
 `films.yml` is the queue (comments inside). `ledger.json` rows: `kind: video` (published: film, year, theme,
-video_id, title, shorts, transcript source and cue count, plot reference used, shots, film file, voice, run).
+video_id, title, shorts, transcript source and cue count, plot reference used, shots, film file and source, voice,
+run) and `kind: skipped` (an archive film the run gave up on, with the reason; delete the row to retry).
 The daily cron does nothing while the last video is younger than 36 h (`gap_hours`); a forced `film` input
 always runs. The operator keeps `films.yml` and the Drive folder fed; `plots/<slug>.md` is an optional
 hand-written reference synopsis.
@@ -95,7 +115,9 @@ hand-written reference synopsis.
 | `cny/films.py` | films.yml, next film, the 36-hour gap |
 | `cny/meta.py` | Wikidata / TMDB metadata |
 | `cny/plot.py` | Wikipedia plot (reference only); operator synopses |
-| `cny/store.py` | the film store: Google Drive (service account) or R2; key matching, download, trash |
+| `cny/store.py` | the film store: Google Drive (service account) or R2; key matching, download, trash; archive dispatch |
+| `cny/archive.py` | Internet Archive items: file list, best video, resumable download, the item's own .srt |
+| `cny/subs.py` | OpenSubtitles: file hash, search, ranking, download |
 | `cny/align.py` | .srt parsing → timed transcript; whisper fallback |
 | `cny/planner.py` | transcript → acts with time ranges + people; scripts; validators; no-slop pass |
 | `cny/cut.py` | scene detection and shot extraction (letterbox / centre-crop) |
