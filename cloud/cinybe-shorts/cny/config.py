@@ -31,7 +31,7 @@ class Config:
     ledger_path: str = "ledger.json"
     gap_hours: float = 36.0             # one film every 2nd day: a daily cron is a no-op inside this gap
     max_tries: int = 3                  # films (with a file) tried per run when plots are thin
-    max_candidates: int = 20            # queued films checked against the bucket per run
+    max_candidates: int = 500           # queued films checked per run: the whole queue, so the archive theme at the end is reached
     min_plot_words: int = 250           # a Wikipedia plot shorter than this is not offered as reference
     max_plot_chars: int = 14000         # ~2,300 words; longer plots are cut at a paragraph (the model needs the end)
     shorts_per_film: int = 3
