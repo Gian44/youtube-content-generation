@@ -1,7 +1,7 @@
 # CinybeShorts — cloud pipeline (narrated movie recaps)
 
 Unattended narrated recaps in the recap-channel style, rendered on GitHub Actions and uploaded to the
-CinybeShorts YouTube channel: one ~20-minute recap plus 3 Shorts per film, one film every 2nd day. No desktop
+CinybeShorts YouTube channel: one ~17-minute recap (told fast) plus 3 Shorts per film, one film every 2nd day. No desktop
 app, no database, no PC. **Everything on screen is the film itself** — shots cut, in screen order, from the
 scenes each act covers — and the recap is written from the film's own dialogue (its subtitles). There is no
 stock fallback: a queued film whose file is not in the store is passed over, and nothing is posted
@@ -23,29 +23,31 @@ films.yml (themes in order; the first film without a ledger row that the run can
   → plan (cny/planner.py): call 1 reads the transcript → 16–22 acts for 20 min, each with its own time range
     in the film (validated: in order, inside the runtime, ≥ 20 s) + the main people (name + who they are);
     call 2 gets the acts AND each act's own dialogue lines, and writes the narration the way the sample
-    channels do (measured from their captions, 2026-11-08): present tense, scene by scene, each person
-    introduced once ("a drifter named Ben") and then called by name, a short line quoted word for word now
+    channels do (measured from their captions, 2026-11-08): present tense, scene by scene, fast (short
+    sentences, every line moves the story, each act ends on a pull into the next), people called by name only
+    ("Ben", never "a drifter named Ben" — Gian: "Just say the name"), a short line quoted word for word now
     and then; a premise-and-twist title of 60–100 chars in Title Case with no film name, no person's name and
     no suffix ("CIA Built the Most Sadistic Kill Team … But It Quickly Spirals Out of Control"); thumbnail
     text, description (names the film), tags, 3 Shorts; validated, retried once with the errors; then the
     no-AI-slop pass (sof/noslop.py, "recap") on flagged paragraphs only
   → shots (cny/visuals.py, cny/cut.py), before any narration is spent: ffmpeg scene detection inside each
-    act's time range → enough 2.5–8 s shots to carry that act's narration (one per 4.5 s + 2; when an act
+    act's time range → enough 2–5 s shots to carry that act's narration (one per 3 s + 2; when an act
     has fewer scenes than that, its longest scenes are split into several moments instead of replaying shots);
     4:3 and scope prints fill 16:9 with a blurred, darkened copy of the frame (no black bars); silent; the
     Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours', a film that yields
-    none fails the run. The film's own soundtrack is extracted once (film_audio.m4a)
+    none fails the run
   → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner) by
-    default, played ×1.35 (atempo) → ~196 words per minute, the samples run 160–226; TTS_BACKEND=gemini +
+    default; each chunk has its pauses capped at ~0.24 s and is played ×1.4 (atempo) → ~240 words per minute,
+    quicker than the fastest sample (226) — Gian: "make it faster to retain audience"; TTS_BACKEND=gemini +
     GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
   → long recap (cny/render.py, cc/segments.py): per act, its shots played once each, in order, hard-cut, sized
-    to the narration's exact length; no title cards; the film's own sound cut to the very same moments
-    (film_bed.wav), levelled to −24 LUFS and ducked ~12 dB under the −18 LUFS voice (sidechain), so music,
-    screams and gunshots come up in the pauses like on the sample channels (the ambient pad only when a film
-    has no soundtrack); chapters at act starts; thumbnail = the film's own frame + the thumbnail text in gold
+    to the narration's exact length; no title cards; the footage is muted and the voice sits over the quiet
+    ambient bed (Gian: "it's okay if it's mute"; of the 6 auto-captioned samples, 4 run a music bed, 2 let the
+    film's sound through at moments, 1 is voice only). `film_audio=True` lays the film's own sound under the voice
+    instead (cut to the same moments, −24 LUFS, sidechain-ducked ~12 dB); chapters at act starts; thumbnail = the film's own frame + the thumbnail text in gold
     caps + a "MOVIE RECAP" tag, no film name
-  → Shorts: the act's 9:16 shots under the Short's narration with the film's sound ducked under it (−22 LUFS
-    bed), burned captions, hook as title band; −16 LUFS voice
+  → Shorts: the act's 9:16 shots (≤ 3.5 s each) under the Short's narration, burned captions, hook as title
+    band; −16 LUFS voice
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
     days later; ledger.json committed; the film trashed in the store
 ```
@@ -59,7 +61,7 @@ there lands here; this package never modifies `sof`.
 ```bash
 gh workflow run cinybe-daily.yml -f minutes=3 -f skip_upload=true      # tests + render only
 gh workflow run cinybe-daily.yml -f minutes=3                          # smoke: unlisted upload, ledger untouched
-gh workflow run cinybe-daily.yml -f minutes=20 -f film=Inception -f year=2010   # a chosen film, public
+gh workflow run cinybe-daily.yml -f minutes=17 -f film=Inception -f year=2010   # a chosen film, public
 gh workflow run cinybe-daily.yml                                        # the next queued film with a file
 ```
 

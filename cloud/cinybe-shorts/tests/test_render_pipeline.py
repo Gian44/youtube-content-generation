@@ -66,7 +66,8 @@ def test_thumbnail_is_hook_only_and_shots_wanted(tmp_path):
     assert not hasattr(render, "act_card_png")                       # recap style: no title cards between acts
     from cny import config
     c = config.Config()
-    assert 190 <= c.words_per_minute <= 200 and 3800 <= c.target_words <= 4000          # sped up toward the samples' pace
+    assert 230 <= c.words_per_minute <= 250 and 3900 <= c.target_words <= 4300 and c.minutes == 17   # faster than the samples
+    assert not c.film_audio and c.music_enabled                                     # muted footage over the quiet bed
     vis = {0: {"clips": ["w/shots/act00_00.mp4", "w/shots/act01_01.mp4"], "shots": [[12.0, 4.0]], "clips_v": ["w/shots_v/act00_00.mp4"]},
            1: {"clips": ["w/shots/act01_00.mp4", "w/shots/act01_01.mp4"], "shots": [[80.0, 5.0], [90.5, 3.0]]}}
     assert visuals.shot_starts(vis) == {"w/shots/act00_00.mp4": 12.0, "w/shots/act01_01.mp4": 90.5, "w/shots_v/act00_00.mp4": 12.0,
@@ -179,3 +180,21 @@ def test_smoke_config_is_unlisted_and_pocket_by_default(monkeypatch):
     assert cfg.sof.gemini_api_key == "k-cinybe" and cfg.sof.yt_refresh_token == "rt-cinybe" and cfg.sof.shorts_brand == "CinybeShorts"
     monkeypatch.setenv("TTS_BACKEND", "gemini")
     assert config.Config.from_env(minutes=10).sof.tts_backend == "gemini"
+
+
+def test_quicken_caps_pauses_and_speeds_up_each_chunk(tmp_path):
+    import subprocess
+    from cny import config, pipeline
+    cfg = config.Config()
+    assert "silenceremove" in pipeline.voice_filter(cfg) and "atempo=1.4" in pipeline.voice_filter(cfg)
+    src = str(tmp_path / "c0.mp3")                     # 0.4 s lead-in, 1.2 s "speech", 0.6 s pause, 1.2 s, 0.5 s tail
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-f", "lavfi", "-i",
+                    "sine=frequency=300:duration=1.2,volume=0.3", "-filter_complex",
+                    "[0:a]atrim=duration=0.4[a];[0:a]atrim=duration=0.6[b];[0:a]atrim=duration=0.5[c];[1:a]asplit=2[t0][t1];"
+                    "[a][t0][b][t1][c]concat=n=5:v=0:a=1", "-ar", "24000", src], check=True)
+    out = pipeline.quicken([src], tmp_path / "fast", cfg)
+    before, after = render.tts.duration_seconds(src), render.tts.duration_seconds(out[0])
+    assert before > 3.8 and after < before / 1.4 - 0.2                              # faster than tempo alone: pauses capped
+    assert pipeline.quicken([src], tmp_path / "fast", cfg) == out                   # resumable
+    cfg.voice_tempo, cfg.voice_tighten = 1.0, ""
+    assert pipeline.quicken([src], tmp_path / "x", cfg) == [src]

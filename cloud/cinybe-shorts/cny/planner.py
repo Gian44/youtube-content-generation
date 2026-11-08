@@ -3,10 +3,10 @@ their own time range in the film → long recap narration + Shorts, validated, t
 
 Gian, 2026-11-08, after eight sample channels (Movie Recaps, Twist Recaps, Film Decode, AniRoll, …): the script
 comes from the subtitles (Wikipedia's plot is optional context), the title is a premise-and-twist hook that never
-names the film, the footage follows the narration from start to finish. People are introduced once by what they
-are and then called by name — "a professional hitman named Hyung-woo", "Michael, a writer" — exactly as the
-samples' captions do (first render, 2026-11-08, used descriptors only and sounded robotic). The script call gets
-each act's own dialogue so it narrates scene by scene and quotes a line now and then. Two writer calls via
+names the film, the footage follows the narration from start to finish. People are called by name only (Gian,
+2026-11-08 2nd review: "Just say the name" — no "a drifter named Ben" introductions; the first render's fixed
+descriptors sounded robotic). The script is told fast (short sentences, every line moves the story) to hold
+viewers. The script call gets each act's own dialogue so it narrates scene by scene and quotes a line now and then. Two writer calls via
 ``sof.llm.LLM`` (Claude on the subscription).
 """
 
@@ -84,13 +84,13 @@ TRANSCRIPT:
 SCRIPTS_SYSTEM = ("You write narration for a movie-recap YouTube channel in the style of the big recap channels (Movie Recaps, "
                   "Mystery Recapped): present tense, fast, concrete, telling what happens on screen as it happens, one event "
                   "after another, in plain spoken words; no filler, no 'in this video', no 'let's dive in', no moralising, no "
-                  "commentary on the filmmaking. Each person is introduced once by who they are and their name ('a drifter "
-                  "named Ben', 'Barbra, a young woman visiting her father's grave') and from then on called by name or he/she; "
-                  "unnamed people stay plain descriptions ('the sheriff', 'a news reporter'). You never add facts that are not in "
-                  "the acts or the dialogue. Output strict JSON.")
+                  "commentary on the filmmaking. People are called by their names from the very first mention — no "
+                  "introductions like 'a drifter named Ben' or 'Barbra, a young woman…'; just 'Ben', 'Barbra', then he/she; "
+                  "unnamed people stay plain descriptions ('the sheriff', 'a news reporter'). The story moves fast: every "
+                  "sentence pushes it forward. You never add facts that are not in the acts or the dialogue. Output strict JSON.")
 
 SCRIPTS_PROMPT = """Film: {title} ({year})
-People (name, and who they are when first met): {people_json}
+People (name, and who they are — for your understanding; the narration just says the name): {people_json}
 Acts (JSON): {acts_json}
 
 DIALOGUE PER ACT — the film's own lines inside each act's time range ("[mm:ss] text"); use it for what people say and do,
@@ -101,12 +101,14 @@ Write two things.
 
 1. "long_form": the full narrated recap, about {target_words} words in total, roughly {per_section_words} words per act,
    one section per act in act order. Each section is narration only, no headings; it tells what happens in that act,
-   scene by scene and moment by moment, in present tense, with the concrete details the dialogue gives (who says what,
-   what they decide, what goes wrong). Now and then quote a short line word for word from the dialogue, the way recap
-   channels do: He tells her, "They're coming to get you." Introduce each person the first time they appear (who they
-   are + name) and use the name after that. The first section opens with one or two sentences on the strangest premise
-   or the opening event, then "The story begins…" or straight into the first scene — do NOT say the film's name or
-   year anywhere in the narration. The last section tells the ending and closes with one plain line.
+   scene by scene, in present tense, with the concrete details the dialogue gives (who says what, what they decide,
+   what goes wrong). Keep it FAST so viewers stay: short sentences; every sentence moves the story; skip small talk,
+   travel, and anything already said; end each act on a line that pulls into the next (a threat, a reveal, a choice).
+   Now and then quote a short line word for word from the dialogue, the way recap channels do: He tells her, "They're
+   coming to get you." Call people by name only, from their first mention ("Ben", not "a drifter named Ben"). The
+   first section opens with one or two sentences that make a viewer stay (the most shocking premise or stakes), then
+   straight into the first scene — do NOT say the film's name or year anywhere in the narration. The last section
+   tells the ending and closes with one plain line.
    Also give:
    - "title": a YouTube hook of 60-100 characters in Title Case: the premise, then the twist, the way the big recap
      channels write them — e.g. "CIA Built the Most Sadistic Kill Team to Hunt Terrorists But It Quickly Spirals Out of
@@ -119,7 +121,7 @@ Write two things.
 
 2. "shorts": exactly {shorts_per_film} Shorts, each from a DIFFERENT act_index, the most dramatic moments. Each Short:
    "hook" (at most 14 words, the first sentence spoken, a concrete event), "text" (the full narration INCLUDING the
-   hook, {short_min_words}-{short_max_words} words, present tense, people introduced as in the long form, ending on a
+   hook, {short_min_words}-{short_max_words} words, present tense, fast, people called by name only, ending on a
    cliffhanger or a payoff; no film name), "title" (a premise-and-twist hook of at most 70 characters, no film name, no
    person's name, no hashtags), "tags" (4-8 lowercase tags).
 

@@ -61,6 +61,30 @@ def pick_film(cfg: Config, rows: list[dict], keys: list[str]) -> tuple[films.Fil
     return None
 
 
+def voice_filter(cfg: Config) -> str:
+    """Pauses capped (~0.24 s) and the tempo raised, per chunk (Gian 2026-11-08: "make it faster to retain audience")."""
+    parts = [cfg.voice_tighten] if cfg.voice_tighten else []
+    if abs(cfg.voice_tempo - 1.0) > 1e-3:
+        parts.append(f"atempo={cfg.voice_tempo:g}")
+    return ",".join(parts)
+
+
+def quicken(paths: list[str], out_dir: Path, cfg: Config) -> list[str]:
+    """Each narration chunk → a faster copy (resumable). Done per chunk, before the durations are measured, so the
+    chapters and every act's footage stay in sync with what is said."""
+    af = voice_filter(cfg)
+    if not af:
+        return paths
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = []
+    for p in paths:
+        dst = out_dir / Path(p).name
+        if not (dst.exists() and dst.stat().st_size > 0):
+            sof_render.run(["ffmpeg", "-y", "-v", "error", "-i", p, "-af", af, "-c:a", "libmp3lame", "-b:a", "128k", str(dst)], 600)
+        out.append(str(dst))
+    return out
+
+
 def give_up(cfg: Config, film: films.Film, files: store.FilmFiles, *, today: str, reason: str) -> int:
     """A dead end (too few cues, no shots, planning failed). An Archive film gets a ``kind: skipped`` ledger row so
     the queue moves on instead of downloading it again tomorrow; Gian's own file stays queued (he fixes the file,
@@ -229,11 +253,10 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
 
     _stage("tts")
     narration = work / "narration.mp3"
-    voice_pre = ",".join(f for f in (tts.post_filter(cfg.sof), f"atempo={cfg.voice_tempo:g}" if abs(cfg.voice_tempo - 1) > 1e-3 else "") if f)
     chunks, owner = tts.chunk_sections(sections, cfg.sof.tts_chunk_chars)
-    parts = tts.speak(chunks, str(work / "tts"), cfg.sof)
+    parts = quicken(tts.speak(chunks, str(work / "tts"), cfg.sof), work / "tts_fast", cfg)
     if not narration.exists():
-        tts.assemble(parts, str(work), pre=voice_pre)
+        tts.assemble(parts, str(work), pre=tts.post_filter(cfg.sof))
     duration = tts.duration_seconds(str(narration))
     sec_secs = render.scaled_durations(parts, owner, len(sections), duration)
     chapters = render.chapter_rows(sections, render.section_starts(sec_secs))
@@ -243,10 +266,10 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     short_audio: list[str] = []
     for k, s in enumerate(plan.shorts if shorts_enabled else []):
         d = work / "tts_short" / f"s{k}"
-        raw = tts.speak([str(s["text"]).strip()], str(d), cfg.sof, short=True)[0]
+        raw = quicken(tts.speak([str(s["text"]).strip()], str(d), cfg.sof, short=True), d / "fast", cfg)[0]
         out = work / f"short{k + 1}.mp3"
         if not out.exists():
-            sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), voice_pre), 600)
+            sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), tts.post_filter(cfg.sof)), 600)
         short_audio.append(str(out))
 
     soundtrack = narration

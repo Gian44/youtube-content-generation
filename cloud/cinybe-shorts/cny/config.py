@@ -12,9 +12,12 @@ from dataclasses import dataclass, field
 
 from sof.config import Config as SofConfig
 
-VOICE_TEMPO = 1.35              # voice F speaks ~145 wpm; the sample channels narrate at 160-226 (median ~205; captions
-                                # measured 2026-11-08), so the narration is sped up ×1.35 → ~196 wpm (ffmpeg atempo)
-WORDS_PER_MINUTE = round(145 * VOICE_TEMPO)
+NATURAL_WPM = 162               # voice F on recap text: 219 wpm measured at ×1.35 (review run 42456841529, 2026-11-08)
+VOICE_TEMPO = 1.4               # Gian 2026-11-08 "make it faster to retain audience": ×1.4 (ffmpeg atempo) and pauses
+PAUSE_GAIN = 1.06               # capped at ~0.24 s (VOICE_TIGHTEN) → ~240 wpm, quicker than the fastest sample (226)
+VOICE_TIGHTEN = ("silenceremove=start_periods=1:start_threshold=-42dB:start_silence=0.05:"
+                 "stop_periods=-1:stop_duration=0.12:stop_threshold=-42dB:stop_silence=0.1")
+WORDS_PER_MINUTE = round(NATURAL_WPM * VOICE_TEMPO * PAUSE_GAIN)
 SMOKE_MAX_MINUTES = 3           # at/below this the run is a smoke test: always unlisted, ledger untouched
 DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this channel (Sleep On Facts owns the
                                 # free Gemini TTS quota); env TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE flips it
@@ -22,7 +25,7 @@ DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this cha
 
 @dataclass
 class Config:
-    minutes: int = 20                   # long recap target (Gian 2026-11-08: ~20 min, the samples' upper range)
+    minutes: int = 17                   # long recap target: ~20 min (Gian 2026-11-08), told faster → the same story in ~17
     film: str | None = None             # force a film (with --year); otherwise the next one in films.yml
     year: int | None = None
     privacy: str = "public"
@@ -49,11 +52,14 @@ class Config:
     shorts_width: int = 1080
     shorts_height: int = 1920
     shorts_fps: int = 30
-    shorts_clip_seconds: float = 6.0    # longest one shot plays in a Short
+    shorts_clip_seconds: float = 3.5    # longest one shot plays in a Short (fast cuts hold attention)
     music_enabled: bool = True          # the synthetic pad: only when the film has no soundtrack to lay under the voice
     music_lufs: float = -32.0
     voice_tempo: float = VOICE_TEMPO
-    film_audio: bool = True             # Gian 2026-11-08: the film's own sound ducked under the voice, like the samples
+    voice_tighten: str = VOICE_TIGHTEN
+    film_audio: bool = False            # Gian 2026-11-08 (2nd review): footage muted, the voice carries it, over the quiet
+                                        # ambient bed — 4 of the 6 auto-captioned samples run a music bed, 2 let film sound
+                                        # through at moments, 1 is voice only. True = the film's sound ducked under the voice
     film_lufs: float = -24.0            # the film bed's level in the gaps; ducked ~9 dB further while the voice speaks
     shorts_film_lufs: float = -22.0
     brand: str = "CinybeShorts"
@@ -71,10 +77,10 @@ class Config:
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_bucket: str = "cinybe-films"
-    shot_seconds: float = 4.5            # one shot per this much narration (shots_wanted); the samples cut every 3-6 s
-    shot_min_seconds: float = 2.5        # scenes shorter than this are not used
-    shot_max_seconds: float = 8.0        # longest one shot plays in the long recap
-    shot_min_play: float = 1.5
+    shot_seconds: float = 3.0            # one shot per this much narration (shots_wanted); faster than the samples' 3-6 s
+    shot_min_seconds: float = 2.0        # scenes shorter than this are not used
+    shot_max_seconds: float = 5.0        # longest one shot plays in the long recap
+    shot_min_play: float = 1.2
     scene_threshold: float = 0.3         # ffmpeg scene-change score (0.3 = clear cuts only)
     whisper_model: str = "small"         # faster-whisper, CPU int8, only when there is no .srt
     min_cues: int = 120                  # fewer dialogue cues than this = not a usable transcript (nothing posted)
@@ -101,11 +107,12 @@ class Config:
 
     @property
     def words_per_minute(self) -> float:
-        return 145.0 * self.voice_tempo                    # voice F's natural pace × the tempo it is played at
+        """Spoken pace of the finished narration: voice F's natural pace × tempo × the pause cap's gain."""
+        return NATURAL_WPM * self.voice_tempo * (PAUSE_GAIN if self.voice_tighten else 1.0)
 
     @property
     def acts_range(self) -> tuple[int, int]:
-        """20 min → 16–22 acts (~180–245 words each at ~196 wpm); 10 min → 8–11; a 3-minute smoke → 4–5."""
+        """17 min → 13–19 acts (~210–310 words each at ~240 wpm); 10 min → 8–11; a 3-minute smoke → 4–5."""
         hi = max(5, min(24, round(self.minutes * 1.1)))
         return max(4, hi - min(6, max(1, hi // 3))), hi
 
@@ -141,7 +148,7 @@ class Config:
 
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CinybeShorts cloud pipeline: narrated movie recaps")
-    p.add_argument("--minutes", type=int, default=20, help="target recap length (<=3 = smoke, unlisted)")
+    p.add_argument("--minutes", type=int, default=17, help="target recap length (<=3 = smoke, unlisted)")
     p.add_argument("--film", default=None, help="force a film title (with --year)")
     p.add_argument("--year", type=int, default=None)
     p.add_argument("--privacy", choices=["public", "unlisted", "private"], default=None)

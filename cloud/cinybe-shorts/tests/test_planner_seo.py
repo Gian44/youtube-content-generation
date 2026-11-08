@@ -105,7 +105,8 @@ def test_plan_film_from_transcript_retries_once_and_polishes():
     assert len(plan.acts) == 5 and plan.acts[0]["start_seconds"] == 60.0 and len(plan.shorts) == 3
     assert "[00:10] Hello." in llm.prompts[0][0] and "published plot summary" in llm.prompts[0][0]
     assert "the extractor" in llm.prompts[1][0] and "STYLE RULES" in llm.prompts[1][0]     # people + noslop rules in the writer prompt
-    assert "DIALOGUE PER ACT" in llm.prompts[1][0] and "called by name" in llm.prompts[1][1]  # the act's lines; names after the intro
+    assert "DIALOGUE PER ACT" in llm.prompts[1][0] and "called by their names from the very first mention" in llm.prompts[1][1]
+    assert "Keep it FAST" in llm.prompts[1][0] and "a drifter named Ben" in llm.prompts[1][0]       # names only, no intros
     assert "Validation errors" in llm.prompts[2][0]                                      # scripts retried with the errors
     assert plan.long_form["people"] == _people() and plan.sections[4]["act_index"] == 4
     assert planner.FilmPlan.from_dict(plan.to_dict()).long_form["title"] == plan.long_form["title"]

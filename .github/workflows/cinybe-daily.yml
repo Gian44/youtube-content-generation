@@ -12,7 +12,7 @@ on:
     inputs:
       minutes:
         description: "Target recap minutes (<=3 = smoke run, always unlisted)"
-        default: "20"
+        default: "17"
       film:
         description: "Force a film title (optional; with year)"
         default: ""
@@ -113,7 +113,7 @@ jobs:
           YT_REFRESH_TOKEN_CINYBE: ${{ secrets.YT_REFRESH_TOKEN_CINYBE }}
           # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_CINYBE exists (Charon, free tier).
           TTS_BACKEND: pocket
-          IN_MINUTES: ${{ github.event.inputs.minutes || '20' }}
+          IN_MINUTES: ${{ github.event.inputs.minutes || '17' }}
           IN_FILM: ${{ github.event.inputs.film || '' }}
           IN_YEAR: ${{ github.event.inputs.year || '' }}
           IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
