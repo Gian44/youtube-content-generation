@@ -86,3 +86,12 @@ def test_drive_trash_falls_back_to_rename():
     dr.svc, dr.ids = Svc(calls), {"films/inception-2010.mkv": "id1"}
     assert dr.trash("films/inception-2010.mkv") == "renamed"
     assert calls == [{"trashed": True}, {"name": "published--inception-2010.mkv"}]
+
+
+def test_wav_samples_for_whisper(tmp_path):
+    import subprocess
+    wav = str(tmp_path / "a.wav")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5", "-ac", "1", "-ar", "16000",
+                    "-c:a", "pcm_s16le", wav], check=True)
+    a = align._wav_samples(wav)
+    assert a.dtype.name == "float32" and a.shape == (8000,) and -1.0 <= float(a.min()) and float(a.max()) <= 1.0

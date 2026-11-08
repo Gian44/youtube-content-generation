@@ -71,6 +71,18 @@ def extract_audio_cmd(video: str, wav: str) -> list[str]:
     return ["ffmpeg", "-y", "-v", "error", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav]
 
 
+def _wav_samples(wav: str):
+    """16 kHz mono PCM16 → float32 numpy array in [-1, 1] (what faster-whisper takes instead of a path)."""
+    import wave
+
+    import numpy as np
+
+    with wave.open(wav, "rb") as w:
+        assert w.getnchannels() == 1 and w.getframerate() == 16000 and w.getsampwidth() == 2, "audio16k.wav is not 16 kHz mono PCM16"
+        frames = w.readframes(w.getnframes())
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
+
 def transcribe(video: str, work: Path, *, model: str = "small", threads: int = 4) -> list[Cue]:
     """faster-whisper on the CPU → cues; ``[]`` when the package or the model is unavailable."""
     cache = work / "transcript.json"
@@ -84,8 +96,9 @@ def transcribe(video: str, work: Path, *, model: str = "small", threads: int = 4
     wav = str(work / "audio16k.wav")
     if not Path(wav).exists():
         subprocess.run(extract_audio_cmd(video, wav), check=True, timeout=1800)
+    audio = _wav_samples(wav)                   # hand whisper the samples: its own decoder (PyAV) broke on the runner
     m = WhisperModel(model, device="cpu", compute_type="int8", cpu_threads=threads)
-    segments, info = m.transcribe(wav, beam_size=1, vad_filter=True, language="en")
+    segments, info = m.transcribe(audio, beam_size=1, vad_filter=True, language="en")
     cues = [Cue(round(s.start, 2), round(s.end, 2), s.text.strip()) for s in segments if s.text.strip()]
     cache.write_text(json.dumps([c.__dict__ for c in cues], ensure_ascii=False), encoding="utf-8")
     Path(wav).unlink(missing_ok=True)
