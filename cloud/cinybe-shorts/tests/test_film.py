@@ -42,6 +42,7 @@ def test_store_key_matching_and_config(monkeypatch):
     assert f.video_key == "films/Inception-2010.MKV" and f.srt_key == "films/inception-2010.en.srt"
     assert store.match_keys("memento-2000", keys).srt_key is None
     assert store.match_keys("tenet-2020", keys).video_key is None
+    assert store.match_keys("inception-2010", ["published--inception-2010.mkv"]).video_key is None   # done films never match
     from cny import config
     monkeypatch.setenv("R2_ACCOUNT_ID", "acc"); monkeypatch.setenv("R2_ACCESS_KEY_ID", "k"); monkeypatch.setenv("R2_SECRET_ACCESS_KEY", "s")
     cfg = config.Config.from_env(minutes=10)
@@ -54,3 +55,34 @@ def test_store_key_matching_and_config(monkeypatch):
     assert store.backend(cfg) == "drive" and store.label(cfg) == "drive:cinybe-films"
     monkeypatch.setenv("GDRIVE_FOLDER_ID", "1abc")
     assert store.label(config.Config.from_env(minutes=10)) == "drive:1abc"
+
+
+def test_drive_trash_falls_back_to_rename():
+    class Files:
+        def __init__(self, calls):
+            self.calls = calls
+
+        def update(self, **kw):
+            self.calls.append(kw["body"])
+            if "trashed" in kw["body"]:
+                class Boom:
+                    def execute(self_):
+                        raise RuntimeError("insufficientFilePermissions")
+                return Boom()
+            class Ok:
+                def execute(self_):
+                    return {}
+            return Ok()
+
+    class Svc:
+        def __init__(self, calls):
+            self._files = Files(calls)
+
+        def files(self):
+            return self._files
+
+    calls = []
+    dr = store.Drive.__new__(store.Drive)
+    dr.svc, dr.ids = Svc(calls), {"films/inception-2010.mkv": "id1"}
+    assert dr.trash("films/inception-2010.mkv") == "renamed"
+    assert calls == [{"trashed": True}, {"name": "published--inception-2010.mkv"}]

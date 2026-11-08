@@ -73,7 +73,9 @@ Drop two files into the Drive folder `cinybe-films`: `<slug>.mkv` (or `.mp4`, `.
 `<slug>.srt` (or `<slug>.en.srt`), slug as in `films.yml`'s comment, e.g. `inception-2010.mkv` +
 `inception-2010.srt`. The next run downloads the file for the film it is about to make (2–4 GB, a minute or
 two), cuts the shots, deletes it from the runner, and — once the recap is uploaded — moves it to the Drive's
-trash. A film in `films.yml` without a file is simply passed over until its file appears; a film whose `.srt`
+trash (or, when Drive lets only the owner trash it, renames it `published--<name>` so it never matches again;
+delete those by hand). Trashed files still count toward the 15 GB until the trash is emptied. A film in
+`films.yml` without a file is simply passed over until its file appears; a film whose `.srt`
 is missing is transcribed on the CPU (slower, ~1 min per 10 min of film). Descriptions name the film and
 carry the commentary/criticism line.
 

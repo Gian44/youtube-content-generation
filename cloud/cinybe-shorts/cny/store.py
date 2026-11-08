@@ -113,8 +113,18 @@ class Drive:
             while not done:
                 status, done = dl.next_chunk(num_retries=5)
 
-    def trash(self, key: str) -> None:
-        self.svc.files().update(fileId=self.ids[key], body={"trashed": True}, supportsAllDrives=True).execute()
+    def trash(self, key: str) -> str:
+        """Move the file to the Drive's trash; when Drive refuses (My Drive lets only the owner trash a file the
+        service account merely edits), rename it ``published--<name>`` so it no longer matches any slug and the
+        folder shows at a glance what is done. Returns what happened."""
+        try:
+            self.svc.files().update(fileId=self.ids[key], body={"trashed": True}, supportsAllDrives=True).execute()
+            return "trashed"
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not trash %s (%s); renaming instead", key, str(exc)[:120])
+            self.svc.files().update(fileId=self.ids[key], body={"name": "published--" + key.rsplit("/", 1)[-1]},
+                                    supportsAllDrives=True).execute()
+            return "renamed"
 
 
 # ---------------------------------------------------------------- Cloudflare R2 (S3)
@@ -210,7 +220,7 @@ def delete_film(cfg, files: FilmFiles) -> bool:
             dr = _drive(cfg)
             for k in (files.video_key, files.srt_key):
                 if k and k in dr.ids:
-                    dr.trash(k)
+                    print(f"store: {k} {dr.trash(k)}", flush=True)
         else:
             r2_client(cfg).delete_objects(Bucket=cfg.r2_bucket, Delete={"Objects": [{"Key": k} for k in (files.video_key, files.srt_key) if k]})
         log.info("removed %s from %s", files.video_key, label(cfg))
