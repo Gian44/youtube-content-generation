@@ -121,7 +121,13 @@ jobs:
           if [ -n "$IN_YEAR" ]; then ARGS+=(--year "$IN_YEAR"); fi
           if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
           if [ "$IN_SHORTS" = "false" ]; then ARGS+=(--no-shorts); fi
-          python run.py "${ARGS[@]}"
+          rc=0; python run.py "${ARGS[@]}" || rc=$?
+          if [ "$rc" = "5" ]; then
+            # no film in the store: by design nothing is posted — a green run with a notice, not a daily red X
+            echo "::notice title=cinybe: nothing posted::no queued film has its file in Drive/cinybe-films — drop <slug>.mkv + <slug>.srt there"
+            exit 0
+          fi
+          exit "$rc"
       - name: Keep small run artifacts (plan, plot, chapters, visuals, thumbnail, stills, the Shorts)
         if: always()
         uses: actions/upload-artifact@v4
