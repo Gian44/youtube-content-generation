@@ -20,34 +20,32 @@ films.yml (themes in order; the first film without a ledger row that the run can
     nothing posted (an archive film then gets a `kind: skipped` ledger row so the queue moves on)
   → reference (cny/meta.py, cny/plot.py): Wikidata/TMDB metadata; Wikipedia's Plot section as an optional
     reference the writer may use — never the source of the script; unavailable → the run goes on
-  → plan (cny/planner.py): call 1 reads the transcript → 16–22 acts for 20 min, each with its own time range
-    in the film (validated: in order, inside the runtime, ≥ 20 s) + the main people (name + who they are);
-    call 2 gets the acts AND each act's own dialogue lines, and writes the narration the way the sample
-    channels do (measured from their captions, 2026-11-08): present tense, scene by scene, fast (short
-    sentences, every line moves the story, each act ends on a pull into the next), people called by name only
-    ("Ben", never "a drifter named Ben" — Gian: "Just say the name"), a short line quoted word for word now
-    and then; a premise-and-twist title of 60–100 chars in Title Case with no film name, no person's name and
-    no suffix ("CIA Built the Most Sadistic Kill Team … But It Quickly Spirals Out of Control"); thumbnail
-    text, description (names the film), tags, 3 Shorts; validated, retried once with the errors; then the
-    no-AI-slop pass (sof/noslop.py, "recap") on flagged paragraphs only
-  → shots (cny/visuals.py, cny/cut.py), before any narration is spent: ffmpeg scene detection inside each
-    act's time range → enough 2–5 s shots to carry that act's narration (one per 3 s + 2; when an act
-    has fewer scenes than that, its longest scenes are split into several moments instead of replaying shots);
-    4:3 and scope prints fill 16:9 with a blurred, darkened copy of the frame (no black bars); silent; the
-    Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours', a film that yields
-    none fails the run
-  → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner) by
-    default; each chunk has its pauses capped at ~0.24 s (alone +30 %) and is played ×1.15 (atempo) → ~242 wpm,
-    quicker than the fastest sample (226) — Gian: "make it faster to retain audience"; TTS_BACKEND=gemini +
-    GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
-  → long recap (cny/render.py, cc/segments.py): per act, its shots played once each, in order, hard-cut, sized
-    to the narration's exact length; no title cards; the footage is muted and the voice sits over the quiet
-    ambient bed (Gian: "it's okay if it's mute"; of the 6 auto-captioned samples, 4 run a music bed, 2 let the
-    film's sound through at moments, 1 is voice only). `film_audio=True` lays the film's own sound under the voice
-    instead (cut to the same moments, −24 LUFS, sidechain-ducked ~12 dB); chapters at act starts; thumbnail = the film's own frame + the thumbnail text in gold
-    caps + a "MOVIE RECAP" tag, no film name
-  → Shorts: the act's 9:16 shots (≤ 3.5 s each) under the Short's narration, burned captions, hook as title
-    band; −16 LUFS voice
+  → plan (cny/planner.py): call 1 reads the transcript → 13–19 acts for 17 min, each with its own time range
+    in the film (validated: in order, inside the runtime, ≥ 20 s) + the main people; call 2 gets the acts AND
+    each act's subtitle lines with their own timestamps, and writes the narration as **beats** — 1–3 short
+    sentences about ONE moment, each with `at`, the film time of that moment (taken from the line it is about)
+    — the way the sample channels tell it: present tense, scene by scene, fast, names only (Gian: "Just say the
+    name"), a short line quoted word for word now and then; a premise-and-twist title (60–100 chars, no film or
+    person's name), thumbnail text, description, tags, 3 Shorts (also as timed beats). Beat times are repaired,
+    not rejected (unreadable → interpolated, backwards → lifted, outside the act → clamped); a beat that quotes
+    a line is snapped to that line's exact subtitle time (cny/beats.py). No-AI-slop pass per beat, so every beat
+    keeps its moment
+  → film check (cny/visuals.py, cny/cut.py), before any narration is spent: the file must decode; bars burned
+    into it are detected (cropdetect) and cropped; ffmpeg scene detection over each act (± 30 s, on a 480-px
+    copy) — cached in cuts.json
+  → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner), **one take
+    per beat** so each beat's spoken length is known to the frame; each take has its pauses capped at ~0.24 s
+    (alone +30 %) and is played ×1.15 (atempo) → ~242 wpm (Gian: "make it faster to retain audience")
+  → long recap, beat by beat (cny/beats.py, cny/render.py) — Gian 2026-11-08: "the video is showing something
+    and the narration is explaining something different": under every beat, the film from the moment it tells
+    (0.5 s before), cut in screen order (~3-s shots, a sliver of the previous scene before a cut is never used,
+    long takes split into moments, nothing replayed), exactly as long as the beat is spoken; one ffmpeg call per
+    beat reading the pieces straight from the film (crop → 16:9 blurred fill), beats concatenated; per-beat log
+    in beats.json (moment, window, pieces). Footage muted, the voice over the quiet ambient bed (`film_audio=True`
+    lays the film's own sound, cut with the same pieces, under the voice instead, sidechain-ducked ~12 dB);
+    chapters at act starts; thumbnail = the film's own frame at the first Short's moment + the thumbnail text
+    in gold caps + a "MOVIE RECAP" tag, no film name
+  → Shorts: the same, 9:16 (≤ 3.5-s shots), captions timed per beat, hook as title band; −16 LUFS voice
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
     days later; ledger.json committed; the film trashed in the store
 ```
@@ -133,9 +131,10 @@ hand-written reference synopsis.
 | `cny/subs.py` | OpenSubtitles: file hash, search, ranking, download |
 | `cny/align.py` | .srt parsing → timed transcript; whisper fallback |
 | `cny/planner.py` | transcript → acts with time ranges + people; scripts; validators; no-slop pass |
-| `cny/cut.py` | scene detection and shot extraction (letterbox / centre-crop) |
-| `cny/visuals.py` | shots per act from the act's own time range; neighbours' shots when an act has none |
-| `cny/render.py` | long recap and Shorts composition (sequence planning in `cc/segments.py`) |
+| `cny/cut.py` | scene detection, shot picking in a window, burned-in bars, the 16:9 fill / 9:16 crop filter |
+| `cny/visuals.py` | scene cuts per act (± 30 s), cached |
+| `cny/beats.py` | beat times (parse, repair, snap quoted lines), each beat's film window and pieces, one ffmpeg render per beat |
+| `cny/render.py` | long recap and Shorts from the beats, captions per beat, film-sound mix, timing helpers |
 | `cny/thumbnail.py` | the thumbnail: film frame + hook, no film name |
 | `cny/seo.py` | titles (hook, never the film name), descriptions, tags, Short publish times |
 | `cny/pipeline.py` | orchestration, resumable `work/<date>-<slug>/`, ledger |

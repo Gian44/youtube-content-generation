@@ -20,9 +20,13 @@ def test_pick_shots_spreads_across_scene_cuts():
     assert shots[0][0] < shots[1][0] < shots[2][0]
     # a 2-second scene (118-121) is never picked
     assert all(not (118.0 <= s < 121.0) for s, _ in shots)
-    # too few cuts → even split
-    even = cut.pick_shots(100.0, 130.0, [], want=4, min_len=3.0, max_len=8.0)
-    assert len(even) == 4 and even[1][0] - even[0][0] == 7.5 and even[0][1] == 7.2
+    # one long take → split into moments of that take
+    take = cut.pick_shots(100.0, 130.0, [], want=4, min_len=3.0, max_len=8.0)
+    assert len(take) == 4 and take[0][0] == 100.15 and all(3.0 <= d <= 8.0 for _, d in take)
+    # a sliver of the previous scene before a cut never opens the beat (the harness caught "scene 9" under a scene-10 beat)
+    assert cut.pick_shots(98.5, 105.8, [100.0], want=1, min_len=2.0, max_len=5.0)[0][0] == 100.15
+    # only tiny scenes → the window is split evenly
+    assert len(cut.pick_shots(100.0, 106.0, [101.0, 102.5, 104.0], want=2, min_len=2.0, max_len=5.0)) == 2
     # fewer scenes than wanted → the longest scenes are split into several shots, still in screen order
     split = cut.pick_shots(100.0, 200.0, [130.0, 150.0], want=6, min_len=3.0, max_len=8.0)
     assert len(split) == 6 and [x[0] for x in split] == sorted(x[0] for x in split) and all(3.0 <= d <= 8.0 for _, d in split)
@@ -33,16 +37,11 @@ def test_pick_shots_spreads_across_scene_cuts():
 
 def test_cut_commands():
     sc = cut.scene_cmd("f.mp4", start=100.0, seconds=60.0, threshold=0.3)
-    assert "select='gt(scene,0.3)',showinfo" in sc and sc[sc.index("-ss") + 1] == "100.000"
-    sh = cut.shot_cmd("f.mp4", "o.mp4", start=12.5, seconds=6.0, width=1920, height=1080, fps=30)
-    vf = sh[sh.index("-vf") + 1]
-    assert sh[sh.index("-ss") + 1] == "12.500" and "-an" in sh and "boxblur" in vf and "overlay=(W-w)/2:(H-h)/2" in vf   # blurred fill
-    pad = cut.shot_cmd("f.mp4", "o.mp4", start=1, seconds=2, width=1920, height=1080, fps=30, fit="pad")
-    assert "pad=1920:1080" in pad[pad.index("-vf") + 1]
-    fa = cut.film_audio_cmd("f.mkv", "a.m4a")
-    assert fa[-1] == "a.m4a" and "-vn" in fa and fa[fa.index("-map") + 1] == "0:a:0"
-    shv = cut.shot_cmd("f.mp4", "o.mp4", start=12.5, seconds=6.0, width=1080, height=1920, fps=30, fit="crop")
-    assert "crop=1080:1920" in shv[shv.index("-vf") + 1] and "pad=" not in shv[shv.index("-vf") + 1]
+    assert "scale=480:-2,select='gt(scene,0.3)',showinfo" in sc and sc[sc.index("-ss") + 1] == "100.000"
+    vf = cut.shot_vf(width=1920, height=1080, fps=30)
+    assert "boxblur" in vf and "overlay=(W-w)/2:(H-h)/2" in vf                          # 16:9 blurred fill by default
+    assert "pad=1920:1080" in cut.shot_vf(width=1920, height=1080, fps=30, fit="pad")
+    assert "crop=1080:1920" in cut.shot_vf(width=1080, height=1920, fps=30, fit="crop") and "boxblur" not in cut.shot_vf(width=1080, height=1920, fps=30, fit="crop")
 
 
 def test_store_key_matching_and_config(monkeypatch):
@@ -104,36 +103,6 @@ def test_wav_samples_for_whisper(tmp_path):
                     "-c:a", "pcm_s16le", wav], check=True)
     a = align._wav_samples(wav)
     assert a.dtype.name == "float32" and a.shape == (8000,) and -1.0 <= float(a.min()) and float(a.max()) <= 1.0
-
-
-def test_film_audio_extraction_and_real_bed_mix(tmp_path):
-    """Real ffmpeg: a 40 s two-tone "film", shots mapped back to it, the bed cut and ducked under a voice."""
-    import subprocess
-    from cny import render
-    from cc import segments as seg
-    film = str(tmp_path / "film.mp4")
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=40",
-                    "-f", "lavfi", "-i", "sine=frequency=330:duration=40", "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
-                    "-c:a", "aac", film], check=True)
-    fa = cut.extract_film_audio(film, str(tmp_path / "film_audio.m4a"))
-    assert fa and cut.extract_film_audio(film, fa) == fa                       # resumable
-    silent = str(tmp_path / "silent.mp4")
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=3", "-c:v", "libx264",
-                    "-preset", "ultrafast", silent], check=True)
-    assert cut.extract_film_audio(silent, str(tmp_path / "none.m4a")) is None   # no audio stream → pad instead
-    plan = [seg.Segment("clip", "p1.mp4", 2.0), seg.Segment("clip", "p2.mp4", 3.0, offset=1.0), seg.Segment("clip", "unknown.mp4", 1.0)]
-    pieces = render.bed_pieces(plan, {"p1.mp4": 10.5, "p2.mp4": 30.5})
-    assert pieces == [(10.5, 2.0), (31.5, 3.0), (-1.0, 1.0)]
-    bed = str(tmp_path / "bed.wav")
-    subprocess.run(render.bed_cmd(fa, pieces, 7.0, bed), check=True)
-    assert abs(render.tts.duration_seconds(bed) - 7.0) < 0.05                   # padded to the section length
-    voice = str(tmp_path / "voice.mp3")
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=5", "-ar", "24000", voice], check=True)
-    mix = str(tmp_path / "mix.wav")
-    subprocess.run(render.mix_film_cmd(voice, bed, mix), check=True)
-    assert abs(render.tts.duration_seconds(mix) - 5.0) < 0.1                    # as long as the voice
-    both = render.concat_audio([bed, bed], str(tmp_path / "both.wav"))
-    assert abs(render.tts.duration_seconds(both) - 14.0) < 0.1
 
 
 def _tone_db(path, f0, at, secs=1.5):

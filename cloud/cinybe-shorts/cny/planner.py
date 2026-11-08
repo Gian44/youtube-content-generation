@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from sof import noslop
 from sof.llm import LLM, LLMError
 
+from cny import beats as beatmod
+
 log = logging.getLogger("cny.planner")
 LONG_FORM_TOLERANCE = (0.7, 1.3)
 SHORT_SLACK = 1.3            # a Short up to 30 % over the cap is trimmed back at a sentence end instead of failing the plan
@@ -47,13 +49,14 @@ class FilmPlan:
 
     @property
     def sections(self) -> list[dict]:
-        """``[{"heading", "body", "act_index"}]`` in act order — the shape ``sof.tts.chunk_sections`` takes."""
+        """``[{"heading", "body", "act_index", "beats"}]`` in act order; ``beats`` = ``[{"at", "text"}]``."""
         by_idx = {int(a["index"]): a for a in self.acts}
         out = []
         for s in sorted(self.long_form.get("sections") or [], key=lambda x: int(x["act_index"])):
             act = by_idx.get(int(s["act_index"]), {})
+            beats = [dict(b) for b in s.get("beats") or []]
             out.append({"heading": str(act.get("title") or ""), "body": str(s.get("text") or "").strip(),
-                        "act_index": int(s["act_index"])})
+                        "act_index": int(s["act_index"]), "beats": beats})
         return out
 
 
@@ -94,16 +97,22 @@ SCRIPTS_PROMPT = """Film: {title} ({year})
 People (name, and who they are — for your understanding; the narration just says the name): {people_json}
 Acts (JSON): {acts_json}
 
-DIALOGUE PER ACT — the film's own lines inside each act's time range ("[mm:ss] text"); use it for what people say and do,
-in the order it happens:
+DIALOGUE PER ACT — the film's own lines inside each act's time range, each with the moment it is spoken ("[mm:ss] text");
+use it for what people say and do, in the order it happens:
 {dialogue}
+
+THE FOOTAGE FOLLOWS YOUR TIMESTAMPS. The narration is split into beats; under each beat the viewer sees the film from
+the moment you give, so a beat must tell what is on screen at that moment. Each beat = 1-3 short sentences (12-40 words)
+about ONE moment, with "at": the film time ("mm:ss", or "h:mm:ss" past an hour) of that moment — take it from the
+dialogue line it is about; for action between lines, the time between those lines. Beats are in screen order; their
+times only move forward; a new moment (new scene, new place, someone arrives, a fight starts) is a new beat.
 
 Write two things.
 
 1. "long_form": the full narrated recap, about {target_words} words in total, roughly {per_section_words} words per act,
-   one section per act in act order. Each section is narration only, no headings; it tells what happens in that act,
-   scene by scene, in present tense, with the concrete details the dialogue gives (who says what, what they decide,
-   what goes wrong). Keep it FAST so viewers stay: short sentences; every sentence moves the story; skip small talk,
+   one section per act in act order. Each section is a list of beats (narration only, no headings) telling what happens
+   in that act, scene by scene, in present tense, with the concrete details the dialogue gives (who says what, what
+   they decide, what goes wrong). Keep it FAST so viewers stay: short sentences; every sentence moves the story; skip small talk,
    travel, and anything already said; end each act on a line that pulls into the next (a threat, a reveal, a choice).
    Now and then quote a short line word for word from the dialogue, the way recap channels do: He tells her, "They're
    coming to get you." Call people by name only, from their first mention ("Ben", not "a drifter named Ben"). The
@@ -121,13 +130,14 @@ Write two things.
    - "tags": 8-12 lowercase search tags: the film's name, director, genre, "movie recap", key nouns.
 
 2. "shorts": exactly {shorts_per_film} Shorts, each from a DIFFERENT act_index, the most dramatic moments. Each Short:
-   "hook" (at most 14 words, the first sentence spoken, a concrete event), "text" (the full narration INCLUDING the
-   hook, {short_min_words}-{short_max_words} words, present tense, fast, people called by name only, ending on a
-   cliffhanger or a payoff; no film name), "title" (a premise-and-twist hook of at most 70 characters, no film name, no
+   "hook" (at most 14 words, the first sentence spoken, a concrete event), "beats" (the full narration INCLUDING the
+   hook, as beats with "at" like the long form, all inside that act; {short_min_words}-{short_max_words} words in total,
+   present tense, fast, people called by name only, ending on a cliffhanger or a payoff; no film name), "title" (a premise-and-twist hook of at most 70 characters, no film name, no
    person's name, no hashtags), "tags" (4-8 lowercase tags).
 
-Return JSON: {{"long_form": {{"title", "thumb_text", "description", "tags", "sections": [{{"act_index", "text"}}]}},
-              "shorts": [{{"act_index", "hook", "text", "title", "tags"}}]}}"""
+Return JSON: {{"long_form": {{"title", "thumb_text", "description", "tags",
+                             "sections": [{{"act_index", "beats": [{{"at": "mm:ss", "text"}}]}}]}},
+              "shorts": [{{"act_index", "hook", "beats": [{{"at": "mm:ss", "text"}}], "title", "tags"}}]}}"""
 
 EDIT_SYSTEM = ("You are a line editor for spoken narration. You change wording only; every event, name and outcome "
                "stays exactly as written. Output strict JSON.")
@@ -150,6 +160,25 @@ def trim_words(text: str, cap: int) -> str:
 # ----------------------------------------------------------------- the dialogue each act covers (pure)
 
 _LINE = re.compile(r"^\[(\d+):(\d\d)\]\s*(.*)$")
+
+
+def _mmss(x: float) -> str:
+    x = int(max(0, x))
+    return f"{x // 3600}:{x // 60 % 60:02d}:{x % 60:02d}" if x >= 3600 else f"{x // 60:02d}:{x % 60:02d}"
+
+
+def act_dialogue_cues(cues, acts: list[dict], *, max_chars: int = 60000) -> str:
+    """Each act's subtitle lines with their own start time (the writer stamps beats from these), one block per act,
+    trimmed like ``act_dialogue``. ``cues``: objects with .start/.text."""
+    per = max(400, max_chars // max(1, len(acts)))
+    blocks = []
+    for a in acts:
+        s, e = float(a["start_seconds"]), float(a["end_seconds"])
+        body = "\n".join(f"[{_mmss(c.start)}] {c.text}" for c in cues if s - 5 <= float(c.start) <= e)
+        if len(body) > per:
+            body = body[:per].rsplit("\n", 1)[0] + "\n[…]"
+        blocks.append(f"Act {a['index']} ({_mmss(s)}-{_mmss(e)}):\n" + (body or "(no dialogue — describe the action from the summary)"))
+    return "\n\n".join(blocks)
 
 
 def act_dialogue(transcript: str, acts: list[dict], *, max_chars: int = 60000) -> str:
@@ -244,14 +273,67 @@ def _names_person(text: str, people: list[dict]) -> str | None:
     return None
 
 
+BEAT_MAX_WORDS = 80
+
+
+def _beatify(obj: dict, act: dict | None, label: str, errors: list[str]) -> None:
+    """``obj["beats"]`` → cleaned, timed inside the act (±15 s), in screen order; ``obj["text"]`` = the beats joined."""
+    raw = obj.get("beats")
+    if not isinstance(raw, list) or not raw:
+        errors.append(f'{label} has no beats; give "beats": [{{"at": "mm:ss", "text": "..."}}]')
+        return
+    clean = [{"at": b.get("at"), "text": " ".join(str(b.get("text") or "").split())}
+             for b in raw if isinstance(b, dict) and str(b.get("text") or "").strip()]
+    if not clean:
+        errors.append(f"{label} has only empty beats")
+        return
+    unread = sum(1 for b in clean if beatmod.parse_at(b["at"]) is None)
+    if unread > max(1, len(clean) * 0.3):
+        errors.append(f'{label}: {unread} of {len(clean)} beats have no readable "at" (use the dialogue\'s mm:ss)')
+    long = [i for i, b in enumerate(clean) if len(b["text"].split()) > BEAT_MAX_WORDS]
+    if long:
+        errors.append(f"{label}: beats {long[:5]} are over {BEAT_MAX_WORDS} words; split them into one moment each")
+    lo = max(0.0, float(act["start_seconds"]) - 15) if act else 0.0
+    hi = float(act["end_seconds"]) + 15 if act else 1e9
+    obj["beats"] = beatmod.normalize(clean, lo=lo, hi=hi)
+    obj["text"] = " ".join(b["text"] for b in obj["beats"])
+
+
+def _cap_short(s: dict, cap: int) -> None:
+    """A Short a little over ``cap`` words loses its last beats (then words) — it still ends on a sentence."""
+    bs = list(s.get("beats") or [])
+    while len(bs) > 1 and sum(len(b["text"].split()) for b in bs) > cap:
+        bs.pop()
+    over = sum(len(b["text"].split()) for b in bs) - cap
+    if bs and over > 0:
+        bs[-1] = dict(bs[-1], text=trim_words(bs[-1]["text"], max(3, len(bs[-1]["text"].split()) - over)))
+    s["beats"] = bs
+    s["text"] = " ".join(b["text"] for b in bs)
+
+
 def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, shorts_per_film: int, short_max_words: int,
                      people: list[dict] | None = None) -> dict:
     errors: list[str] = []
     if not isinstance(data, dict):
         raise PlanError("scripts must be a JSON object")
     valid_idx = {int(a["index"]) for a in acts}
+    by_idx = {int(a["index"]): a for a in acts}
     lf = data.get("long_form") or {}
     sections = lf.get("sections") or []
+    for s in sections:
+        if isinstance(s, dict):
+            try:
+                act = by_idx.get(int(s.get("act_index", -1)))
+            except (TypeError, ValueError):
+                act = None
+            _beatify(s, act, f"section {s.get('act_index')}", errors)
+    for i, s in enumerate(data.get("shorts") or []):
+        if isinstance(s, dict):
+            try:
+                act = by_idx.get(int(s.get("act_index", -1)))
+            except (TypeError, ValueError):
+                act = None
+            _beatify(s, act, f"short {i}", errors)
     title = re.sub(r"\s*\|\s*movie recap\s*$", "", str(lf.get("title", "")).strip(), flags=re.I)
     named = _names_person(title, people or [])
     if not title:
@@ -321,7 +403,7 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
         raise PlanError("; ".join(errors))
     lf["title"] = title
     for s in shorts:                                  # a few words over: trimmed at a sentence end, never a rejection
-        s["text"] = trim_words(str(s.get("text", "")), short_max_words)
+        _cap_short(s, short_max_words)
     lf["tags"] = [str(t).strip().lower() for t in (lf.get("tags") or []) if str(t).strip()]
     for s in shorts:
         s["tags"] = [str(t).strip().lower() for t in (s.get("tags") or []) if str(t).strip()]
@@ -343,7 +425,7 @@ def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, m
 
 def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, duration: float, plot_text: str = "",
               target_words: int, acts_range: tuple[int, int], shorts_per_film: int, short_max_words: int,
-              noslop_rounds: int = 1, fast_model: str | None = None, dialogue_max_chars: int = 60000) -> FilmPlan:
+              noslop_rounds: int = 1, fast_model: str | None = None, dialogue_max_chars: int = 60000, cues=None) -> FilmPlan:
     acts_min, acts_max = acts_range
     reference = (f"A published plot summary, for reference only (the transcript decides what is on screen):\n{plot_text[:6000]}\n"
                  if plot_text.strip() else "")
@@ -358,7 +440,8 @@ def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, durati
     scripts_prompt = SCRIPTS_PROMPT.format(
         title=title, year=year or "n/a", people_json=json.dumps(people, ensure_ascii=False),
         acts_json=json.dumps([{k: a[k] for k in ("index", "title", "summary", "stakes") if k in a} for a in acts], ensure_ascii=False),
-        dialogue=act_dialogue(transcript, acts, max_chars=dialogue_max_chars),
+        dialogue=(act_dialogue_cues(cues, acts, max_chars=dialogue_max_chars) if cues
+                  else act_dialogue(transcript, acts, max_chars=dialogue_max_chars)),
         target_words=target_words, per_section_words=max(40, target_words // max(1, len(acts))),
         shorts_per_film=shorts_per_film, short_max_words=short_max_words, short_min_words=max(20, short_max_words * 2 // 3))
     scripts_prompt = noslop.inject(scripts_prompt, STYLE_BLOCK, before="Return JSON")
@@ -379,38 +462,47 @@ def _one_para(text: str) -> str:
 
 
 def despop(llm: LLM, scripts: dict, *, title: str, rounds: int, short_max_words: int, fast_model: str | None) -> dict:
-    """No-AI-slop pass over the validated scripts (long-form sections as one multi-paragraph text, Shorts likewise,
-    one model call per round). A Short that would exceed ``short_max_words`` keeps its text. Never raises."""
+    """No-AI-slop pass over the validated scripts, one beat per paragraph so every beat keeps its timestamp (long form
+    and Shorts separately, one model call per round). A rewrite that changes the number of beats is dropped; a Short
+    that would exceed ``short_max_words`` keeps its text. Never raises."""
     rounds = max(0, int(rounds or 0))
 
     def rewrite(prompt: str) -> dict:
         return llm.generate_json(prompt, system=EDIT_SYSTEM, temperature=0.0, model=fast_model, max_tokens=8000)
 
-    extra = ("This is a spoken recap of a film; keep the present tense, every plot event, every name, and every quoted "
-             "line word for word; never add the film's name.")
+    extra = ("This is a spoken recap of a film, one paragraph per moment on screen; keep the present tense, every plot "
+             "event, every name, and every quoted line word for word; keep each paragraph about its own moment; never add "
+             "the film's name.")
     stats: dict[str, dict] = {}
+
+    def polish_beats(owners: list[dict], band: tuple[float, float], key: str, cap: int | None = None) -> None:
+        flat = [(o, b) for o in owners for b in o.get("beats") or []]
+        if not flat:
+            return
+        res = noslop.polish("\n\n".join(_one_para(b["text"]) for _, b in flat), rewrite=rewrite, mode="recap",
+                            rounds=rounds, length_band=band, extra=extra, max_paragraphs=max(40, len(flat)))
+        paras = noslop.paragraphs(res.text)
+        if len(paras) == len(flat):
+            new_text: dict[int, list[str]] = {}
+            for (o, _), para in zip(flat, paras):
+                new_text.setdefault(id(o), []).append(para)
+            for o in owners:
+                texts = new_text.get(id(o)) or []
+                if len(texts) != len(o.get("beats") or []):
+                    continue
+                if cap is not None and len(" ".join(texts).split()) > cap:     # a Short that grew past its cap keeps its words
+                    continue
+                for b, t in zip(o["beats"], texts):
+                    b["text"] = t
+                o["text"] = " ".join(texts)
+                if cap is not None and str(o.get("hook") or "").strip() not in o["text"] and o["beats"]:
+                    o["hook"] = noslop.sentences(o["beats"][0]["text"])[0]
+        stats[key] = res.to_dict()
+
     try:
-        sections = [s for s in (scripts.get("long_form") or {}).get("sections") or [] if isinstance(s, dict)]
-        if sections:
-            res = noslop.polish("\n\n".join(_one_para(s.get("text")) for s in sections), rewrite=rewrite, mode="recap",
-                                rounds=rounds, length_band=(0.75, 1.25), extra=extra)
-            paras = noslop.paragraphs(res.text)
-            if len(paras) == len(sections):
-                for s, p in zip(sections, paras):
-                    s["text"] = p
-            stats["long_form"] = res.to_dict()
-        shorts = [s for s in scripts.get("shorts") or [] if isinstance(s, dict)]
-        if shorts:
-            res = noslop.polish("\n\n".join(_one_para(s.get("text")) for s in shorts), rewrite=rewrite, mode="recap",
-                                rounds=rounds, length_band=(0.75, 1.2), extra=extra)
-            paras = noslop.paragraphs(res.text)
-            if len(paras) == len(shorts):
-                for s, p in zip(shorts, paras):
-                    if len(p.split()) <= short_max_words and p != _one_para(s.get("text")):
-                        s["text"] = p
-                        if str(s.get("hook") or "").strip() not in p:
-                            s["hook"] = noslop.sentences(p)[0]
-            stats["shorts"] = res.to_dict()
+        polish_beats([s for s in (scripts.get("long_form") or {}).get("sections") or [] if isinstance(s, dict)], (0.75, 1.25),
+                     "long_form")
+        polish_beats([s for s in scripts.get("shorts") or [] if isinstance(s, dict)], (0.75, 1.2), "shorts", cap=short_max_words)
     except Exception as exc:  # noqa: BLE001 — the editor must never cost the plan
         log.warning("noslop pass failed: %s", exc)
     return {k: {"before": v["before"]["findings"], "after": v["after"]["findings"], "rewritten": v["rewritten"]}

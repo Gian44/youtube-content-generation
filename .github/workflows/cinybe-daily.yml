@@ -143,7 +143,8 @@ jobs:
             cloud/cinybe-shorts/work/**/plot.json
             cloud/cinybe-shorts/work/**/meta.json
             cloud/cinybe-shorts/work/**/chapters.json
-            cloud/cinybe-shorts/work/**/visuals.json
+            cloud/cinybe-shorts/work/**/beats.json
+            cloud/cinybe-shorts/work/**/cuts.json
             cloud/cinybe-shorts/work/**/transcript.txt
             cloud/cinybe-shorts/work/**/thumb.jpg
             cloud/cinybe-shorts/work/**/frames/*.jpg

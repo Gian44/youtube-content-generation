@@ -1,6 +1,5 @@
-"""Shots from the film for one act: ffmpeg scene-change detection inside the act's time range, then enough 2.5–8 s
-shots spread across it, each extracted as a silent normalised clip (4:3 and scope prints fill 16:9 with a blurred
-copy of the frame). The film's own soundtrack is extracted once and cut to the same moments by the renderer."""
+"""Film-side helpers: scene-change detection, shot picking inside a time window, bars burned into the file, and the
+filter that frames a shot (16:9 blurred fill or 9:16 crop). ``cny.beats`` renders each narration beat with them."""
 
 from __future__ import annotations
 
@@ -14,8 +13,9 @@ _PTS = re.compile(r"pts_time:(\d+(?:\.\d+)?)")
 
 
 def scene_cmd(video: str, *, start: float, seconds: float, threshold: float) -> list[str]:
+    """Scene scores on a 480-px copy of the frames: the same cuts, a fraction of the work."""
     return ["ffmpeg", "-v", "info", "-nostats", "-ss", f"{start:.3f}", "-t", f"{seconds:.3f}", "-i", video, "-an",
-            "-vf", f"select='gt(scene,{threshold:g})',showinfo", "-f", "null", "-"]
+            "-vf", f"scale=480:-2,select='gt(scene,{threshold:g})',showinfo", "-f", "null", "-"]
 
 
 def scene_cuts(video: str, *, start: float, end: float, threshold: float = 0.3, timeout: int = 600) -> list[float]:
@@ -32,13 +32,14 @@ def scene_cuts(video: str, *, start: float, end: float, threshold: float = 0.3, 
 def pick_shots(start: float, end: float, cuts: list[float], *, want: int, min_len: float = 3.0, max_len: float = 8.0,
                pad: float = 0.15) -> list[tuple[float, float]]:
     """Pure: ``want`` (start, seconds) shots spread across the window, in screen order. Shots begin just after a
-    scene cut (capped at ``max_len``); too-short scenes are skipped. With more scenes than wanted, an even spread
-    of them; with fewer, the longest scenes are split into several shots (different moments of the same scene)
-    so an act never has to replay the same shot; with almost no cuts, the window is split evenly."""
+    scene cut (capped at ``max_len``); too-short scenes are skipped — so a sliver of the previous scene before a cut
+    never opens a beat. With more scenes than wanted, an even spread of them; with fewer (one long take included),
+    the longest scenes are split into several shots (different moments of the same scene) so nothing is replayed;
+    only when no scene is long enough is the window split evenly."""
     want = max(1, want)
     bounds = [start] + [c for c in cuts if start < c < end] + [end]
     scenes = [(a + pad, b - a - pad) for a, b in zip(bounds, bounds[1:]) if b - a - pad >= min_len]
-    if len(scenes) < 2:                         # one long take or a blur of tiny cuts: split the window evenly
+    if not scenes:                              # nothing but tiny cuts (or none inside a short window): split it evenly
         n = max(1, min(want, int((end - start) // max(0.5, min_len))))
         step = (end - start) / n
         return [(round(start + i * step + pad, 3), round(min(max_len, max(1.0, step - 2 * pad)), 3)) for i in range(n)]
@@ -126,63 +127,10 @@ def shot_vf(*, width: int, height: int, fps: int, fit: str = "blur", crop: str |
     return pre + vf + f",fps={fps},setsar=1,format=yuv420p"
 
 
-def shot_cmd(video: str, out: str, *, start: float, seconds: float, width: int, height: int, fps: int, fit: str = "blur",
-             crop: str | None = None) -> list[str]:
-    """One silent shot; the film's sound is laid under the narration separately (``film_audio_cmd``), cut to the
-    same moments."""
-    return ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", video, "-t", f"{seconds:.3f}", "-an",
-            "-vf", shot_vf(width=width, height=height, fps=fps, fit=fit, crop=crop),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-map_metadata", "-1", out]
-
-
-def film_audio_cmd(video: str, out: str) -> list[str]:
-    """The film's whole soundtrack, once: the bed under the narration is cut from it shot by shot."""
-    return ["ffmpeg", "-y", "-v", "error", "-i", video, "-vn", "-map", "0:a:0", "-ac", "2", "-ar", "48000", "-c:a", "aac",
-            "-b:a", "160k", out]
-
-
-def extract_film_audio(video: str, out: str) -> str | None:
-    """``out`` or None when the file has no audio stream or ffmpeg fails (the recap then gets the ambient pad)."""
-    if Path(out).exists() and Path(out).stat().st_size > 0:
-        return out
-    try:
-        subprocess.run(film_audio_cmd(video, out), check=True, capture_output=True, timeout=1800)
-        return out if Path(out).exists() and Path(out).stat().st_size > 0 else None
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        log.warning("no film audio: %s", exc)
-        Path(out).unlink(missing_ok=True)
-        return None
-
-
-def extract_shots(video: str, shots: list[tuple[float, float]], out_dir: str, *, prefix: str, width: int, height: int,
-                  fps: int, fit: str = "blur", crop: str | None = None) -> list[str]:
-    """Cut each (start, seconds) shot → ``<out_dir>/<prefix>_<k>.mp4`` (resumable: existing files are kept)."""
-    d = Path(out_dir)
-    d.mkdir(parents=True, exist_ok=True)
-    out: list[str] = []
-    for k, (st, secs) in enumerate(shots):
-        p = str(d / f"{prefix}_{k:02d}.mp4")
-        if Path(p).exists():
-            out.append(p)
-            continue
-        try:
-            subprocess.run(shot_cmd(video, p, start=st, seconds=secs, width=width, height=height, fps=fps, fit=fit, crop=crop),
-                           check=True, capture_output=True, timeout=600)
-            out.append(p)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            log.warning("shot %d (%s) failed: %s", k, prefix, exc)
-    return out
-
-
-def act_shots(video: str, out_dir: str, *, act_index: int, window: dict, want: int, min_len: float, max_len: float,
-              threshold: float, width: int, height: int, fps: int, crop: str | None = None) -> tuple[list[str], list[tuple[float, float]]]:
-    """The act's shots: (clip paths, the (start, seconds) list they were cut from)."""
-    s, e = float(window["start_seconds"]), float(window["end_seconds"])
-    cuts = scene_cuts(video, start=s, end=e, threshold=threshold)
-    shots = pick_shots(s, e, cuts, want=want, min_len=min_len, max_len=max_len)
-    out = extract_shots(video, shots, out_dir, prefix=f"act{act_index:02d}", width=width, height=height, fps=fps, fit="blur", crop=crop)
-    log.info("act %d: %d shots from %d scene cuts in %.0f-%.0f s", act_index, len(out), len(cuts), s, e)
-    return out, shots
+def has_audio(video: str) -> bool:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", video],
+                       capture_output=True, text=True, timeout=60)
+    return bool(r.stdout.strip())
 
 
 def duration_seconds(video: str) -> float:

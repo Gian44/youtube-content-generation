@@ -16,12 +16,26 @@ def _people():
     return [{"name": "Dom Cobb", "descriptor": "the extractor"}, {"name": "Mal", "descriptor": "his dead wife"}]
 
 
+def _mmss(x):
+    x = int(x)
+    return f"{x // 60:02d}:{x % 60:02d}"
+
+
+def _beats(act, words, n=3):
+    """``n`` beats spread over the act, ``words`` words in total."""
+    per = max(1, words // n)
+    span = act["end_seconds"] - act["start_seconds"]
+    return [{"at": _mmss(act["start_seconds"] + span * k / n), "text": " ".join(["word"] * per) + "."} for k in range(n)]
+
+
 def _scripts(acts, *, words_per=60, shorts=3, title="A Thief Steals Secrets From Inside People's Dreams"):
     return {"long_form": {"title": title, "description": f"Spoilers. {FILM} (2010): a heist in dreams.", "thumb_text": "DREAM HEIST",
                           "tags": ["inception", "nolan"],
-                          "sections": [{"act_index": a["index"], "text": " ".join(["word"] * words_per)} for a in acts]},
-            "shorts": [{"act_index": k, "hook": "He steals a secret.", "text": "He steals a secret. " * 5, "title": f"The totem never falls {k}",
-                        "tags": ["x"]} for k in range(shorts)]}
+                          "sections": [{"act_index": a["index"], "beats": _beats(a, words_per)} for a in acts]},
+            "shorts": [{"act_index": k, "hook": "He steals a secret.",
+                        "beats": [{"at": _mmss(acts[k]["start_seconds"] + 30), "text": "He steals a secret. " * 2},
+                                  {"at": _mmss(acts[k]["start_seconds"] + 60), "text": "He steals a secret. " * 3}],
+                        "title": f"The totem never falls {k}", "tags": ["x"]} for k in range(shorts)]}
 
 
 def test_validate_acts_checks_order_ranges_and_people():
@@ -45,13 +59,29 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
     acts = _acts(5)
     good = planner.validate_scripts(_scripts(acts), acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     assert good["long_form"]["tags"] == ["inception", "nolan"]
+    sec = good["long_form"]["sections"][1]
+    assert sec["text"].startswith("word") and [b["at"] for b in sec["beats"]] == [660.0, 820.0, 980.0]     # mm:ss → seconds
+    # beats are required, their times repaired (unreadable → interpolated, backwards → lifted, outside → clamped)
+    no_beats = _scripts(acts)
+    no_beats["long_form"]["sections"][0] = {"act_index": 0, "text": "word " * 60}
+    with pytest.raises(planner.PlanError, match="no beats"):
+        planner.validate_scripts(no_beats, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    messy = _scripts(acts)
+    messy["long_form"]["sections"][1]["beats"] = [{"at": "11:40", "text": "w " * 20}, {"at": "soon", "text": "w " * 20},
+                                                  {"at": "10:00", "text": "w " * 20}, {"at": "99:00", "text": "w " * 20}]
+    got = planner.validate_scripts(messy, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    assert [b["at"] for b in got["long_form"]["sections"][1]["beats"]] == [700.0, 700.0, 700.0, 1155.0]
+    huge = _scripts(acts)
+    huge["long_form"]["sections"][0]["beats"][0]["text"] = "word " * 90
+    with pytest.raises(planner.PlanError, match="split them"):
+        planner.validate_scripts(huge, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     with pytest.raises(planner.PlanError, match="must not name the film"):
         planner.validate_scripts(_scripts(acts, title="Inception Explained: The Dream Heist Nobody Understood"), acts, film=FILM,
                                  target_words=300, shorts_per_film=3, short_max_words=80)
     with pytest.raises(planner.PlanError, match="outside"):
         planner.validate_scripts(_scripts(acts, words_per=10), acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     named = _scripts(acts)
-    named["long_form"]["sections"][2]["text"] = "Inception begins when Cobb " + "word " * 50
+    named["long_form"]["sections"][2]["beats"][0]["text"] = "Inception begins when Cobb " + "word " * 15
     with pytest.raises(planner.PlanError, match="never says the film's name"):
         planner.validate_scripts(named, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     dup = _scripts(acts)
@@ -108,6 +138,8 @@ def test_plan_film_from_transcript_retries_once_and_polishes():
     assert "DIALOGUE PER ACT" in llm.prompts[1][0] and "called by their names from the very first mention" in llm.prompts[1][1]
     assert "Keep it FAST" in llm.prompts[1][0] and "a drifter named Ben" in llm.prompts[1][0]       # names only, no intros
     assert "Validation errors" in llm.prompts[2][0]                                      # scripts retried with the errors
+    assert "THE FOOTAGE FOLLOWS YOUR TIMESTAMPS" in llm.prompts[1][0]
+    assert all(sec["beats"] and all(isinstance(b["at"], float) for b in sec["beats"]) for sec in plan.sections)
     assert plan.long_form["people"] == _people() and plan.sections[4]["act_index"] == 4
     assert planner.FilmPlan.from_dict(plan.to_dict()).long_form["title"] == plan.long_form["title"]
 
@@ -120,13 +152,17 @@ def test_plan_film_raises_after_second_failure():
                           shorts_per_film=3, short_max_words=80)
 
 
-def test_despop_keeps_short_within_cap():
+def test_despop_works_per_beat_and_keeps_short_within_cap():
     acts = _acts(2)
     scripts = _scripts(acts, shorts=2)
+    scripts["shorts"][0]["beats"] = [{"at": 70.0, "text": "It is not a dream but a heist."}, {"at": 80.0, "text": "Ultimately, this matters."}]
     scripts["shorts"][0]["text"] = "It is not a dream but a heist. Ultimately, this matters."
-    llm = FakeLLM([{"paragraphs": []}, {"paragraphs": [{"id": 0, "text": "w " * 90}]}])
+    for sec in scripts["long_form"]["sections"]:
+        sec["text"] = " ".join(b["text"] for b in sec["beats"])
+    scripts["shorts"][1]["text"] = " ".join(b["text"] for b in scripts["shorts"][1]["beats"])
+    llm = FakeLLM([{"paragraphs": []}, {"paragraphs": [{"id": 1, "text": "w " * 90}]}])
     stats = planner.despop(llm, scripts, title="X", rounds=1, short_max_words=80, fast_model="fast")
-    assert scripts["shorts"][0]["text"].startswith("It is not a dream")        # over-long rewrite rejected
+    assert scripts["shorts"][0]["beats"][1]["text"] == "Ultimately, this matters."         # over-long rewrite rejected, beats intact
     assert set(stats) <= {"long_form", "shorts"} and stats["shorts"]["before"] >= 1
 
 
@@ -159,16 +195,25 @@ def test_short_title_and_publish_times():
     assert body["snippet"]["categoryId"] == "1" and body["status"]["privacyStatus"] == "private"
 
 
-def test_short_slightly_over_the_cap_is_trimmed_not_rejected():
+def test_short_slightly_over_the_cap_loses_its_last_beats_not_the_plan():
     acts = _acts(5)
     sc = _scripts(acts)
-    sc["shorts"][1]["text"] = ("He runs. " * 40 + "She screams at him to stop and he keeps going down the road").strip()   # 94 words
+    sc["shorts"][1]["beats"] = [{"at": "11:00", "text": "He runs. " * 20}, {"at": "11:10", "text": "He runs. " * 20},
+                                {"at": "11:20", "text": "She screams at him to stop and he keeps going down the road toward them."}]
     out = planner.validate_scripts(sc, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
-    t = out["shorts"][1]["text"]
-    assert len(t.split()) <= 80 and t.endswith(".")
+    s1 = out["shorts"][1]
+    assert len(s1["text"].split()) <= 80 and len(s1["beats"]) == 2 and s1["text"] == " ".join(b["text"] for b in s1["beats"])
     too_long = _scripts(acts)
-    too_long["shorts"][0]["text"] = "word " * 120
+    too_long["shorts"][0]["beats"] = [{"at": "01:30", "text": "word " * 60}, {"at": "02:00", "text": "word " * 60}]
     with pytest.raises(planner.PlanError, match="120 words"):
         planner.validate_scripts(too_long, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     assert planner.trim_words("One two. Three four five.", 3) == "One two." and planner.trim_words("a b c", 5) == "a b c"
     assert planner.trim_words("no stop here at all ever", 3) == "no stop here."
+
+
+def test_act_dialogue_from_cues_stamps_every_line():
+    from cny.align import Cue
+    cues = [Cue(12.0, 13.0, "Hello."), Cue(65.4, 66.0, "Who are you?"), Cue(3725.0, 3727.0, "Late line.")]
+    out = planner.act_dialogue_cues(cues, [{"index": 0, "start_seconds": 0, "end_seconds": 70},
+                                           {"index": 1, "start_seconds": 3700, "end_seconds": 3800}])
+    assert "[00:12] Hello." in out and "[01:05] Who are you?" in out and "[1:02:05] Late line." in out

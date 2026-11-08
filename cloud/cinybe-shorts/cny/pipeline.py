@@ -24,7 +24,7 @@ from sof import ledger, music, tts, upload
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from cny import align, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, subs, thumbnail, visuals
+from cny import align, beats as beatmod, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, subs, thumbnail, visuals
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
@@ -59,6 +59,18 @@ def pick_film(cfg: Config, rows: list[dict], keys: list[str]) -> tuple[films.Fil
     if missing:
         print("queued, no file in the store yet: " + "; ".join(missing[:8]) + (" …" if len(missing) > 8 else ""), flush=True)
     return None
+
+
+def snap_plan(plan, cues) -> int:
+    """Every beat (long form and Shorts) that quotes a line moves to that line's subtitle time."""
+    by_idx = {int(a["index"]): a for a in plan.acts}
+    n = 0
+    owners = list(plan.long_form.get("sections") or []) + list(plan.shorts or [])
+    for o in owners:
+        act = by_idx.get(int(o.get("act_index", -1)))
+        if act and o.get("beats"):
+            n += beatmod.snap_quotes(o["beats"], cues, lo=max(0.0, float(act["start_seconds"]) - 15), hi=float(act["end_seconds"]) + 15)
+    return n
 
 
 def voice_filter(cfg: Config) -> str:
@@ -218,19 +230,22 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
 
     _stage("plan")
     plan_path = work / "plan.json"
-    if plan_path.exists():
-        plan = planner.FilmPlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
-    else:
+    plan = planner.FilmPlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8"))) if plan_path.exists() else None
+    if plan is not None and not all(sec.get("beats") for sec in plan.sections):
+        plan = None                                   # a plan from before the beat format: write it again
+    if plan is None:
         try:
             plan = planner.plan_film(llm, title=film.title, year=film.year or meta.year, transcript=transcript, duration=duration_film,
                                      plot_text=plot_mod.trim_plot(plot.text, cfg.max_plot_chars) if plot else "",
                                      target_words=cfg.target_words, acts_range=cfg.acts_range,
                                      shorts_per_film=cfg.shorts_per_film if shorts_enabled else 1,
                                      short_max_words=cfg.short_max_words, noslop_rounds=cfg.noslop_rounds,
-                                     fast_model=cfg.sof.fast_model)
+                                     fast_model=cfg.sof.fast_model, cues=cues)
         except planner.PlanError as exc:              # the writer varies run to run: retry tomorrow, never skip the film
             print(f"✗ planning failed: {exc}", flush=True)
             return EXIT_PLAN
+        snapped = snap_plan(plan, cues)
+        print(f"beats snapped to the subtitle they quote: {snapped}", flush=True)
         plan_path.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     sections = plan.sections
     words = sum(len(s["body"].split()) for s in sections)
@@ -238,37 +253,44 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     if plan.slop:
         print("noslop: " + " · ".join(f"{k} {v['before']}→{v['after']} ({v['rewritten']} rewritten)" for k, v in plan.slop.items()), flush=True)
 
-    _stage("film shots")                      # before any narration is spent: a bad file must cost nothing
-    vis_plan = visuals.film_visuals(cfg, acts=plan.acts, sections=sections, work=work, video=film_files.video_path,
-                                    vertical_for={int(s["act_index"]) for s in (plan.shorts if shorts_enabled else [])})
-    n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
-    print(f"shots: {n_clips} over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
-    if n_clips == 0 or any(not v.get("clips") for v in vis_plan.values()):
-        return give_up(cfg, film, film_files, today=today, reason="the film yielded no usable shots for every act")
-    starts = visuals.shot_starts(vis_plan)
-    film_audio = cut.extract_film_audio(film_files.video_path, str(work / "film_audio.m4a")) if cfg.film_audio else None
-    print("film sound: " + ("under the voice" if film_audio else "none (ambient pad instead)"), flush=True)
+    _stage("film check")                      # before any narration is spent: a bad file must cost nothing
+    film_end = duration_film
+    if not thumbnail.grab_frame(film_files.video_path, str(work / "probe.jpg"), at=min(film_end / 2, 600.0)):
+        return give_up(cfg, film, film_files, today=today, reason="the film file does not decode")
+    crop = cut.detect_crop(film_files.video_path, film_end)
+    if crop:
+        print(f"bars burned into the file: picture is {crop.split(':')[0]}x{crop.split(':')[1]}; cropped first", flush=True)
+    cuts = visuals.act_cuts(cfg, acts=plan.acts, video=film_files.video_path, work=work, film_end=film_end)
+    print(f"scene cuts: {sum(len(v) for v in cuts.values())} over {len(cuts)} acts", flush=True)
+    film_audio = bool(cfg.film_audio and cut.has_audio(film_files.video_path))
+    print("film sound: " + ("under the voice" if film_audio else "muted (the voice over the ambient bed)"), flush=True)
 
-    _stage("tts")
+    _stage("tts")                             # one take per beat: every beat's spoken length is known to the frame
     narration = work / "narration.mp3"
-    chunks, owner = tts.chunk_sections(sections, cfg.sof.tts_chunk_chars)
-    parts = quicken(tts.speak(chunks, str(work / "tts"), cfg.sof), work / "tts_fast", cfg)
+    flat = [b for sec in sections for b in sec["beats"]]
+    parts = quicken(tts.speak([b["text"] for b in flat], str(work / "tts"), cfg.sof), work / "tts_fast", cfg)
     if not narration.exists():
         tts.assemble(parts, str(work), pre=tts.post_filter(cfg.sof))
     duration = tts.duration_seconds(str(narration))
-    sec_secs = render.scaled_durations(parts, owner, len(sections), duration)
+    beat_secs = render.split_by(render.beat_durations(parts, duration), [len(sec["beats"]) for sec in sections])
+    sec_secs = [round(sum(x), 3) for x in beat_secs]
     chapters = render.chapter_rows(sections, render.section_starts(sec_secs))
     (work / "chapters.json").write_text(json.dumps(chapters, indent=1, ensure_ascii=False), encoding="utf-8")
-    print(f"narration: {duration / 60:.1f} min · {words / max(0.1, duration / 60):.0f} wpm · {len(chunks)} chunks · "
+    print(f"narration: {duration / 60:.1f} min · {words / max(0.1, duration / 60):.0f} wpm · {len(flat)} beats · "
           f"{len(chapters)} chapters", flush=True)
     short_audio: list[str] = []
+    short_durs: list[list[float]] = []
     for k, s in enumerate(plan.shorts if shorts_enabled else []):
         d = work / "tts_short" / f"s{k}"
-        raw = quicken(tts.speak([str(s["text"]).strip()], str(d), cfg.sof, short=True), d / "fast", cfg)[0]
+        sparts = quicken(tts.speak([b["text"] for b in s["beats"]], str(d), cfg.sof, short=True), d / "fast", cfg)
         out = work / f"short{k + 1}.mp3"
         if not out.exists():
-            sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), tts.post_filter(cfg.sof)), 600)
+            lst, joined = d / "list.txt", d / "joined.mp3"
+            lst.write_text("".join(f"file '{Path(x).resolve()}'\n" for x in sparts), encoding="utf-8")
+            sof_render.run(tts.concat_cmd(str(lst), str(joined)), 600)
+            sof_render.run(sof_shorts.loudnorm_cmd(str(joined), str(out), tts.post_filter(cfg.sof)), 600)
         short_audio.append(str(out))
+        short_durs.append(render.beat_durations(sparts, tts.duration_seconds(str(out))))
 
     soundtrack = narration
     if cfg.music_enabled and not film_audio:
@@ -279,31 +301,31 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
             music.mix(str(narration), str(mixed), work_dir=str(work), bed_lufs=cfg.music_lufs, variant=variant)
         soundtrack = mixed
 
-    _stage("render")
+    _stage("render")                          # beat by beat: the footage under each beat is the moment it tells
     final = work / "final.mp4"
+    beats_log = work / "beats.json"
     if not final.exists():
         reel = work / "reel.mp4"
-        bed = work / "film_bed.wav"
-        if not reel.exists() or (film_audio and not bed.exists()):
-            render.build_long(cfg, work=work, sections=sections, section_seconds=sec_secs, visuals=vis_plan,
-                              film_audio=film_audio, starts=starts)
-        if film_audio and bed.exists():
-            mixed = work / "voice_film.wav"
+        if not reel.exists() or not beats_log.exists():
+            _, rows = render.build_long(cfg, work=work, video=film_files.video_path, sections=sections, beat_seconds=beat_secs,
+                                        cuts=cuts, crop=crop, film_end=film_end, acts=plan.acts, audio=film_audio)
+            beats_log.write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
+        if film_audio:
+            bed, mixed = work / "film_bed.wav", work / "voice_film.wav"
             if not mixed.exists():
+                sof_render.run(["ffmpeg", "-y", "-v", "error", "-i", str(reel), "-vn", "-ac", "2", "-ar", "48000", str(bed)], 1800)
                 sof_render.run(render.mix_film_cmd(str(narration), str(bed), str(mixed), bed_lufs=cfg.film_lufs), 1800)
             soundtrack = mixed
         sof_render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
         reel.unlink(missing_ok=True)
+    rows = json.loads(beats_log.read_text(encoding="utf-8")) if beats_log.exists() else []
+    n_pieces = sum(len(r.get("pieces") or []) for r in rows)
+    late = [r for r in rows if r.get("window") and float(r["window"][0]) > float(r["at"]) + 3.5]
+    print(f"beats: {len(rows)} · {n_pieces} shots · {len(late)} beats whose footage starts > 3.5 s after their moment", flush=True)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
-        hook_act = int(plan.shorts[0]["act_index"]) if plan.shorts else 0
-        cands = (vis_plan.get(hook_act) or {}).get("clips") or next((v["clips"] for v in vis_plan.values() if v.get("clips")), [])
-        pick = cands[len(cands) // 2] if cands else None
-        base = None
-        if pick and pick in starts and Path(film_files.video_path).exists():    # the film's own frame, no blurred sides
-            base = thumbnail.grab_frame(film_files.video_path, str(work / "thumb_base.jpg"), at=starts[pick] + 1.0)
-        if base is None and pick:
-            base = thumbnail.grab_frame(pick, str(work / "thumb_base.jpg"), at=1.0)
+        hook = (plan.shorts[0]["beats"][0] if plan.shorts and plan.shorts[0].get("beats") else sections[0]["beats"][0])
+        base = thumbnail.grab_frame(film_files.video_path, str(work / "thumb_base.jpg"), at=float(hook["at"]) + 1.0)
         thumbnail.compose(base=base, out=str(thumb), hook=str(plan.long_form.get("thumb_text") or ""))
     try:
         sof_render.sample_frames(str(final), str(work / "frames"), render.frames_to_check(duration))
@@ -314,20 +336,23 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     short_files: list[str] = []
     if shorts_enabled:
         _stage("shorts")
-        for k, (s, audio) in enumerate(zip(plan.shorts, short_audio)):
+        by_idx = {int(a["index"]): a for a in plan.acts}
+        for k, (s, audio, durs) in enumerate(zip(plan.shorts, short_audio, short_durs)):
             name = f"short{k + 1}"
             out = work / f"{name}.mp4"
             if not out.exists():
-                v = vis_plan.get(int(s["act_index"]), {})
+                act = by_idx.get(int(s["act_index"]), {})
                 try:
-                    render.build_short(cfg, work=work, name=name, text=str(s["text"]), title=str(s["title"]), audio=audio,
-                                       clips=list(v.get("clips_v") or v.get("clips") or []), film_audio=film_audio, starts=starts)
+                    render.build_short(cfg, work=work, name=name, video=film_files.video_path, short=s, durs=durs,
+                                       cuts=cuts.get(int(s["act_index"]), []), crop=crop,
+                                       end=float(act.get("end_seconds", film_end)), film_end=film_end, audio=audio,
+                                       film_audio=film_audio)
                 except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the recap over it
                     log.exception("short %d failed", k + 1)
                     print(f"! short {k + 1} skipped ({exc})", flush=True)
                     continue
             short_files.append(str(out))
-            print(f"short {k + 1}: {tts.duration_seconds(audio):.0f} s · \"{s['title']}\"", flush=True)
+            print(f"short {k + 1}: {tts.duration_seconds(audio):.0f} s · {len(s['beats'])} beats · \"{s['title']}\"", flush=True)
     if Path(film_files.video_path).exists():
         Path(film_files.video_path).unlink(missing_ok=True)        # 2-4 GB on a small runner disk; the shots are cut
 
@@ -387,7 +412,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "topic": film.label, "video_id": video_id, "title": title, "privacy": cfg.privacy,
         "uploaded_at": uploaded_at.isoformat(timespec="seconds"), "duration_seconds": round(duration), "words": words,
         "acts": len(plan.acts), "transcript": how, "cues": len(cues), "plot_reference": bool(plot),
-        "shots": n_clips, "film_file": film_files.video_key, "source": film_files.source, "shorts": short_entries, "slop": plan.slop or None,
+        "beats": len(rows), "shots": n_pieces, "film_file": film_files.video_key, "source": film_files.source, "shorts": short_entries, "slop": plan.slop or None,
         "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "voice_tempo": cfg.voice_tempo,
         "film_sound": bool(film_audio), "run_url": _run_url(),
     }
