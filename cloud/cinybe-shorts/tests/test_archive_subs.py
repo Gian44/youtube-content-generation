@@ -111,7 +111,8 @@ def _cfg(tmp_path, **kw):
     return cfg
 
 
-def test_archive_film_is_picked_when_the_store_has_nothing_and_skipped_rows_move_the_queue(tmp_path, capsys):
+def test_archive_film_is_picked_when_the_store_has_nothing_and_skipped_rows_move_the_queue(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)            # a skipped row is committed only on the runner
     cfg = _cfg(tmp_path, minutes=10)
     all_films = films.load_films(cfg.films_path)
     assert all_films[1].archive == "Detour" and all_films[0].archive is None
