@@ -157,3 +157,18 @@ def test_short_title_and_publish_times():
     assert seo.short_publish_at(None, delay_minutes=60, index=2, spacing_hours=24, now=now) == "2026-11-10T11:00:00Z"
     body = seo.video_body(title="t", description="d", tags=["a"], privacy="public", publish_at="2026-11-08T11:00:00Z")
     assert body["snippet"]["categoryId"] == "1" and body["status"]["privacyStatus"] == "private"
+
+
+def test_short_slightly_over_the_cap_is_trimmed_not_rejected():
+    acts = _acts(5)
+    sc = _scripts(acts)
+    sc["shorts"][1]["text"] = ("He runs. " * 40 + "She screams at him to stop and he keeps going down the road").strip()   # 94 words
+    out = planner.validate_scripts(sc, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    t = out["shorts"][1]["text"]
+    assert len(t.split()) <= 80 and t.endswith(".")
+    too_long = _scripts(acts)
+    too_long["shorts"][0]["text"] = "word " * 120
+    with pytest.raises(planner.PlanError, match="120 words"):
+        planner.validate_scripts(too_long, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    assert planner.trim_words("One two. Three four five.", 3) == "One two." and planner.trim_words("a b c", 5) == "a b c"
+    assert planner.trim_words("no stop here at all ever", 3) == "no stop here."

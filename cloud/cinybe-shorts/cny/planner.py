@@ -22,6 +22,7 @@ from sof.llm import LLM, LLMError
 
 log = logging.getLogger("cny.planner")
 LONG_FORM_TOLERANCE = (0.7, 1.3)
+SHORT_SLACK = 1.3            # a Short up to 30 % over the cap is trimmed back at a sentence end instead of failing the plan
 ACT_MIN_SECONDS = 20.0
 
 
@@ -131,6 +132,19 @@ Return JSON: {{"long_form": {{"title", "thumb_text", "description", "tags", "sec
 EDIT_SYSTEM = ("You are a line editor for spoken narration. You change wording only; every event, name and outcome "
                "stays exactly as written. Output strict JSON.")
 STYLE_BLOCK = noslop.style_block("recap")
+
+
+def trim_words(text: str, cap: int) -> str:
+    """Pure: ``text`` cut to at most ``cap`` words, ending at the last sentence end that fits (a hard cut with a full
+    stop when no sentence end does). Unchanged when it already fits."""
+    words = text.split()
+    if len(words) <= cap:
+        return text.strip()
+    head = " ".join(words[:cap])
+    ends = [m.end() for m in re.finditer(r"[.!?][\"”']?(?=\s|$)", head)]
+    if ends and ends[-1] >= len(head) * 0.5:
+        return head[:ends[-1]].strip()
+    return head.rstrip(" ,;:—-") + "."
 
 
 # ----------------------------------------------------------------- the dialogue each act covers (pure)
@@ -292,7 +306,7 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
             errors.append(f"short {i} reuses act_index {idx}; each Short needs a different act")
         seen.add(idx)
         words = len(str(s.get("text", "")).split())
-        if words == 0 or words > short_max_words:
+        if words == 0 or words > int(short_max_words * SHORT_SLACK):
             errors.append(f"short {i} text is {words} words; must be 1-{short_max_words}")
         if not str(s.get("hook", "")).strip():
             errors.append(f"short {i} has an empty hook")
@@ -306,6 +320,8 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
     if errors:
         raise PlanError("; ".join(errors))
     lf["title"] = title
+    for s in shorts:                                  # a few words over: trimmed at a sentence end, never a rejection
+        s["text"] = trim_words(str(s.get("text", "")), short_max_words)
     lf["tags"] = [str(t).strip().lower() for t in (lf.get("tags") or []) if str(t).strip()]
     for s in shorts:
         s["tags"] = [str(t).strip().lower() for t in (s.get("tags") or []) if str(t).strip()]

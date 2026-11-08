@@ -133,6 +133,10 @@ def test_archive_film_is_picked_when_the_store_has_nothing_and_skipped_rows_move
     assert pipeline.give_up(cfg, all_films[0], own, today="2026-11-08", reason="no shots") == pipeline.EXIT_NO_FILM
     assert len(json.loads((tmp_path / "ledger.json").read_text())) == 1
     assert not store.delete_film(cfg, files)                                       # an Archive print is not ours to remove
+    # a render-only (test) run never writes the ledger, even on a dead end
+    cfg.skip_upload = True
+    pipeline.give_up(cfg, all_films[2], store.archive_files("suddenly-1954", "suddenly"), today="2026-11-08", reason="x")
+    assert len(json.loads((tmp_path / "ledger.json").read_text())) == 1
 
 
 def test_fetch_film_from_archive(tmp_path, monkeypatch):

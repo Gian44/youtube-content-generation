@@ -90,7 +90,7 @@ def give_up(cfg: Config, film: films.Film, files: store.FilmFiles, *, today: str
     the queue moves on instead of downloading it again tomorrow; Gian's own file stays queued (he fixes the file,
     the next run tries again). Always EXIT_NO_FILM: nothing was posted."""
     print(f"✗ {reason}; nothing posted", flush=True)
-    if files.source == "archive" and not cfg.film and not cfg.is_smoke:
+    if files.source == "archive" and not cfg.film and not cfg.is_smoke and not cfg.skip_upload:   # never on a test run
         entry = {"date": today, "kind": "skipped", "film": film.title, "year": film.year, "theme": film.theme, "topic": film.label,
                  "video_id": f"skipped-{film.slug}-{today}", "reason": reason, "film_file": files.video_key, "run_url": _run_url()}
         ledger.append_entry(cfg.ledger_path, entry)
@@ -228,9 +228,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                      shorts_per_film=cfg.shorts_per_film if shorts_enabled else 1,
                                      short_max_words=cfg.short_max_words, noslop_rounds=cfg.noslop_rounds,
                                      fast_model=cfg.sof.fast_model)
-        except planner.PlanError as exc:
-            if film_files.source == "archive":
-                return give_up(cfg, film, film_files, today=today, reason=f"planning failed: {str(exc)[:200]}")
+        except planner.PlanError as exc:              # the writer varies run to run: retry tomorrow, never skip the film
             print(f"✗ planning failed: {exc}", flush=True)
             return EXIT_PLAN
         plan_path.write_text(json.dumps(plan.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
