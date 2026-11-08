@@ -1419,5 +1419,86 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42384037879"
+  },
+  {
+    "date": "2026-11-08",
+    "topic": "The Silk Road",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Silk Road",
+    "video_id": "2iOBKh3q8ko",
+    "title": "How the Silk Road Moved Ideas as Well as Goods | 2 Hours of History to Fall Asleep To",
+    "privacy": "public",
+    "publish_at": "2026-11-09T01:30:00Z",
+    "duration_seconds": 6836,
+    "words": 18496,
+    "images": 125,
+    "image_sources": {
+      "commons": 125,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "journey",
+    "title_variant": 0,
+    "timeline": {
+      "slots": 342,
+      "thing_slots": 133,
+      "cue_slots": 84,
+      "things_shown": 23,
+      "distinct_photos": 186,
+      "lag_median": 4.11
+    },
+    "short": {
+      "video_id": "gsGcQLjAFx0",
+      "title": "Two Armies Clashed at the Talas River in 751 #Shorts",
+      "seconds": 30.5,
+      "publish_at": "2026-11-09T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "gsGcQLjAFx0",
+        "title": "Two Armies Clashed at the Talas River in 751 #Shorts",
+        "seconds": 30.5,
+        "publish_at": "2026-11-09T02:30:00Z"
+      },
+      {
+        "video_id": "si05_XbPaJI",
+        "title": "Many Silk Bolts Fit on a Single Camel #Shorts",
+        "seconds": 26.7,
+        "publish_at": "2026-11-10T02:30:00Z"
+      },
+      {
+        "video_id": "hXGK-6MFMQs",
+        "title": "Some Mummies Near Loulan Date to 1600 BCE #Shorts",
+        "seconds": 30.6,
+        "publish_at": "2026-11-11T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 40,
+      "after": 12,
+      "paragraphs": 248,
+      "rewritten": 25,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 9,
+        "robotic_rhythm": 2,
+        "metadiscourse": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 87,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 152,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×10)",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42494727819"
   }
 ]
