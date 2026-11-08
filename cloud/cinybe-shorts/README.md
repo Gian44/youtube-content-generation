@@ -21,20 +21,31 @@ films.yml (themes in order; the first film without a ledger row that the run can
   → reference (cny/meta.py, cny/plot.py): Wikidata/TMDB metadata; Wikipedia's Plot section as an optional
     reference the writer may use — never the source of the script; unavailable → the run goes on
   → plan (cny/planner.py): call 1 reads the transcript → 16–22 acts for 20 min, each with its own time range
-    in the film (validated: in order, inside the runtime, ≥ 20 s) + the people as descriptors ("the extractor",
-    "his dead wife"); call 2 writes the narration per act, a hook title (50–80 chars, never the film's name),
-    thumbnail text, description (names the film), tags, 3 Shorts; validated, retried once with the errors;
-    then the no-AI-slop pass (sof/noslop.py, "recap") on flagged paragraphs only
+    in the film (validated: in order, inside the runtime, ≥ 20 s) + the main people (name + who they are);
+    call 2 gets the acts AND each act's own dialogue lines, and writes the narration the way the sample
+    channels do (measured from their captions, 2026-11-08): present tense, scene by scene, each person
+    introduced once ("a drifter named Ben") and then called by name, a short line quoted word for word now
+    and then; a premise-and-twist title of 60–100 chars in Title Case with no film name, no person's name and
+    no suffix ("CIA Built the Most Sadistic Kill Team … But It Quickly Spirals Out of Control"); thumbnail
+    text, description (names the film), tags, 3 Shorts; validated, retried once with the errors; then the
+    no-AI-slop pass (sof/noslop.py, "recap") on flagged paragraphs only
   → shots (cny/visuals.py, cny/cut.py), before any narration is spent: ffmpeg scene detection inside each
-    act's time range → enough 2.5–8 s shots to carry that act's narration (one per 4.5 s + 2), letterboxed to
-    16:9, silent; the Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours',
-    a film that yields none fails the run
+    act's time range → enough 2.5–8 s shots to carry that act's narration (one per 4.5 s + 2; when an act
+    has fewer scenes than that, its longest scenes are split into several moments instead of replaying shots);
+    4:3 and scope prints fill 16:9 with a blurred, darkened copy of the frame (no black bars); silent; the
+    Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours', a film that yields
+    none fails the run. The film's own soundtrack is extracted once (film_audio.m4a)
   → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner) by
-    default; TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
+    default, played ×1.35 (atempo) → ~196 words per minute, the samples run 160–226; TTS_BACKEND=gemini +
+    GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
   → long recap (cny/render.py, cc/segments.py): per act, its shots played once each, in order, hard-cut, sized
-    to the narration's exact length; no title cards; faint ambient bed; chapters at act starts; thumbnail =
-    a frame of the film (bars trimmed) + the thumbnail text in gold caps + a "MOVIE RECAP" tag, no film name
-  → Shorts: the act's 9:16 shots under the Short's narration, burned captions, hook as title band; −16 LUFS
+    to the narration's exact length; no title cards; the film's own sound cut to the very same moments
+    (film_bed.wav), levelled to −24 LUFS and ducked ~12 dB under the −18 LUFS voice (sidechain), so music,
+    screams and gunshots come up in the pauses like on the sample channels (the ambient pad only when a film
+    has no soundtrack); chapters at act starts; thumbnail = the film's own frame + the thumbnail text in gold
+    caps + a "MOVIE RECAP" tag, no film name
+  → Shorts: the act's 9:16 shots under the Short's narration with the film's sound ducked under it (−22 LUFS
+    bed), burned captions, hook as title band; −16 LUFS voice
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
     days later; ledger.json committed; the film trashed in the store
 ```

@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 import time
 from pathlib import Path
 
@@ -54,4 +55,24 @@ def film_visuals(cfg, *, acts: list[dict], sections: list[dict], work: Path, vid
             v["clips_v"] = [c for j in sorted(out, key=lambda j: abs(j - i)) for c in out[j].get("clips_v") or []][:v["wanted"]]
     plan_path.write_text(json.dumps({"_source": "film", **{str(k): v for k, v in out.items()}}, indent=1), encoding="utf-8")
     log.info("film visuals for %d acts in %.0f s", len(acts), time.monotonic() - t0)
+    return out
+
+
+_SHOT_NAME = re.compile(r"act(\d+)_(\d+)$")
+
+
+def shot_starts(vis: dict[int, dict]) -> dict[str, float]:
+    """Every shot clip (16:9 and 9:16, borrowed ones included) → the second in the film where it starts, read from
+    its file name ``actNN_KK.mp4`` and act NN's shot list — so the film's sound can be cut to the same moments."""
+    out: dict[str, float] = {}
+    for v in vis.values():
+        for p in list(v.get("clips") or []) + list(v.get("clips_v") or []):
+            m = _SHOT_NAME.search(Path(p).stem)
+            if not m:
+                continue
+            owner = vis.get(int(m.group(1))) or vis.get(str(int(m.group(1))))
+            shots = (owner or {}).get("shots") or []
+            k = int(m.group(2))
+            if k < len(shots):
+                out[p] = float(shots[k][0])
     return out

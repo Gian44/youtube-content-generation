@@ -223,29 +223,34 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     print(f"shots: {n_clips} over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
     if n_clips == 0 or any(not v.get("clips") for v in vis_plan.values()):
         return give_up(cfg, film, film_files, today=today, reason="the film yielded no usable shots for every act")
+    starts = visuals.shot_starts(vis_plan)
+    film_audio = cut.extract_film_audio(film_files.video_path, str(work / "film_audio.m4a")) if cfg.film_audio else None
+    print("film sound: " + ("under the voice" if film_audio else "none (ambient pad instead)"), flush=True)
 
     _stage("tts")
     narration = work / "narration.mp3"
+    voice_pre = ",".join(f for f in (tts.post_filter(cfg.sof), f"atempo={cfg.voice_tempo:g}" if abs(cfg.voice_tempo - 1) > 1e-3 else "") if f)
     chunks, owner = tts.chunk_sections(sections, cfg.sof.tts_chunk_chars)
     parts = tts.speak(chunks, str(work / "tts"), cfg.sof)
     if not narration.exists():
-        tts.assemble(parts, str(work), pre=tts.post_filter(cfg.sof))
+        tts.assemble(parts, str(work), pre=voice_pre)
     duration = tts.duration_seconds(str(narration))
     sec_secs = render.scaled_durations(parts, owner, len(sections), duration)
     chapters = render.chapter_rows(sections, render.section_starts(sec_secs))
     (work / "chapters.json").write_text(json.dumps(chapters, indent=1, ensure_ascii=False), encoding="utf-8")
-    print(f"narration: {duration / 60:.1f} min · {len(chunks)} chunks · {len(chapters)} chapters", flush=True)
+    print(f"narration: {duration / 60:.1f} min · {words / max(0.1, duration / 60):.0f} wpm · {len(chunks)} chunks · "
+          f"{len(chapters)} chapters", flush=True)
     short_audio: list[str] = []
     for k, s in enumerate(plan.shorts if shorts_enabled else []):
         d = work / "tts_short" / f"s{k}"
         raw = tts.speak([str(s["text"]).strip()], str(d), cfg.sof, short=True)[0]
         out = work / f"short{k + 1}.mp3"
         if not out.exists():
-            sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), tts.post_filter(cfg.sof)), 600)
+            sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), voice_pre), 600)
         short_audio.append(str(out))
 
     soundtrack = narration
-    if cfg.music_enabled:
+    if cfg.music_enabled and not film_audio:
         _stage("music")
         mixed = work / "soundtrack.mp3"
         if not mixed.exists():
@@ -257,15 +262,27 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     final = work / "final.mp4"
     if not final.exists():
         reel = work / "reel.mp4"
-        if not reel.exists():
-            render.build_long(cfg, work=work, sections=sections, section_seconds=sec_secs, visuals=vis_plan)
+        bed = work / "film_bed.wav"
+        if not reel.exists() or (film_audio and not bed.exists()):
+            render.build_long(cfg, work=work, sections=sections, section_seconds=sec_secs, visuals=vis_plan,
+                              film_audio=film_audio, starts=starts)
+        if film_audio and bed.exists():
+            mixed = work / "voice_film.wav"
+            if not mixed.exists():
+                sof_render.run(render.mix_film_cmd(str(narration), str(bed), str(mixed), bed_lufs=cfg.film_lufs), 1800)
+            soundtrack = mixed
         sof_render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
         reel.unlink(missing_ok=True)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
         hook_act = int(plan.shorts[0]["act_index"]) if plan.shorts else 0
         cands = (vis_plan.get(hook_act) or {}).get("clips") or next((v["clips"] for v in vis_plan.values() if v.get("clips")), [])
-        base = thumbnail.grab_frame(cands[len(cands) // 2], str(work / "thumb_base.jpg"), at=1.0) if cands else None
+        pick = cands[len(cands) // 2] if cands else None
+        base = None
+        if pick and pick in starts and Path(film_files.video_path).exists():    # the film's own frame, no blurred sides
+            base = thumbnail.grab_frame(film_files.video_path, str(work / "thumb_base.jpg"), at=starts[pick] + 1.0)
+        if base is None and pick:
+            base = thumbnail.grab_frame(pick, str(work / "thumb_base.jpg"), at=1.0)
         thumbnail.compose(base=base, out=str(thumb), hook=str(plan.long_form.get("thumb_text") or ""))
     try:
         sof_render.sample_frames(str(final), str(work / "frames"), render.frames_to_check(duration))
@@ -283,7 +300,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                 v = vis_plan.get(int(s["act_index"]), {})
                 try:
                     render.build_short(cfg, work=work, name=name, text=str(s["text"]), title=str(s["title"]), audio=audio,
-                                       clips=list(v.get("clips_v") or v.get("clips") or []))
+                                       clips=list(v.get("clips_v") or v.get("clips") or []), film_audio=film_audio, starts=starts)
                 except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the recap over it
                     log.exception("short %d failed", k + 1)
                     print(f"! short {k + 1} skipped ({exc})", flush=True)
@@ -294,7 +311,18 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         Path(film_files.video_path).unlink(missing_ok=True)        # 2-4 GB on a small runner disk; the shots are cut
 
     if cfg.skip_upload:
-        print(f"skip-upload set; done in {(time.time() - t0) / 60:.1f} min", flush=True)
+        review = work / "review"                         # a render-only run is a review run: keep the whole recap
+        review.mkdir(exist_ok=True)
+        for f in [final, thumb] + [Path(x) for x in short_files]:
+            dst = review / f.name
+            if f.exists() and not dst.exists():
+                try:
+                    os.link(f, dst)
+                except OSError:
+                    import shutil
+                    shutil.copy2(f, dst)
+        print(f"skip-upload set; the recap, thumbnail and Shorts are kept in the run artifact; done in "
+              f"{(time.time() - t0) / 60:.1f} min", flush=True)
         return EXIT_OK
 
     _stage("upload")
@@ -339,7 +367,8 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "uploaded_at": uploaded_at.isoformat(timespec="seconds"), "duration_seconds": round(duration), "words": words,
         "acts": len(plan.acts), "transcript": how, "cues": len(cues), "plot_reference": bool(plot),
         "shots": n_clips, "film_file": film_files.video_key, "source": film_files.source, "shorts": short_entries, "slop": plan.slop or None,
-        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "run_url": _run_url(),
+        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "voice_tempo": cfg.voice_tempo,
+        "film_sound": bool(film_audio), "run_url": _run_url(),
     }
     if cfg.is_smoke:
         print(f"smoke run uploaded as https://youtu.be/{video_id} (unlisted); ledger not written", flush=True)

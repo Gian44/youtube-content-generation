@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 
 from sof.config import Config as SofConfig
 
-WORDS_PER_MINUTE = 145          # voice F (Pocket TTS) measured 147 wpm on the Inception recap (2026-11-07)
+VOICE_TEMPO = 1.35              # voice F speaks ~145 wpm; the sample channels narrate at 160-226 (median ~205; captions
+                                # measured 2026-11-08), so the narration is sped up ×1.35 → ~196 wpm (ffmpeg atempo)
+WORDS_PER_MINUTE = round(145 * VOICE_TEMPO)
 SMOKE_MAX_MINUTES = 3           # at/below this the run is a smoke test: always unlisted, ledger untouched
 DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this channel (Sleep On Facts owns the
                                 # free Gemini TTS quota); env TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE flips it
@@ -35,7 +37,7 @@ class Config:
     min_plot_words: int = 250           # a Wikipedia plot shorter than this is not offered as reference
     max_plot_chars: int = 14000         # ~2,300 words; longer plots are cut at a paragraph (the model needs the end)
     shorts_per_film: int = 3
-    short_max_words: int = 80           # ≈ 35 s at voice F's pace
+    short_max_words: int = 110          # ≈ 34 s at the sped-up pace
     noslop_rounds: int = 1
     # render
     width: int = 1920
@@ -48,8 +50,12 @@ class Config:
     shorts_height: int = 1920
     shorts_fps: int = 30
     shorts_clip_seconds: float = 6.0    # longest one shot plays in a Short
-    music_enabled: bool = True
+    music_enabled: bool = True          # the synthetic pad: only when the film has no soundtrack to lay under the voice
     music_lufs: float = -32.0
+    voice_tempo: float = VOICE_TEMPO
+    film_audio: bool = True             # Gian 2026-11-08: the film's own sound ducked under the voice, like the samples
+    film_lufs: float = -24.0            # the film bed's level in the gaps; ducked ~9 dB further while the voice speaks
+    shorts_film_lufs: float = -22.0
     brand: str = "CinybeShorts"
     shorts_delay_minutes: int = 60      # Short 1 an hour after the long video, then one a day
     shorts_spacing_hours: float = 24.0
@@ -87,7 +93,7 @@ class Config:
 
     @property
     def target_words(self) -> int:
-        return int(self.minutes * WORDS_PER_MINUTE)
+        return int(self.minutes * self.words_per_minute)
 
     @property
     def is_smoke(self) -> bool:
@@ -95,11 +101,11 @@ class Config:
 
     @property
     def words_per_minute(self) -> float:
-        return float(WORDS_PER_MINUTE)
+        return 145.0 * self.voice_tempo                    # voice F's natural pace × the tempo it is played at
 
     @property
     def acts_range(self) -> tuple[int, int]:
-        """20 min → 16–22 acts (~130–180 words each); 10 min → 8–11; a 3-minute smoke → 4–5."""
+        """20 min → 16–22 acts (~180–245 words each at ~196 wpm); 10 min → 8–11; a 3-minute smoke → 4–5."""
         hi = max(5, min(24, round(self.minutes * 1.1)))
         return max(4, hi - min(6, max(1, hi // 3))), hi
 

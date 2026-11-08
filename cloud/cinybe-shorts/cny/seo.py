@@ -27,13 +27,16 @@ def fmt_minutes(seconds: float) -> int:
     return max(1, int(round(seconds / 60)))
 
 
-def long_title(hook: str, *, fallback: str = "", suffix: str = " | Movie Recap") -> str:
-    """The writer's hook sentence (never the film's name) + the genre suffix, within YouTube's 100 characters."""
+def long_title(hook: str, *, fallback: str = "", suffix: str = "") -> str:
+    """The writer's premise-and-twist hook (never the film's name), within YouTube's 100 characters. No genre suffix:
+    the sample channels' titles are the hook alone (Gian, 2026-11-08)."""
     t = _clean(hook) or _clean(fallback) or "Movie Recap"
     t = t[:1].upper() + t[1:]
     out = f"{t}{suffix}"
     if len(out) > 100:
-        out = f"{t[:100 - len(suffix)].rstrip(' ,.')}{suffix}"
+        cut = t[:100 - len(suffix)]
+        cut = cut.rsplit(" ", 1)[0] if " " in cut[60:] else cut           # end on a whole word
+        out = f"{cut.rstrip(' ,.')}{suffix}"
     return out
 
 

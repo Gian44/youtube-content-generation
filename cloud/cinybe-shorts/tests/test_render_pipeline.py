@@ -64,6 +64,13 @@ def test_thumbnail_is_hook_only_and_shots_wanted(tmp_path):
     boxed.save(tmp_path / "b.jpg")
     assert Image.open(thumbnail.compose(base=str(tmp_path / "b.jpg"), out=str(tmp_path / "t2.jpg"), hook="x", width=640, height=360)).size == (640, 360)
     assert not hasattr(render, "act_card_png")                       # recap style: no title cards between acts
+    from cny import config
+    c = config.Config()
+    assert 190 <= c.words_per_minute <= 200 and 3800 <= c.target_words <= 4000          # sped up toward the samples' pace
+    vis = {0: {"clips": ["w/shots/act00_00.mp4", "w/shots/act01_01.mp4"], "shots": [[12.0, 4.0]], "clips_v": ["w/shots_v/act00_00.mp4"]},
+           1: {"clips": ["w/shots/act01_00.mp4", "w/shots/act01_01.mp4"], "shots": [[80.0, 5.0], [90.5, 3.0]]}}
+    assert visuals.shot_starts(vis) == {"w/shots/act00_00.mp4": 12.0, "w/shots/act01_01.mp4": 90.5, "w/shots_v/act00_00.mp4": 12.0,
+                                        "w/shots/act01_00.mp4": 80.0}
     # 145 words ≈ 60 s of narration → 14 shots of 4.5 s + 2 spare; a near-empty act still gets the floor
     assert visuals.shots_wanted(145, words_per_minute=145, shot_seconds=4.5) == 16
     assert visuals.shots_wanted(3, words_per_minute=145, shot_seconds=4.5) == 4

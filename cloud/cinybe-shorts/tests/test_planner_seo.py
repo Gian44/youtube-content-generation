@@ -58,6 +58,14 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
     dup["shorts"][1]["act_index"] = 0
     with pytest.raises(planner.PlanError, match="reuses act_index"):
         planner.validate_scripts(dup, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    # a person's name in the title is rejected; a trailing "| Movie Recap" is dropped
+    with pytest.raises(planner.PlanError, match="person's name"):
+        planner.validate_scripts(_scripts(acts, title="Dom Cobb Steals Secrets From Inside People's Dreams"), acts, film=FILM,
+                                 target_words=300, shorts_per_film=3, short_max_words=80, people=_people())
+    ok = planner.validate_scripts(_scripts(acts, title="A Thief Steals Secrets From Inside People's Dreams | Movie Recap"), acts,
+                                  film=FILM, target_words=300, shorts_per_film=3, short_max_words=80, people=_people())
+    assert ok["long_form"]["title"] == "A Thief Steals Secrets From Inside People's Dreams"
+    assert planner._names_person("the man who knew too much", [{"name": "The Man"}]) is None
     # a two-word film name counts only when both words appear
     assert planner._names_film("the dark knight rises again", "The Dark Knight") and not planner._names_film("a dark night", "The Dark Knight")
 
@@ -75,6 +83,19 @@ class FakeLLM:
         return json.loads(json.dumps(a))
 
 
+def test_act_dialogue_gives_each_act_its_own_lines():
+    transcript = "[00:10] Hello.\n[01:05] Who are you?\n[01:50] Run.\n[10:00] Too late.\n[95:06] The end."
+    acts = [{"index": 0, "start_seconds": 0, "end_seconds": 70}, {"index": 1, "start_seconds": 100, "end_seconds": 700},
+            {"index": 2, "start_seconds": 5600, "end_seconds": 5800}, {"index": 3, "start_seconds": 4000, "end_seconds": 4100}]
+    out = planner.act_dialogue(transcript, acts)
+    blocks = out.split("\n\n")
+    assert blocks[0].startswith("Act 0 (00:00-01:10):") and "Hello." in blocks[0] and "Who are you?" in blocks[0] and "Run." not in blocks[0]
+    assert "Run." in blocks[1] and "Too late." in blocks[1] and "The end." in blocks[2] and "no dialogue" in blocks[3]
+    big = "\n".join(f"[{m:02d}:00] " + "w" * 200 for m in range(60))
+    trimmed = planner.act_dialogue(big, [{"index": 0, "start_seconds": 0, "end_seconds": 3600}], max_chars=2000)
+    assert len(trimmed) < 2600 and trimmed.endswith("[…]")
+
+
 def test_plan_film_from_transcript_retries_once_and_polishes():
     acts = _acts(5)
     llm = FakeLLM([{"acts": acts, "people": _people()}, _scripts(acts, words_per=5), _scripts(acts), {"paragraphs": []}, {"paragraphs": []}])
@@ -84,6 +105,7 @@ def test_plan_film_from_transcript_retries_once_and_polishes():
     assert len(plan.acts) == 5 and plan.acts[0]["start_seconds"] == 60.0 and len(plan.shorts) == 3
     assert "[00:10] Hello." in llm.prompts[0][0] and "published plot summary" in llm.prompts[0][0]
     assert "the extractor" in llm.prompts[1][0] and "STYLE RULES" in llm.prompts[1][0]     # people + noslop rules in the writer prompt
+    assert "DIALOGUE PER ACT" in llm.prompts[1][0] and "called by name" in llm.prompts[1][1]  # the act's lines; names after the intro
     assert "Validation errors" in llm.prompts[2][0]                                      # scripts retried with the errors
     assert plan.long_form["people"] == _people() and plan.sections[4]["act_index"] == 4
     assert planner.FilmPlan.from_dict(plan.to_dict()).long_form["title"] == plan.long_form["title"]
@@ -109,8 +131,10 @@ def test_despop_keeps_short_within_cap():
 
 def test_titles_description_and_tags():
     assert seo.long_title("poor man wants to die, but accidentally becomes a millionaire") == \
-        "Poor man wants to die, but accidentally becomes a millionaire | Movie Recap"
-    assert len(seo.long_title("x" * 150)) <= 100 and seo.long_title("", fallback="Inception explained") == "Inception explained | Movie Recap"
+        "Poor man wants to die, but accidentally becomes a millionaire"                # the hook alone, like the samples
+    assert len(seo.long_title("x" * 150)) <= 100 and seo.long_title("", fallback="Inception explained") == "Inception explained"
+    long = "CIA Built the Most Sadistic Kill Team to Hunt Terrorists But It Quickly Spirals Out of Control and Then Some More"
+    assert len(seo.long_title(long)) <= 100 and not seo.long_title(long).endswith(" Mor")       # ends on a whole word
     d = seo.long_description(film=FILM, year=2010, blurb="A thief. Spoilers.", director="Christopher Nolan", theme="Christopher Nolan",
                              chapters=[{"start": 0, "title": "Setup"}, {"start": 61, "title": "Heist"}, {"start": 130, "title": "Limbo"}],
                              plot_url="https://en.wikipedia.org/wiki/Inception#Plot")

@@ -133,7 +133,7 @@ jobs:
             exit 0
           fi
           exit "$rc"
-      - name: Keep small run artifacts (plan, plot, chapters, visuals, thumbnail, stills, the Shorts)
+      - name: Keep run artifacts (plan, transcript, chapters, visuals, thumbnail, stills, the Shorts; the full recap on review runs)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -148,5 +148,6 @@ jobs:
             cloud/cinybe-shorts/work/**/thumb.jpg
             cloud/cinybe-shorts/work/**/frames/*.jpg
             cloud/cinybe-shorts/work/**/short*.mp4
+            cloud/cinybe-shorts/work/**/review/*
           if-no-files-found: ignore
           retention-days: 30
