@@ -50,35 +50,48 @@ def pick_shots(start: float, end: float, cuts: list[float], *, want: int, min_le
     return [(round(scenes[j][0], 3), round(scenes[j][1], 3)) for j in picked]
 
 
-def shot_cmd(video: str, out: str, *, start: float, seconds: float, width: int, height: int, fps: int) -> list[str]:
-    vf = (f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height},fps={fps},"
-          f"setsar=1,format=yuv420p")
+def shot_cmd(video: str, out: str, *, start: float, seconds: float, width: int, height: int, fps: int, fit: str = "pad") -> list[str]:
+    """``fit="pad"`` keeps the whole frame (a 2.39:1 film is letterboxed inside 16:9); ``"crop"`` fills the frame
+    from the centre (the 9:16 Shorts)."""
+    if fit == "crop":
+        vf = f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
+    else:
+        vf = (f"scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos,"
+              f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black")
+    vf += f",fps={fps},setsar=1,format=yuv420p"
     return ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", video, "-t", f"{seconds:.3f}", "-an", "-vf", vf,
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-map_metadata", "-1", out]
 
 
-def act_shots(video: str, out_dir: str, *, act_index: int, window: dict, want: int, min_len: float, max_len: float,
-              threshold: float, width: int, height: int, fps: int) -> list[str]:
-    """Extract the act's shots → clip paths (resumable: existing files are kept)."""
+def extract_shots(video: str, shots: list[tuple[float, float]], out_dir: str, *, prefix: str, width: int, height: int,
+                  fps: int, fit: str = "pad") -> list[str]:
+    """Cut each (start, seconds) shot → ``<out_dir>/<prefix>_<k>.mp4`` (resumable: existing files are kept)."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
-    existing = sorted(str(p) for p in d.glob(f"act{act_index:02d}_*.mp4"))
-    if existing:
-        return existing
-    s, e = float(window["start_seconds"]), float(window["end_seconds"])
-    cuts = scene_cuts(video, start=s, end=e, threshold=threshold)
-    shots = pick_shots(s, e, cuts, want=want, min_len=min_len, max_len=max_len)
     out: list[str] = []
     for k, (st, secs) in enumerate(shots):
-        p = str(d / f"act{act_index:02d}_{k:02d}.mp4")
+        p = str(d / f"{prefix}_{k:02d}.mp4")
+        if Path(p).exists():
+            out.append(p)
+            continue
         try:
-            subprocess.run(shot_cmd(video, p, start=st, seconds=secs, width=width, height=height, fps=fps), check=True,
+            subprocess.run(shot_cmd(video, p, start=st, seconds=secs, width=width, height=height, fps=fps, fit=fit), check=True,
                            capture_output=True, timeout=600)
             out.append(p)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            log.warning("shot %d of act %d failed: %s", k, act_index, exc)
-    log.info("act %d: %d shots from %d scene cuts in %.0f-%.0f s", act_index, len(out), len(cuts), s, e)
+            log.warning("shot %d (%s) failed: %s", k, prefix, exc)
     return out
+
+
+def act_shots(video: str, out_dir: str, *, act_index: int, window: dict, want: int, min_len: float, max_len: float,
+              threshold: float, width: int, height: int, fps: int) -> tuple[list[str], list[tuple[float, float]]]:
+    """The act's shots: (clip paths, the (start, seconds) list they were cut from)."""
+    s, e = float(window["start_seconds"]), float(window["end_seconds"])
+    cuts = scene_cuts(video, start=s, end=e, threshold=threshold)
+    shots = pick_shots(s, e, cuts, want=want, min_len=min_len, max_len=max_len)
+    out = extract_shots(video, shots, out_dir, prefix=f"act{act_index:02d}", width=width, height=height, fps=fps, fit="pad")
+    log.info("act %d: %d shots from %d scene cuts in %.0f-%.0f s", act_index, len(out), len(cuts), s, e)
+    return out, shots
 
 
 def duration_seconds(video: str) -> float:

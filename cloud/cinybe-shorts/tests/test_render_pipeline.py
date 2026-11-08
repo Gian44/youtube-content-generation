@@ -74,7 +74,7 @@ def _cfg(tmp_path, **kw):
     return cfg
 
 
-def test_pick_film_skips_thin_plots_and_takes_operator_synopsis(tmp_path, monkeypatch):
+def test_pick_film_needs_the_file_in_the_bucket_then_a_usable_plot(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, minutes=10)
     monkeypatch.setattr(meta_mod, "resolve", lambda t, y=None: meta_mod.MovieMeta(title=t, year=y, wikipedia_title=f"{t} (film)"))
 
@@ -83,18 +83,42 @@ def test_pick_film_skips_thin_plots_and_takes_operator_synopsis(tmp_path, monkey
             return plot_mod.PlotText(title=titles[0], text="thin plot", word_count=2, url="u", section="Plot")
 
     monkeypatch.setattr(plot_mod, "WikiPlot", FakeWiki)
-    picked, skipped = pipeline.pick_film(cfg, [], Path(cfg.work_dir), "2026-11-08")
-    assert picked is None and [r["film"] for r in skipped] == ["One", "Two"] and "plots/one-2001.md" in skipped[0]["reason"]
+    # nothing in the bucket → nothing picked, nothing skipped (the films stay queued)
+    picked, skipped = pipeline.pick_film(cfg, [], Path(cfg.work_dir), "2026-11-08", keys=[])
+    assert picked is None and skipped == []
+    # One has a file but a thin plot → skipped row; Two has no file → passed over
+    picked, skipped = pipeline.pick_film(cfg, [], Path(cfg.work_dir), "2026-11-08", keys=["one-2001.mkv", "one-2001.srt"])
+    assert picked is None and [r["film"] for r in skipped] == ["One"] and "plots/one-2001.md" in skipped[0]["reason"]
+    # Two gets a file and an operator synopsis → picked, with its keys
     (tmp_path / "plots").mkdir()
     (tmp_path / "plots" / "two-2002.md").write_text(" ".join(["word"] * 300), encoding="utf-8")
     rows = [dict(r, date="2026-11-08") for r in skipped]
-    picked, skipped2 = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09")
-    film, meta, plot, work = picked
-    assert film.title == "Two" and plot.source == "operator" and skipped2 == [] and (work / "plot.json").exists()
-    # resumable: the cached plot.json is read back, no fetch
-    monkeypatch.setattr(plot_mod, "WikiPlot", None)
-    again, _ = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09")
+    picked, skipped2 = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09", keys=["films/Two-2002.mp4"])
+    film, meta, plot, work, files = picked
+    assert film.title == "Two" and plot.source == "operator" and files.video_key == "films/Two-2002.mp4" and files.srt_key is None
+    assert skipped2 == [] and (work / "plot.json").exists()
+    monkeypatch.setattr(plot_mod, "WikiPlot", None)           # resumable: the cached plot.json is read back
+    again, _ = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09", keys=["films/Two-2002.mp4"])
     assert again[2].text == plot.text
+
+
+def test_run_posts_nothing_without_a_film_store(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, minutes=10, skip_upload=True)
+    for k in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    cfg.r2_account_id = cfg.r2_access_key_id = cfg.r2_secret_access_key = ""
+    cfg.sof.claude_enabled = False
+    assert pipeline.run(cfg) == pipeline.EXIT_NO_FILM
+    assert not (tmp_path / "ledger.json").exists()
+
+
+def test_run_posts_nothing_when_no_queued_film_has_a_file(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, minutes=10, skip_upload=True)
+    cfg.r2_account_id, cfg.r2_access_key_id, cfg.r2_secret_access_key = "a", "k", "s"
+    cfg.sof.claude_enabled = False
+    monkeypatch.setattr(pipeline.store, "list_keys", lambda c: ["something-else-1999.mkv"])
+    assert pipeline.run(cfg) == pipeline.EXIT_NO_FILM
+    assert not (tmp_path / "ledger.json").exists()
 
 
 def test_run_is_a_noop_inside_the_gap(tmp_path, monkeypatch):

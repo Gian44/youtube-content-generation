@@ -1,8 +1,11 @@
-"""Orchestration: film → metadata + plot → plan → narration → b-roll → long recap + Shorts → upload → ledger.
+"""Orchestration: film (its file must be in the bucket) → metadata + plot → plan → shots from the film → narration
+→ long recap + Shorts → upload → ledger.
 
-Each stage writes into ``work/<run-id>/`` and is skipped when its output exists, so a re-dispatched run on the
-same checkout resumes. The ledger is written only after a successful upload (skipped films are recorded so the
-queue moves on)."""
+Gian, 2026-11-08: "If it is not from the movie itself, do not post anything." There is no stock fallback: a queued
+film without a file in R2 is passed over (no ledger row, so it is tried again next run), and a film whose file
+yields no shots fails the run before any narration is spent. Each stage writes into ``work/<run-id>/`` and is
+skipped when its output exists, so a re-dispatched run resumes. The ledger is written only after a successful
+upload (thin-plot films are recorded as skipped so the queue moves on)."""
 
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sof import ledger, music, tts, upload, vision
+from sof import ledger, music, tts, upload
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
@@ -23,7 +26,7 @@ from cny import films, meta as meta_mod, plot as plot_mod, planner, render, seo,
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
-EXIT_OK, EXIT_FAIL, EXIT_PREFLIGHT, EXIT_QUEUE, EXIT_PLAN = 0, 1, 2, 3, 4
+EXIT_OK, EXIT_FAIL, EXIT_PREFLIGHT, EXIT_QUEUE, EXIT_PLAN, EXIT_NO_FILM = 0, 1, 2, 3, 4, 5
 
 
 def _stage(name: str) -> None:
@@ -41,15 +44,26 @@ def _plot_overrides(cfg: Config) -> set[str]:
     return {p.stem for p in d.glob("*.md")} if d.exists() else set()
 
 
-def pick_film(cfg: Config, rows: list[dict], work_root: Path, today: str) -> tuple[tuple | None, list[dict]]:
-    """(film, meta, plot, work) for the first candidate with a usable plot, plus ledger rows for the skipped ones."""
+def pick_film(cfg: Config, rows: list[dict], work_root: Path, today: str, keys: list[str]) -> tuple[tuple | None, list[dict]]:
+    """(film, meta, plot, work, files) for the first queued film whose file is in the bucket (``keys``) and whose plot
+    is usable, plus ledger rows for films skipped over a thin plot. A film with no file is simply passed over."""
     all_films = films.load_films(cfg.films_path)
     if cfg.film:
         cands = [films.find_film(all_films, cfg.film, cfg.year)]
     else:
-        cands = films.next_films(all_films, rows, limit=cfg.max_tries, retry_skipped=_plot_overrides(cfg))
+        cands = films.next_films(all_films, rows, limit=cfg.max_candidates, retry_skipped=_plot_overrides(cfg))
+    with_file = [(f, store.match_keys(f.slug, keys)) for f in cands]
+    missing = [f.label for f, k in with_file if not k.video_key]
+    if missing:
+        print("queued, no file in the bucket yet: " + "; ".join(missing[:8]) + (" …" if len(missing) > 8 else ""), flush=True)
     skipped: list[dict] = []
-    for film in cands:
+    tries = 0
+    for film, files in with_file:
+        if not files.video_key:
+            continue
+        tries += 1
+        if tries > cfg.max_tries:
+            break
         work = work_root / f"{today}-{film.slug}"
         work.mkdir(parents=True, exist_ok=True)
         mp = work / "meta.json"
@@ -70,9 +84,10 @@ def pick_film(cfg: Config, rows: list[dict], work_root: Path, today: str) -> tup
                 pp.write_text(json.dumps(plot.__dict__, indent=1, ensure_ascii=False), encoding="utf-8")
         words = plot.word_count if plot else 0
         if plot and words >= cfg.min_plot_words:
-            print(f"film: {film.label} · {meta.source} metadata · plot {words} words from {plot.source}"
-                  + (f" ({plot.url})" if plot.url else ""), flush=True)
-            return (film, meta, plot, work), skipped
+            print(f"film: {film.label} · file {files.video_key}" + (f" + {files.srt_key}" if files.srt_key else " (no .srt)")
+                  + f" · {meta.source} metadata · plot {words} words from {plot.source}" + (f" ({plot.url})" if plot.url else ""),
+                  flush=True)
+            return (film, meta, plot, work, files), skipped
         reason = f"plot too thin ({words} words; need {cfg.min_plot_words}) — add plots/{film.slug}.md" if plot else \
                  "no Wikipedia plot section found — add plots/" + film.slug + ".md"
         print(f"! skipping {film.label}: {reason}", flush=True)
@@ -108,21 +123,30 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     why_not = llm.check_claude() if cfg.sof.claude_enabled else "not configured"
     print("writer: " + (f"Claude ({cfg.sof.claude_writer_model}/{cfg.sof.claude_fast_model}) on the subscription"
                         if not why_not else f"OpenAI/Gemini (Claude: {why_not})"), flush=True)
-    vis = vision.Vision.from_config(cfg.sof)
-    print(f"footage checks: {vis.describe()}", flush=True)
     print(f"voice: {tts.voice_label(cfg.sof)}", flush=True)
 
     _stage("film")
-    picked, skipped = pick_film(cfg, rows, Path(cfg.work_dir), today)
+    if not store.configured(cfg):
+        print("✗ no film store: R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY are not set — nothing is posted "
+              "without the film itself", flush=True)
+        return EXIT_NO_FILM
+    try:
+        keys = store.list_keys(cfg)
+    except Exception as exc:  # noqa: BLE001
+        print(f"✗ cannot list r2://{cfg.r2_bucket}: {str(exc)[:200]}", flush=True)
+        return EXIT_NO_FILM
+    print(f"bucket r2://{cfg.r2_bucket}: {len(keys)} objects", flush=True)
+    picked, skipped = pick_film(cfg, rows, Path(cfg.work_dir), today, keys)
     if picked is None:
         if skipped and not cfg.is_smoke and not cfg.skip_upload:
             for r in skipped:
                 ledger.append_entry(cfg.ledger_path, r)
             if os.environ.get("GITHUB_ACTIONS"):
                 ledger.git_commit_and_push(cfg.ledger_path, {**skipped[-1], "video_id": "skipped"})
-        print("no film with a usable plot in the queue; add films to films.yml or synopses to plots/", flush=True)
-        return EXIT_QUEUE
-    film, meta, plot, work = picked
+        print("no queued film has its file in the bucket (and a usable plot); nothing posted — upload "
+              "<slug>.mp4 + <slug>.srt to the bucket", flush=True)
+        return EXIT_NO_FILM
+    film, meta, plot, work, files = picked
     plot_text = plot_mod.trim_plot(plot.text, cfg.max_plot_chars)
 
     _stage("plan")
@@ -145,6 +169,24 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     print(f"plan: {len(plan.acts)} acts · {words} words · {len(plan.shorts)} shorts · \"{plan.long_form.get('title')}\"", flush=True)
     if plan.slop:
         print("noslop: " + " · ".join(f"{k} {v['before']}→{v['after']} ({v['rewritten']} rewritten)" for k, v in plan.slop.items()), flush=True)
+
+    _stage("film shots")                      # before any narration is spent: a bad file must cost nothing
+    film_files = store.fetch_film(cfg, film.slug, work)
+    if not film_files or not film_files.video_path:
+        print(f"✗ could not download {files.video_key}; nothing posted", flush=True)
+        return EXIT_NO_FILM
+    vis_plan, film_info = visuals.film_visuals(cfg, acts=plan.acts, work=work, llm=llm, title=film.label,
+                                               video=film_files.video_path, srt=film_files.srt_path,
+                                               vertical_for={int(s["act_index"]) for s in (plan.shorts if shorts_enabled else [])})
+    cfg.video_dim = cfg.film_dim
+    n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
+    print(f"film: {Path(film_files.video_path).name} ({film_files.size / 1e9:.2f} GB) · {film_info.get('how')} alignment"
+          + (f" · {film_info.get('cues')} subtitle cues" if film_info.get("cues") else "")
+          + f" · {n_clips} shots over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
+    if n_clips == 0 or any(not v.get("clips") for v in vis_plan.values()):
+        print("✗ the film yielded no usable shots for every act; nothing posted", flush=True)
+        return EXIT_NO_FILM
+    source = "film"
 
     _stage("tts")
     narration = work / "narration.mp3"
@@ -175,25 +217,6 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
             music.mix(str(narration), str(mixed), work_dir=str(work), bed_lufs=cfg.music_lufs, variant=variant)
         soundtrack = mixed
 
-    _stage("footage")
-    source, film_info = "stock", {}
-    film_files = store.fetch_film(cfg, film.slug, work) if store.configured(cfg) else None
-    if film_files and film_files.video_path:
-        vis_plan, film_info = visuals.film_visuals(cfg, acts=plan.acts, work=work, llm=llm, title=film.label,
-                                                   video=film_files.video_path, srt=film_files.srt_path)
-        source = "film"
-        cfg.video_dim = cfg.film_dim
-        print(f"film: {Path(film_files.video_path).name} ({film_files.size / 1e9:.2f} GB) · {film_info.get('how')} alignment"
-              + (f" · {film_info.get('cues')} subtitle cues" if film_info.get("cues") else ""), flush=True)
-    else:
-        if store.configured(cfg):
-            print(f"no file for {film.slug} in r2://{cfg.r2_bucket}; stock b-roll", flush=True)
-        vis_plan = visuals.gather_all(cfg, acts=plan.acts, work=work, vis=vis)
-    n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
-    print(f"footage ({source}): {n_clips} clips over {len(plan.acts)} acts · "
-          f"{sum(1 for v in vis_plan.values() if v.get('photos'))} acts on photos · "
-          f"{sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
-
     _stage("render")
     final = work / "final.mp4"
     if not final.exists():
@@ -206,9 +229,6 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     if not thumb.exists():
         first = next((c for v in (vis_plan.get(i) for i in sorted(vis_plan)) for c in (v or {}).get("clips") or []), None)
         base = thumbnail.grab_frame(first, str(work / "thumb_base.jpg")) if first else None
-        if base is None:
-            photo = next((p for v in vis_plan.values() for p in v.get("photos") or []), None)
-            base = photo
         thumbnail.compose(base=base, out=str(thumb), film=film.title, year=film.year or meta.year,
                           hook=str(plan.long_form.get("thumb_text") or ""))
     try:
@@ -227,7 +247,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                 v = vis_plan.get(int(s["act_index"]), {})
                 try:
                     render.build_short(cfg, work=work, name=name, text=str(s["text"]), title=str(s["title"]), audio=audio,
-                                       clips=list(v.get("clips") or []), photos=list(v.get("photos") or []))
+                                       clips=list(v.get("clips_v") or v.get("clips") or []), photos=[])
                 except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the recap over it
                     log.exception("short %d failed", k + 1)
                     print(f"! short {k + 1} skipped ({exc})", flush=True)
@@ -287,7 +307,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "acts": len(plan.acts), "plot_source": plot.source, "plot_url": plot.url, "plot_words": plot.word_count,
         "footage_clips": n_clips, "footage": source, "alignment": film_info.get("how"), "shorts": short_entries,
         "slop": plan.slop or None,
-        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "vision_calls": dict(vis.stats), "voice": tts.voice_label(cfg.sof),
+        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "film_file": files.video_key,
         "run_url": _run_url(),
     }
     if cfg.is_smoke:

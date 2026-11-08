@@ -44,7 +44,7 @@ FOOTAGE_LINES = {
 
 
 def long_description(*, film: str, year: int | None, blurb: str, chapters: list[dict], plot_url: str, director: str | None,
-                     theme: str, footage: str = "stock") -> str:
+                     theme: str, footage: str = "film") -> str:
     fy = f"{film} ({year})" if year else film
     parts = [f"{blurb.strip()}" if blurb else f"The whole story of {fy}, start to finish, in one narrated recap.",
              "Spoilers: this recap tells the entire plot, including the ending."]
@@ -87,7 +87,7 @@ def short_title(title: str, film: str) -> str:
     return t if len(t) <= 100 else f"{film[:80]} #Shorts"
 
 
-def short_description(*, film: str, year: int | None, long_video_id: str, hook: str, tags: list[str], footage: str = "stock") -> str:
+def short_description(*, film: str, year: int | None, long_video_id: str, hook: str, tags: list[str], footage: str = "film") -> str:
     fy = f"{film} ({year})" if year else film
     return (f"{hook.strip()}\n\nThe full recap of {fy}, start to finish: https://youtu.be/{long_video_id}\n\n"
             + FOOTAGE_LINES.get(footage, FOOTAGE_LINES["stock"]) + "\n\n"

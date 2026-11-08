@@ -4,7 +4,8 @@ on:
   schedule:
     # Daily at 09:41 UTC (17:41 Manila); the pipeline itself keeps to one film every 2nd day (films.ran_recently,
     # gap 36 h), so a late GitHub start never skips a day for good. After the sleep run (08:23) so the two
-    # never queue on the same minute. Gian, 2026-11-07.
+    # never queue on the same minute. Gian, 2026-11-07. A run with no film file in the bucket exits before any
+    # narration is spent and posts nothing (Gian, 2026-11-08).
     - cron: "41 9 * * *"
   workflow_dispatch:
     inputs:
@@ -81,17 +82,6 @@ jobs:
           [ -s voices-v1.0.bin ] || curl -fsSL --retry 3 -o voices-v1.0.bin "$base/voices-v1.0.bin"
           echo "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5  kokoro-v1.0.onnx" | sha256sum -c -
           echo "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin" | sha256sum -c -
-      - name: Codex CLI (footage checks on Gian's ChatGPT plan; Claude takes over without it)
-        working-directory: cloud/sleep-on-facts
-        env:
-          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
-        run: |
-          if [ -z "$CODEX_AUTH_JSON" ]; then echo "no CODEX_AUTH_JSON secret; footage checks go to Claude"; exit 0; fi
-          npm install -g @openai/codex >/dev/null 2>&1 && codex --version || { echo "codex CLI unavailable; Claude checks the footage"; exit 0; }
-          export CODEX_HOME="$RUNNER_TEMP/codex"
-          if python -c "import os, sys; from sof.vision import prepare_codex_home as p; why = p(os.environ['CODEX_AUTH_JSON'], os.environ['CODEX_HOME']); print(why or 'codex login ready'); sys.exit(1 if why else 0)"; then
-            echo "CODEX_HOME=$CODEX_HOME" >> "$GITHUB_ENV"
-          fi
       - name: Run pipeline
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -102,11 +92,11 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          # the film files Gian supplies (private R2 bucket, S3 API); without these the run uses stock b-roll
+          # the film files Gian supplies (private R2 bucket, S3 API). No film in the bucket → nothing is posted.
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: cinybe-films
+          R2_BUCKET: ${{ secrets.R2_BUCKET || 'cinybe-films' }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_CLIENT_ID_CINYBE: ${{ secrets.YT_CLIENT_ID_CINYBE }}

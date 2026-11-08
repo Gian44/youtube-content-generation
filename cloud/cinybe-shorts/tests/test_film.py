@@ -80,7 +80,9 @@ def test_cut_commands():
     sc = cut.scene_cmd("f.mp4", start=100.0, seconds=60.0, threshold=0.3)
     assert "select='gt(scene,0.3)',showinfo" in sc and sc[sc.index("-ss") + 1] == "100.000"
     sh = cut.shot_cmd("f.mp4", "o.mp4", start=12.5, seconds=6.0, width=1920, height=1080, fps=30)
-    assert sh[sh.index("-ss") + 1] == "12.500" and "-an" in sh and "crop=1920:1080" in sh[sh.index("-vf") + 1]
+    assert sh[sh.index("-ss") + 1] == "12.500" and "-an" in sh and "pad=1920:1080" in sh[sh.index("-vf") + 1]   # letterboxed
+    shv = cut.shot_cmd("f.mp4", "o.mp4", start=12.5, seconds=6.0, width=1080, height=1920, fps=30, fit="crop")
+    assert "crop=1080:1920" in shv[shv.index("-vf") + 1] and "pad=" not in shv[shv.index("-vf") + 1]
 
 
 def test_store_key_matching_and_config(monkeypatch):
