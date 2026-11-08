@@ -64,5 +64,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42390146739"
+  },
+  {
+    "date": "2026-11-08",
+    "kind": "shorts",
+    "topic": "3 shorts: entitled_parents, revenge, wholesome",
+    "video_id": "tuBVDjJ2fiA",
+    "stories": [
+      {
+        "video_id": "tuBVDjJ2fiA",
+        "title": "Mom Demanded I Remove the Peanut Warning #Shorts",
+        "category": "entitled_parents",
+        "persona": "dramatic",
+        "hook": "\"Peel that sticker off my daughter's cupcakes, right now,\" the woman said, and shoved the box back across my counter.",
+        "words": 137,
+        "seconds": 56,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "lyhY1ljL6Wk",
+        "title": "Neighbor Left Me a Parking Note #Shorts",
+        "category": "revenge",
+        "persona": "sarcastic",
+        "hook": "Dennis from 4B taped a note to my windshield that said, \"Learn to park.\"",
+        "words": 137,
+        "seconds": 54,
+        "publish_at": "2026-11-09T00:54:58Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "I2PMCzFeIsw",
+        "title": "The Woman Who Noticed My Blanket at the Laundromat #Shorts",
+        "category": "wholesome",
+        "persona": "warm",
+        "hook": "\"You've been drying that same blanket for three hours, honey,\" the woman at the laundromat said.",
+        "words": 133,
+        "seconds": 55,
+        "publish_at": "2026-11-09T08:54:58Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42501325939"
   }
 ]
