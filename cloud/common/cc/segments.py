@@ -140,6 +140,11 @@ def render_segments(segs: list[Segment], tmp: Path, *, width: int, height: int, 
         parts.append(p)
     if not parts:
         raise RuntimeError("nothing to render")
+    if crossfade <= 0:                                    # hard cuts: concat the normalised segments, trim to length
+        joined = str(tmp / "joined.mp4")
+        concat_videos(parts, joined, str(tmp / "joined.txt"))
+        sof_render.run(["ffmpeg", "-y", "-v", "error", "-i", joined, "-t", _fmt(total), "-c", "copy", "-movflags", "+faststart", out], 1800)
+        return out
     sof_render.run(xfade_cmd(parts, [s.seconds for s in segs], out, crossfade=crossfade, fps=fps, total=total), 3600)
     return out
 
@@ -201,3 +206,51 @@ def title_card_png(out: str, *, title: str, kicker: str = "", footer: str = "", 
         d.text(((width - d.textlength(footer, font=foot)) / 2, height * 0.8), footer, font=foot, fill=(170, 170, 180))
     im.save(out, "PNG")
     return out
+
+
+# ---------------------------------------------------------------- continuous footage (recap channels)
+
+def plan_sequence(duration: float, clips: list[tuple[str, float]], *, crossfade: float = 0.0, min_seconds: float = 1.5,
+                  max_seconds: float = 8.0) -> list[Segment]:
+    """Shots played ONCE each, in order, sized to cover ``duration`` exactly: every shot gets an equal share of the
+    time (capped at its own length and ``max_seconds``); the time that short shots leave over goes to the longer
+    ones; if the shots together are still too short, the list is cycled from the start. ``clips`` carry their
+    lengths. The result is what the recap channels do: footage that moves forward with the narration."""
+    if not clips or duration <= 0:
+        return []
+    fit = max(1, int((duration + crossfade) // (min_seconds + crossfade)))
+    if len(clips) > fit:                                  # more shots than the time can hold at min_seconds each:
+        step = len(clips) / fit                           # keep every k-th shot so the footage still moves forward
+        clips = [clips[min(len(clips) - 1, int(i * step))] for i in range(fit)]
+    n = len(clips)
+    avail = [max(0.0, min(a, max_seconds)) for _, a in clips]
+    total_avail = sum(avail)
+    extra = crossfade * max(0, n - 1)
+    need = duration + extra
+    if total_avail <= need + 0.01:                        # not enough footage: play everything, then cycle
+        segs = [Segment("clip", src, round(a, 3)) for (src, _), a in zip(clips, avail) if a >= min_seconds]
+        covered = sum(s.seconds for s in segs) - crossfade * max(0, len(segs) - 1)
+        k = 0
+        while covered < duration - 0.01 and segs and k < 400:
+            src, a = clips[k % n][0], avail[k % n]
+            take = min(a, max(min_seconds, duration - covered + crossfade))
+            segs.append(Segment("clip", src, round(take, 3), offset=0.0))
+            covered += take - crossfade
+            k += 1
+        return segs
+    share = need / n
+    take = [min(a, share) for a in avail]                 # equal shares, capped by each shot's length
+    short = need - sum(take)
+    for _ in range(4):                                    # hand the shortfall to the shots that have room left
+        if short <= 0.01:
+            break
+        room = [a - t for a, t in zip(avail, take)]
+        room_total = sum(room)
+        if room_total <= 0:
+            break
+        for i in range(n):
+            give = min(room[i], short * room[i] / room_total)
+            take[i] += give
+        short = need - sum(take)
+    segs = [Segment("clip", src, round(t, 3)) for (src, _), t in zip(clips, take) if t >= min_seconds]
+    return segs

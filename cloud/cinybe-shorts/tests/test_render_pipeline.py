@@ -49,16 +49,29 @@ def test_durations_scale_to_the_assembled_narration(monkeypatch):
     per = render.scaled_durations(["a", "b", "c"], [0, 0, 1], 2, total=66.0)
     assert per == [33.0, 33.0] and render.section_starts(per) == [0.0, 33.0]
     rows = render.chapter_rows([{"heading": "Setup"}, {"heading": ""}], render.section_starts(per))
-    assert rows == [{"start": 0.0, "title": "Setup"}, {"start": 33.0, "title": "Act 2"}]
+    assert rows == [{"start": 0.0, "title": "Setup"}, {"start": 33.0, "title": "Part 2"}]
 
 
-def test_act_card_and_thumbnail_render(tmp_path):
-    from cny import thumbnail
-    png = render.act_card_png(str(tmp_path / "c.png"), act_title="The dream within a dream collapses", index=3, count=12,
-                              film="Inception (2010)", width=640, height=360)
-    assert Path(png).stat().st_size > 1000
-    jpg = thumbnail.compose(base=None, out=str(tmp_path / "t.jpg"), film="Inception", year=2010, hook="dream heist", width=640, height=360)
+def test_thumbnail_is_hook_only_and_shots_wanted(tmp_path):
+    from cny import thumbnail, visuals
+    jpg = thumbnail.compose(base=None, out=str(tmp_path / "t.jpg"), hook="dream heist", width=640, height=360)
     assert Path(jpg).stat().st_size > 1000
+    from PIL import Image
+    boxed = Image.new("RGB", (640, 360), (0, 0, 0))                      # a 2.39:1 frame padded to 16:9
+    boxed.paste(Image.new("RGB", (640, 268), (90, 140, 200)), (0, 46))
+    assert thumbnail.trim_bars(boxed).size == (640, 268)
+    assert thumbnail.trim_bars(Image.new("RGB", (64, 64), (0, 0, 0))).size == (64, 64)   # an all-black frame is left alone
+    boxed.save(tmp_path / "b.jpg")
+    assert Image.open(thumbnail.compose(base=str(tmp_path / "b.jpg"), out=str(tmp_path / "t2.jpg"), hook="x", width=640, height=360)).size == (640, 360)
+    assert not hasattr(render, "act_card_png")                       # recap style: no title cards between acts
+    # 145 words ≈ 60 s of narration → 14 shots of 4.5 s + 2 spare; a near-empty act still gets the floor
+    assert visuals.shots_wanted(145, words_per_minute=145, shot_seconds=4.5) == 16
+    assert visuals.shots_wanted(3, words_per_minute=145, shot_seconds=4.5) == 4
+    # the sequence planner plays every shot once, in order, and cycles only when the footage is short
+    plan = render.plan_sequence(20.0, [("a.mp4", 6.0), ("b.mp4", 6.0), ("c.mp4", 6.0), ("d.mp4", 6.0)], min_seconds=1.5, max_seconds=8.0)
+    assert [x.src for x in plan] == ["a.mp4", "b.mp4", "c.mp4", "d.mp4"] and abs(sum(x.seconds for x in plan) - 20.0) < 0.01
+    cyc = render.plan_sequence(30.0, [("a.mp4", 6.0), ("b.mp4", 6.0)], min_seconds=1.5, max_seconds=8.0)
+    assert [x.src for x in cyc][:3] == ["a.mp4", "b.mp4", "a.mp4"] and abs(sum(x.seconds for x in cyc) - 30.0) < 0.01
 
 
 def _cfg(tmp_path, **kw):
@@ -74,8 +87,23 @@ def _cfg(tmp_path, **kw):
     return cfg
 
 
-def test_pick_film_needs_the_file_in_the_bucket_then_a_usable_plot(tmp_path, monkeypatch):
+def test_pick_film_takes_the_first_queued_film_with_a_file(tmp_path, capsys):
     cfg = _cfg(tmp_path, minutes=10)
+    assert pipeline.pick_film(cfg, [], []) is None                                   # empty store → nothing, films stay queued
+    assert "no file" in capsys.readouterr().out
+    film, files = pipeline.pick_film(cfg, [], ["two-2002.mkv", "Two-2002.srt", "notes.txt"])
+    assert film.title == "Two" and files.video_key == "two-2002.mkv" and files.srt_key == "Two-2002.srt"
+    assert "One (2001)" in capsys.readouterr().out                                  # the skipped film is named
+    # a published film is not picked again; a forced film ignores the queue order
+    rows = [{"kind": "video", "film": "Two", "year": 2002, "video_id": "v", "date": "2026-11-01"}]
+    assert pipeline.pick_film(cfg, rows, ["two-2002.mkv"]) is None
+    cfg.film, cfg.year = "Two", 2002
+    assert pipeline.pick_film(cfg, rows, ["two-2002.mkv"])[0].title == "Two"
+
+
+def test_reference_plot_is_optional_and_cached(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path, minutes=10)
+    film = films.load_films(cfg.films_path)[0]
     monkeypatch.setattr(meta_mod, "resolve", lambda t, y=None: meta_mod.MovieMeta(title=t, year=y, wikipedia_title=f"{t} (film)"))
 
     class FakeWiki:
@@ -83,30 +111,34 @@ def test_pick_film_needs_the_file_in_the_bucket_then_a_usable_plot(tmp_path, mon
             return plot_mod.PlotText(title=titles[0], text="thin plot", word_count=2, url="u", section="Plot")
 
     monkeypatch.setattr(plot_mod, "WikiPlot", FakeWiki)
-    # nothing in the bucket → nothing picked, nothing skipped (the films stay queued)
-    picked, skipped = pipeline.pick_film(cfg, [], Path(cfg.work_dir), "2026-11-08", keys=[])
-    assert picked is None and skipped == []
-    # One has a file but a thin plot → skipped row; Two has no file → passed over
-    picked, skipped = pipeline.pick_film(cfg, [], Path(cfg.work_dir), "2026-11-08", keys=["one-2001.mkv", "one-2001.srt"])
-    assert picked is None and [r["film"] for r in skipped] == ["One"] and "plots/one-2001.md" in skipped[0]["reason"]
-    # Two gets a file and an operator synopsis → picked, with its keys
+    work = Path(cfg.work_dir) / "a"
+    work.mkdir(parents=True)
+    meta, plot = pipeline.reference_plot(cfg, film, work)                          # thin plot → no reference, run goes on
+    assert meta.title == "One" and plot is None and (work / "plot.json").read_text() == "{}"
     (tmp_path / "plots").mkdir()
-    (tmp_path / "plots" / "two-2002.md").write_text(" ".join(["word"] * 300), encoding="utf-8")
-    rows = [dict(r, date="2026-11-08") for r in skipped]
-    picked, skipped2 = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09", keys=["films/Two-2002.mp4"])
-    film, meta, plot, work, files = picked
-    assert film.title == "Two" and plot.source == "operator" and files.video_key == "films/Two-2002.mp4" and files.srt_key is None
-    assert skipped2 == [] and (work / "plot.json").exists()
-    monkeypatch.setattr(plot_mod, "WikiPlot", None)           # resumable: the cached plot.json is read back
-    again, _ = pipeline.pick_film(cfg, rows, Path(cfg.work_dir), "2026-11-09", keys=["films/Two-2002.mp4"])
-    assert again[2].text == plot.text
+    (tmp_path / "plots" / "one-2001.md").write_text(" ".join(["word"] * 300), encoding="utf-8")
+    work2 = Path(cfg.work_dir) / "b"
+    work2.mkdir()
+    _, plot2 = pipeline.reference_plot(cfg, film, work2)                           # an operator synopsis wins
+    assert plot2 is not None and plot2.source == "operator"
+    monkeypatch.setattr(plot_mod, "WikiPlot", None)                                # resumable: cached plot.json is read back
+    assert pipeline.reference_plot(cfg, film, work2)[1].text == plot2.text
+
+    class Boom:
+        def fetch_any(self, titles):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(plot_mod, "WikiPlot", Boom)
+    work3 = Path(cfg.work_dir) / "c"
+    work3.mkdir()
+    assert pipeline.reference_plot(cfg, films.load_films(cfg.films_path)[1], work3)[1] is None   # Wikipedia down ≠ dead run
 
 
 def test_run_posts_nothing_without_a_film_store(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path, minutes=10, skip_upload=True)
-    for k in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+    for k in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "GDRIVE_SERVICE_ACCOUNT_JSON", "GDRIVE_FOLDER_ID"):
         monkeypatch.delenv(k, raising=False)
-    cfg.r2_account_id = cfg.r2_access_key_id = cfg.r2_secret_access_key = ""
+    cfg.r2_account_id = cfg.r2_access_key_id = cfg.r2_secret_access_key = cfg.gdrive_service_account_json = ""
     cfg.sof.claude_enabled = False
     assert pipeline.run(cfg) == pipeline.EXIT_NO_FILM
     assert not (tmp_path / "ledger.json").exists()

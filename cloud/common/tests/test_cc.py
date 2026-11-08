@@ -89,3 +89,20 @@ def test_interleave_round_robins_by_query():
              {"id": "c1", "query": "c"}, {"id": "c2", "query": "c"}]
     assert [c["id"] for c in broll.interleave(cands)] == ["a1", "b1", "c1", "a2", "c2", "a3"]
     assert broll.interleave([]) == []
+
+
+def test_plan_sequence_plays_each_shot_once_in_order_to_the_exact_length():
+    clips = [("a", 8.0), ("b", 3.0), ("c", 8.0), ("d", 6.0)]
+    segs = segments.plan_sequence(20.0, clips, crossfade=0.0)
+    assert [s.src for s in segs] == ["a", "b", "c", "d"] and abs(sum(s.seconds for s in segs) - 20.0) < 0.05
+    assert all(s.seconds <= a for s, (_, a) in zip(segs, clips)) and segs[1].seconds == 3.0     # the short shot plays whole
+    # not enough footage → everything once, then cycled
+    segs = segments.plan_sequence(30.0, [("a", 8.0), ("b", 8.0)], crossfade=0.0)
+    assert [s.src for s in segs] == ["a", "b", "a", "b"] and abs(sum(s.seconds for s in segs) - 30.0) < 0.05
+    assert segments.plan_sequence(10.0, [], crossfade=0.0) == []
+    # more shots than 12 s can hold at 1.5 s each → every k-th shot, still in order, still exactly 12 s
+    many = [(f"s{i}", 4.0) for i in range(13)]
+    segs = segments.plan_sequence(12.0, many, crossfade=0.0, min_seconds=1.5, max_seconds=8.0)
+    assert segs and abs(sum(s.seconds for s in segs) - 12.0) < 0.05 and all(s.seconds >= 1.5 for s in segs)
+    order = [int(s.src[1:]) for s in segs]
+    assert order == sorted(order) and len(set(order)) == len(order) and order[0] == 0 and len(order) <= 8

@@ -1,21 +1,25 @@
-"""Plot text → acts → long recap script + Shorts (two writer calls), validated, then the no-AI-slop pass.
+"""The recap, written from the film itself: the subtitle transcript (dialogue with timestamps) → acts that carry
+their own time range in the film → long recap narration + Shorts, validated, then the no-AI-slop pass.
 
-Ported from StoryFactory's ``services/recap_planner.py`` (feat/narrated-recap) onto ``sof.llm.LLM`` (Claude on
-the subscription, OpenAI/Gemini fallback). The writer only uses facts in the plot text; a validation failure is
-sent back once with the errors; ``noslop`` (mode ``recap``) rewrites only the flagged paragraphs.
+Gian, 2026-11-08, after eight sample channels (Movie Recaps, Twist Recaps, Film Decode, AniRoll, …): the script
+comes from the subtitles (Wikipedia's plot is optional context), the title is a hook sentence that never names
+the film, people are called by what they are ("the assassin", "the poor man") rather than by name, the footage
+follows the narration from start to finish. Two writer calls via ``sof.llm.LLM`` (Claude on the subscription).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from sof import noslop
 from sof.llm import LLM, LLMError
 
 log = logging.getLogger("cny.planner")
-LONG_FORM_TOLERANCE = (0.65, 1.35)      # LLMs miss tight word bands; the voice decides the real length anyway
+LONG_FORM_TOLERANCE = (0.7, 1.3)
+ACT_MIN_SECONDS = 20.0
 
 
 class PlanError(RuntimeError):
@@ -24,9 +28,9 @@ class PlanError(RuntimeError):
 
 @dataclass
 class FilmPlan:
-    acts: list[dict]
-    long_form: dict
-    shorts: list[dict]
+    acts: list[dict]            # index, title, summary, start_seconds, end_seconds (in the film)
+    long_form: dict             # title (the hook), description, thumb_text, tags, sections[{act_index, text}]
+    shorts: list[dict]          # act_index, hook, text, title, tags
     slop: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -39,7 +43,7 @@ class FilmPlan:
 
     @property
     def sections(self) -> list[dict]:
-        """``[{"heading", "body"}]`` in act order — the shape ``sof.tts.chunk_sections`` takes."""
+        """``[{"heading", "body", "act_index"}]`` in act order — the shape ``sof.tts.chunk_sections`` takes."""
         by_idx = {int(a["index"]): a for a in self.acts}
         out = []
         for s in sorted(self.long_form.get("sections") or [], key=lambda x: int(x["act_index"])):
@@ -49,54 +53,62 @@ class FilmPlan:
         return out
 
 
-ACTS_SYSTEM = ("You are a story editor for a movie-recap YouTube channel. You only use facts present in the plot "
-               "text you are given; you never invent scenes, names or outcomes. Output strict JSON.")
+ACTS_SYSTEM = ("You are a story editor for a movie-recap YouTube channel. You work from the film's own dialogue transcript "
+               "(with timestamps) and only from it, plus any reference summary given; you never invent scenes or outcomes. "
+               "Output strict JSON.")
 
-ACTS_PROMPT = """Film: {title} ({year})
-About the film: {lead}
-Genres: {genres} · Director: {director} · Cast: {cast}
+ACTS_PROMPT = """Film: {title} ({year}) · runtime {duration} seconds.
+{reference}
+Below is the film's dialogue as "[mm:ss] text" lines (one line per 10 seconds that has dialogue). Read the whole film,
+then split its story into {acts_min}-{acts_max} acts in screen order, from the opening to the ending. Each act is
+one clear story beat and names the time range of the film where it plays out.
 
-Split the plot below into {acts_min}-{acts_max} ordered acts that together tell the whole story, from setup
-to ending. Each act is one clear story beat.
-
-Return a JSON object {{"acts": [...]}}. Each act:
-{{"index": <0-based int>, "title": "<2-6 word act title, no spoiler in the title>",
- "summary": "<30-60 words, present tense, concrete>",
- "broll_queries": ["<3-6 word stock-footage search: a place, weather, object or action, generic, no names>",
-                   "<a second, different search for the same mood>"],
+Return a JSON object {{"acts": [...], "people": [...]}}. Each act:
+{{"index": <0-based int>, "title": "<2-6 word act title, no spoiler>",
+ "summary": "<40-80 words, present tense, concrete: who does what, where, and what it changes>",
+ "start_seconds": <number>, "end_seconds": <number>,
  "stakes": "<one short clause: what is at risk now>"}}
+Each person in "people": {{"name": "<as in the dialogue>", "descriptor": "<2-4 words: who they are, e.g. 'the assassin', 'the
+poor man', 'his older brother'>"}} — the main characters only (3-10).
 
-Rules: indices contiguous from 0; the final act is the ending and says what happens; nothing withheld; no
-commentary; broll searches describe things that exist in stock footage (city at night, rain on a window,
-hospital corridor, desert road), never characters or the film.
+Rules: indices contiguous from 0; acts in order; time ranges in order, not overlapping, inside the runtime, each at
+least {act_min} seconds and together covering most of the film; skip the opening titles and the end credits; the final
+act is the ending and says what happens; nothing withheld; no commentary.
 
-PLOT:
-{plot_text}"""
+TRANSCRIPT:
+{transcript}"""
 
-SCRIPTS_SYSTEM = ("You write narration for a movie-recap channel. Voice: confident, vivid, present tense, plain words; "
-                  "no filler, no 'in this video', no 'let's dive in'. You never add facts that are not in the acts. "
-                  "Output strict JSON.")
+SCRIPTS_SYSTEM = ("You write narration for a movie-recap YouTube channel in the style of the big recap channels: present "
+                  "tense, fast, concrete, describing what is on screen as it happens, one event after another; plain words; "
+                  "no filler, no 'in this video', no 'let's dive in', no moralising. People are called by what they are "
+                  "('the assassin', 'the poor man', 'his wife'), the same descriptor every time; a name is used only when "
+                  "two people would otherwise be confused. You never add facts that are not in the acts. Output strict JSON.")
 
 SCRIPTS_PROMPT = """Film: {title} ({year})
+People (name → how the narration calls them): {people_json}
 Acts (JSON): {acts_json}
 
 Write two things.
 
-1. "long_form": the full narrated recap, about {target_words} words in total, roughly {per_section_words}
-   words per act, one section per act in act order. Each section is narration only, no headings. Open the
-   first section with a two-sentence hook that raises the film's central question (say the film's name and
-   year in the first three sentences). The last section tells the ending and closes with one plain line.
-   Also give "title" (a curiosity-driven line of at most 60 characters that names the film, no clickbait
-   lies, no hashtags, no colon), "description" (2-3 sentences, spoiler warning included),
-   "thumb_text" (2-4 words for the thumbnail, no punctuation) and "tags" (6-10 lowercase search tags:
-   film, director, genre, key nouns).
+1. "long_form": the full narrated recap, about {target_words} words in total, roughly {per_section_words} words per act,
+   one section per act in act order. Each section is narration only, no headings; it describes what happens on screen
+   in that act, moment by moment, in present tense. The first section opens with a two-sentence hook on the film's
+   strangest premise or the opening event — do NOT say the film's name or year anywhere in the narration. The last
+   section tells the ending and closes with one plain line.
+   Also give:
+   - "title": a hook sentence for YouTube of 50-80 characters that never names the film or its people by name, stating
+     the premise or twist plainly, e.g. "Poor Man Wants to Die, But Accidentally Becomes a Millionaire" or "200 IQ
+     Assassin Stages Each Murder as an Accident". No question, no colon, no clickbait lies.
+   - "thumb_text": 3-5 words for the thumbnail, no punctuation (e.g. "HE PLANNED EVERY DEATH").
+   - "description": 2-3 sentences that DO name the film and year, with a spoiler warning.
+   - "tags": 8-12 lowercase search tags: the film's name, director, genre, "movie recap", key nouns.
 
-2. "shorts": exactly {shorts_per_film} Shorts, each from a DIFFERENT act_index, preferring the most dramatic
-   acts. Each Short: "hook" (at most 12 words, the first sentence spoken), "text" (the full narration
-   INCLUDING the hook, at most {short_max_words} words, ending on a cliffhanger or a payoff), "title"
-   (at most 60 characters, names the film, no hashtags), "tags" (4-8 lowercase tags).
+2. "shorts": exactly {shorts_per_film} Shorts, each from a DIFFERENT act_index, the most dramatic moments. Each Short:
+   "hook" (at most 14 words, the first sentence spoken, a concrete event), "text" (the full narration INCLUDING the
+   hook, at most {short_max_words} words, present tense, ending on a cliffhanger or a payoff; no film name),
+   "title" (a hook of at most 60 characters, no film name, no hashtags), "tags" (4-8 lowercase tags).
 
-Return JSON: {{"long_form": {{"title", "description", "thumb_text", "tags", "sections": [{{"act_index", "text"}}]}},
+Return JSON: {{"long_form": {{"title", "thumb_text", "description", "tags", "sections": [{{"act_index", "text"}}]}},
               "shorts": [{{"act_index", "hook", "text", "title", "tags"}}]}}"""
 
 EDIT_SYSTEM = ("You are a line editor for spoken narration. You change wording only; every event, name and outcome "
@@ -106,13 +118,25 @@ STYLE_BLOCK = noslop.style_block("recap")
 
 # ----------------------------------------------------------------- validation (pure)
 
-def validate_acts(data, *, acts_min: int, acts_max: int) -> list[dict]:
+def _num(v, name: str) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        raise PlanError(f"{name} is not a number: {v!r}")
+
+
+def validate_acts(data, *, acts_min: int, acts_max: int, duration: float, act_min_seconds: float = ACT_MIN_SECONDS) -> tuple[list[dict], list[dict]]:
+    """(acts, people). Acts must be contiguous, in screen order, with ordered non-overlapping time ranges inside the
+    runtime; the people list is optional."""
     acts = data.get("acts") if isinstance(data, dict) else data
+    people = (data.get("people") if isinstance(data, dict) else None) or []
     errors: list[str] = []
     if not isinstance(acts, list):
         raise PlanError("acts must be a JSON array under \"acts\"")
     if not (acts_min <= len(acts) <= acts_max):
         errors.append(f"expected {acts_min}-{acts_max} acts, got {len(acts)}")
+    prev_end = -1.0
+    out: list[dict] = []
     for i, a in enumerate(acts):
         if not isinstance(a, dict):
             errors.append(f"act {i} is not an object")
@@ -127,29 +151,46 @@ def validate_acts(data, *, acts_min: int, acts_max: int) -> list[dict]:
             errors.append(f"act {i} has an empty summary")
         if not str(a.get("title", "")).strip():
             errors.append(f"act {i} has an empty title")
-        q = a.get("broll_queries")
-        if isinstance(q, str):
-            q = [q]
-        q = [str(x).strip() for x in (q or []) if str(x).strip()]
-        if not q and str(a.get("broll_query", "")).strip():
-            q = [str(a["broll_query"]).strip()]
-        if not q:
-            errors.append(f"act {i} has no broll_queries")
-        a["broll_queries"] = q[:3]
+        try:
+            s, e = _num(a.get("start_seconds"), f"act {i} start_seconds"), _num(a.get("end_seconds"), f"act {i} end_seconds")
+        except PlanError as exc:
+            errors.append(str(exc))
+            continue
+        if s < 0 or e > duration + 1.0:
+            errors.append(f"act {i} time range {s:.0f}-{e:.0f} is outside the runtime (0-{duration:.0f})")
+        if e - s < act_min_seconds:
+            errors.append(f"act {i} time range is {e - s:.0f}s; must be at least {act_min_seconds:g}s")
+        if s < prev_end:
+            errors.append(f"act {i} starts before act {i - 1} ends; ranges must be in order and not overlap")
+        prev_end = max(prev_end, e)
+        out.append(dict(a, index=i, start_seconds=round(s, 2), end_seconds=round(e, 2)))
     if errors:
         raise PlanError("; ".join(errors))
-    return [dict(a, index=i) for i, a in enumerate(acts)]
+    people = [{"name": str(p.get("name") or "").strip(), "descriptor": str(p.get("descriptor") or "").strip()}
+              for p in people if isinstance(p, dict) and str(p.get("name") or "").strip()][:12]
+    return out, people
 
 
-def validate_scripts(data, acts: list[dict], *, target_words: int, shorts_per_film: int, short_max_words: int) -> dict:
+def _names_film(text: str, film: str) -> bool:
+    words = [w for w in re.findall(r"[a-z0-9]+", film.lower()) if len(w) > 3 and w not in ("the", "and", "part", "film", "movie")]
+    t = text.lower()
+    return bool(words) and all(w in t for w in words)
+
+
+def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, shorts_per_film: int, short_max_words: int) -> dict:
     errors: list[str] = []
     if not isinstance(data, dict):
         raise PlanError("scripts must be a JSON object")
     valid_idx = {int(a["index"]) for a in acts}
     lf = data.get("long_form") or {}
     sections = lf.get("sections") or []
-    if not str(lf.get("title", "")).strip():
+    title = str(lf.get("title", "")).strip()
+    if not title:
         errors.append("long_form.title is empty")
+    elif _names_film(title, film):
+        errors.append("long_form.title must not name the film")
+    elif not (30 <= len(title) <= 90):
+        errors.append(f"long_form.title is {len(title)} characters; aim for 50-80")
     if len(sections) != len(acts):
         errors.append(f"long_form.sections must have {len(acts)} entries (one per act), got {len(sections)}")
     total = sum(len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict))
@@ -171,8 +212,11 @@ def validate_scripts(data, acts: list[dict], *, target_words: int, shorts_per_fi
         elif sidx in seen_sections:
             errors.append(f"long_form has two sections for act_index {sidx}")
         seen_sections.add(sidx)
-        if not str(s.get("text", "")).strip():
+        text = str(s.get("text", ""))
+        if not text.strip():
             errors.append("long_form section has empty text")
+        elif _names_film(text, film):
+            errors.append(f"section {sidx} names the film; the narration never says the film's name")
     shorts = data.get("shorts") or []
     if len(shorts) != shorts_per_film:
         errors.append(f"expected exactly {shorts_per_film} shorts, got {len(shorts)}")
@@ -195,10 +239,14 @@ def validate_scripts(data, acts: list[dict], *, target_words: int, shorts_per_fi
             errors.append(f"short {i} text is {words} words; must be 1-{short_max_words}")
         if not str(s.get("hook", "")).strip():
             errors.append(f"short {i} has an empty hook")
-        if not str(s.get("title", "")).strip():
+        st = str(s.get("title", "")).strip()
+        if not st:
             errors.append(f"short {i} has an empty title")
+        elif _names_film(st, film):
+            errors.append(f"short {i} title must not name the film")
     if errors:
         raise PlanError("; ".join(errors))
+    lf["title"] = title
     lf["tags"] = [str(t).strip().lower() for t in (lf.get("tags") or []) if str(t).strip()]
     for s in shorts:
         s["tags"] = [str(t).strip().lower() for t in (s.get("tags") or []) if str(t).strip()]
@@ -218,32 +266,35 @@ def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, m
         return validate(llm.generate_json(retry, system=system, temperature=temperature, max_tokens=max_tokens))
 
 
-def plan_film(llm: LLM, *, title: str, year: int | None, plot_text: str, lead: str, meta: dict, target_words: int,
-              acts_range: tuple[int, int], shorts_per_film: int, short_max_words: int, noslop_rounds: int = 1,
-              fast_model: str | None = None) -> FilmPlan:
+def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, duration: float, plot_text: str = "",
+              target_words: int, acts_range: tuple[int, int], shorts_per_film: int, short_max_words: int,
+              noslop_rounds: int = 1, fast_model: str | None = None) -> FilmPlan:
     acts_min, acts_max = acts_range
-    acts_prompt = ACTS_PROMPT.format(
-        title=title, year=year or "n/a", lead=(lead or "n/a")[:1200],
-        genres=", ".join(meta.get("genres") or []) or "n/a", director=meta.get("director") or "n/a",
-        cast=", ".join(meta.get("cast") or []) or "n/a", acts_min=acts_min, acts_max=acts_max, plot_text=plot_text)
+    reference = (f"A published plot summary, for reference only (the transcript decides what is on screen):\n{plot_text[:6000]}\n"
+                 if plot_text.strip() else "")
+    acts_prompt = ACTS_PROMPT.format(title=title, year=year or "n/a", duration=int(duration), reference=reference,
+                                     acts_min=acts_min, acts_max=acts_max, act_min=int(ACT_MIN_SECONDS), transcript=transcript)
     try:
-        acts = _call(llm, acts_prompt, ACTS_SYSTEM, lambda d: validate_acts(d, acts_min=acts_min, acts_max=acts_max),
-                     temperature=0.2, max_tokens=4000)
+        acts, people = _call(llm, acts_prompt, ACTS_SYSTEM,
+                             lambda d: validate_acts(d, acts_min=acts_min, acts_max=acts_max, duration=duration),
+                             temperature=0.2, max_tokens=6000)
     except LLMError as exc:
         raise PlanError(f"acts call failed: {exc}") from exc
     scripts_prompt = SCRIPTS_PROMPT.format(
-        title=title, year=year or "n/a", acts_json=json.dumps(acts, ensure_ascii=False), target_words=target_words,
-        per_section_words=max(40, target_words // max(1, len(acts))), shorts_per_film=shorts_per_film,
-        short_max_words=short_max_words)
+        title=title, year=year or "n/a", people_json=json.dumps(people, ensure_ascii=False),
+        acts_json=json.dumps([{k: a[k] for k in ("index", "title", "summary", "stakes") if k in a} for a in acts], ensure_ascii=False),
+        target_words=target_words, per_section_words=max(40, target_words // max(1, len(acts))),
+        shorts_per_film=shorts_per_film, short_max_words=short_max_words)
     scripts_prompt = noslop.inject(scripts_prompt, STYLE_BLOCK, before="Return JSON")
     try:
         scripts = _call(llm, scripts_prompt, SCRIPTS_SYSTEM,
-                        lambda d: validate_scripts(d, acts, target_words=target_words, shorts_per_film=shorts_per_film,
+                        lambda d: validate_scripts(d, acts, film=title, target_words=target_words, shorts_per_film=shorts_per_film,
                                                    short_max_words=short_max_words),
-                        temperature=0.5, max_tokens=max(6000, int(target_words * 2.5)))
+                        temperature=0.5, max_tokens=max(8000, int(target_words * 2.5)))
     except LLMError as exc:
         raise PlanError(f"scripts call failed: {exc}") from exc
     slop = despop(llm, scripts, title=title, rounds=noslop_rounds, short_max_words=short_max_words, fast_model=fast_model)
+    scripts["long_form"]["people"] = people
     return FilmPlan(acts=acts, long_form=scripts["long_form"], shorts=scripts["shorts"], slop=slop)
 
 
@@ -257,9 +308,10 @@ def despop(llm: LLM, scripts: dict, *, title: str, rounds: int, short_max_words:
     rounds = max(0, int(rounds or 0))
 
     def rewrite(prompt: str) -> dict:
-        return llm.generate_json(prompt, system=EDIT_SYSTEM, temperature=0.0, model=fast_model, max_tokens=6000)
+        return llm.generate_json(prompt, system=EDIT_SYSTEM, temperature=0.0, model=fast_model, max_tokens=8000)
 
-    extra = f"This is a spoken recap of the film {title}; keep the present tense and every plot event."
+    extra = ("This is a spoken recap of a film; keep the present tense, every plot event, and the descriptors used for "
+             "people; never add the film's name.")
     stats: dict[str, dict] = {}
     try:
         sections = [s for s in (scripts.get("long_form") or {}).get("sections") or [] if isinstance(s, dict)]
@@ -267,7 +319,7 @@ def despop(llm: LLM, scripts: dict, *, title: str, rounds: int, short_max_words:
             res = noslop.polish("\n\n".join(_one_para(s.get("text")) for s in sections), rewrite=rewrite, mode="recap",
                                 rounds=rounds, length_band=(0.75, 1.25), extra=extra)
             paras = noslop.paragraphs(res.text)
-            if len(paras) == len(sections):            # a deleted paragraph would shift the act mapping
+            if len(paras) == len(sections):
                 for s, p in zip(sections, paras):
                     s["text"] = p
             stats["long_form"] = res.to_dict()

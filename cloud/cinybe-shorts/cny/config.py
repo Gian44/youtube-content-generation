@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from sof.config import Config as SofConfig
 
-WORDS_PER_MINUTE = 135          # voice F (Pocket TTS) measured ~137 wpm on Sleep On Facts; Kokoro 135
+WORDS_PER_MINUTE = 145          # voice F (Pocket TTS) measured 147 wpm on the Inception recap (2026-11-07)
 SMOKE_MAX_MINUTES = 3           # at/below this the run is a smoke test: always unlisted, ledger untouched
 DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this channel (Sleep On Facts owns the
                                 # free Gemini TTS quota); env TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE flips it
@@ -20,7 +20,7 @@ DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this cha
 
 @dataclass
 class Config:
-    minutes: int = 10                   # long recap target
+    minutes: int = 20                   # long recap target (Gian 2026-11-08: ~20 min, the samples' upper range)
     film: str | None = None             # force a film (with --year); otherwise the next one in films.yml
     year: int | None = None
     privacy: str = "public"
@@ -32,24 +32,22 @@ class Config:
     gap_hours: float = 36.0             # one film every 2nd day: a daily cron is a no-op inside this gap
     max_tries: int = 3                  # films (with a file) tried per run when plots are thin
     max_candidates: int = 20            # queued films checked against the bucket per run
-    min_plot_words: int = 250
+    min_plot_words: int = 250           # a Wikipedia plot shorter than this is not offered as reference
     max_plot_chars: int = 14000         # ~2,300 words; longer plots are cut at a paragraph (the model needs the end)
     shorts_per_film: int = 3
-    short_max_words: int = 55           # ≈ 25 s at voice F's pace
+    short_max_words: int = 80           # ≈ 35 s at voice F's pace
     noslop_rounds: int = 1
     # render
     width: int = 1920
     height: int = 1080
     fps: int = 30
-    crossfade: float = 0.6
-    card_seconds: float = 2.5           # act title card at the top of each section
-    clip_max_seconds: float = 12.0      # one appearance of a clip; clips are cycled and re-entered at new offsets
-    clip_slow: float = 1.0              # stock footage at normal speed (not the sleep channel's drift)
+    crossfade: float = 0.0              # hard cuts, like the recap channels
+    clip_slow: float = 1.0
     video_dim: float = 1.0              # film shots are shown as they are
     shorts_width: int = 1080
     shorts_height: int = 1920
     shorts_fps: int = 30
-    shorts_clip_seconds: float = 6.0
+    shorts_clip_seconds: float = 6.0    # longest one shot plays in a Short
     music_enabled: bool = True
     music_lufs: float = -32.0
     brand: str = "CinybeShorts"
@@ -59,19 +57,23 @@ class Config:
     # the film itself (Gian, 2026-11-08: "use clips from the movies/shows" — and "if it is not from the movie itself, do
     # not post anything"): files he supplies in a private R2 bucket; acts aligned via the .srt (writer call) or
     # faster-whisper on the runner; a few shots per act under the narration. No stock fallback.
+    gdrive_service_account_json: str = ""   # the service account key file's content (GDRIVE_SERVICE_ACCOUNT_JSON)
+    gdrive_folder_id: str = ""              # GDRIVE_FOLDER_ID, or the folder is found by name:
+    gdrive_folder: str = "cinybe-films"
     r2_account_id: str = ""
     r2_access_key_id: str = ""
     r2_secret_access_key: str = ""
     r2_bucket: str = "cinybe-films"
-    film_window_min: float = 45.0        # seconds of the film one act may draw from
-    film_window_max: float = 180.0
-    shots_per_act: int = 5
-    shot_min_seconds: float = 3.0
-    shot_max_seconds: float = 8.0
+    shot_seconds: float = 4.5            # one shot per this much narration (shots_wanted); the samples cut every 3-6 s
+    shot_min_seconds: float = 2.5        # scenes shorter than this are not used
+    shot_max_seconds: float = 8.0        # longest one shot plays in the long recap
+    shot_min_play: float = 1.5
     scene_threshold: float = 0.3         # ffmpeg scene-change score (0.3 = clear cuts only)
     whisper_model: str = "small"         # faster-whisper, CPU int8, only when there is no .srt
+    min_cues: int = 120                  # fewer dialogue cues than this = not a usable transcript (nothing posted)
+    transcript_max_chars: int = 90000    # ≈ 22k tokens of "[mm:ss] dialogue" lines for the acts call
     film_dim: float = 1.0
-    r2_delete_after: bool = True         # the bucket is a queue: a published film's file is removed
+    delete_after: bool = True            # the store is a queue: a published film's file is removed
     sof: SofConfig = field(default_factory=SofConfig)
 
     @property
@@ -83,10 +85,14 @@ class Config:
         return self.minutes <= SMOKE_MAX_MINUTES
 
     @property
+    def words_per_minute(self) -> float:
+        return float(WORDS_PER_MINUTE)
+
+    @property
     def acts_range(self) -> tuple[int, int]:
-        """10 min → 9–13 acts (~100–150 words each); a 3-minute smoke → 4–6."""
-        hi = max(5, min(14, round(self.minutes * 1.3)))
-        return max(4, hi - 4), hi
+        """20 min → 16–22 acts (~130–180 words each); 10 min → 8–11; a 3-minute smoke → 4–5."""
+        hi = max(5, min(24, round(self.minutes * 1.1)))
+        return max(4, hi - min(6, max(1, hi // 3))), hi
 
     @classmethod
     def from_env(cls, **overrides) -> "Config":
@@ -101,6 +107,9 @@ class Config:
             if os.environ.get(f"{name}_CINYBE"):
                 os.environ[name] = os.environ[f"{name}_CINYBE"]
         os.environ.setdefault("TTS_BACKEND", DEFAULT_TTS_BACKEND)
+        cfg.gdrive_service_account_json = os.environ.get("GDRIVE_SERVICE_ACCOUNT_JSON", "")
+        cfg.gdrive_folder_id = os.environ.get("GDRIVE_FOLDER_ID", "")
+        cfg.gdrive_folder = os.environ.get("GDRIVE_FOLDER") or cfg.gdrive_folder
         cfg.r2_account_id = os.environ.get("R2_ACCOUNT_ID", cfg.r2_account_id)
         cfg.r2_access_key_id = os.environ.get("R2_ACCESS_KEY_ID", cfg.r2_access_key_id)
         cfg.r2_secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY", cfg.r2_secret_access_key)
@@ -114,7 +123,7 @@ class Config:
 
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CinybeShorts cloud pipeline: narrated movie recaps")
-    p.add_argument("--minutes", type=int, default=10, help="target recap length (<=3 = smoke, unlisted)")
+    p.add_argument("--minutes", type=int, default=20, help="target recap length (<=3 = smoke, unlisted)")
     p.add_argument("--film", default=None, help="force a film title (with --year)")
     p.add_argument("--year", type=int, default=None)
     p.add_argument("--privacy", choices=["public", "unlisted", "private"], default=None)

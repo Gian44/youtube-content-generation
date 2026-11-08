@@ -1,11 +1,12 @@
-"""Orchestration: film (its file must be in the bucket) → metadata + plot → plan → shots from the film → narration
-→ long recap + Shorts → upload → ledger.
+"""Orchestration, recap-channel style: the next queued film whose file is in the bucket → its subtitles become the
+transcript (faster-whisper when there is no .srt) → Wikipedia plot as optional reference → acts with their time
+ranges + the narration (Claude) → shots cut from the film, in order, before any narration is spent → voice →
+long recap + Shorts → upload → ledger.
 
 Gian, 2026-11-08: "If it is not from the movie itself, do not post anything." There is no stock fallback: a queued
-film without a file in R2 is passed over (no ledger row, so it is tried again next run), and a film whose file
-yields no shots fails the run before any narration is spent. Each stage writes into ``work/<run-id>/`` and is
-skipped when its output exists, so a re-dispatched run resumes. The ledger is written only after a successful
-upload (thin-plot films are recorded as skipped so the queue moves on)."""
+film without a file is passed over (no ledger row, so it is tried again next run); a film whose file yields no
+shots fails the run before the voice is spent. Each stage writes into ``work/<run-id>/`` and is skipped when its
+output exists, so a re-dispatched run resumes. The ledger is written only after a successful upload."""
 
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ from sof import ledger, music, tts, upload
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from cny import films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, thumbnail, visuals
+from cny import align, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, thumbnail, visuals
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
@@ -39,61 +40,47 @@ def _run_url() -> str:
     return f"{srv}/{repo}/actions/runs/{rid}" if rid else ""
 
 
-def _plot_overrides(cfg: Config) -> set[str]:
-    d = Path(cfg.plots_dir)
-    return {p.stem for p in d.glob("*.md")} if d.exists() else set()
-
-
-def pick_film(cfg: Config, rows: list[dict], work_root: Path, today: str, keys: list[str]) -> tuple[tuple | None, list[dict]]:
-    """(film, meta, plot, work, files) for the first queued film whose file is in the bucket (``keys``) and whose plot
-    is usable, plus ledger rows for films skipped over a thin plot. A film with no file is simply passed over."""
+def pick_film(cfg: Config, rows: list[dict], keys: list[str]) -> tuple[films.Film, store.FilmFiles] | None:
+    """The first queued film whose file is in the bucket (``keys``); None when no queued film has one."""
     all_films = films.load_films(cfg.films_path)
-    if cfg.film:
-        cands = [films.find_film(all_films, cfg.film, cfg.year)]
-    else:
-        cands = films.next_films(all_films, rows, limit=cfg.max_candidates, retry_skipped=_plot_overrides(cfg))
-    with_file = [(f, store.match_keys(f.slug, keys)) for f in cands]
-    missing = [f.label for f, k in with_file if not k.video_key]
+    cands = [films.find_film(all_films, cfg.film, cfg.year)] if cfg.film else films.next_films(all_films, rows, limit=cfg.max_candidates)
+    missing: list[str] = []
+    for f in cands:
+        files = store.match_keys(f.slug, keys)
+        if files.video_key:
+            if missing:
+                print("queued, no file in the bucket yet: " + "; ".join(missing[:8]), flush=True)
+            return f, files
+        missing.append(f.label)
     if missing:
         print("queued, no file in the bucket yet: " + "; ".join(missing[:8]) + (" …" if len(missing) > 8 else ""), flush=True)
-    skipped: list[dict] = []
-    tries = 0
-    for film, files in with_file:
-        if not files.video_key:
-            continue
-        tries += 1
-        if tries > cfg.max_tries:
-            break
-        work = work_root / f"{today}-{film.slug}"
-        work.mkdir(parents=True, exist_ok=True)
-        mp = work / "meta.json"
-        if mp.exists():
-            meta = meta_mod.MovieMeta.from_dict(json.loads(mp.read_text(encoding="utf-8")))
-        else:
-            meta = meta_mod.resolve(film.title, film.year)
-            mp.write_text(json.dumps(meta.to_dict(), indent=1, ensure_ascii=False), encoding="utf-8")
-        pp = work / "plot.json"
-        if pp.exists():
-            plot = plot_mod.PlotText(**json.loads(pp.read_text(encoding="utf-8")))
-        else:
-            plot = plot_mod.operator_plot(cfg.plots_dir, film.slug, title=film.title)
-            if plot is None:
-                titles = ([meta.wikipedia_title] if meta.wikipedia_title else []) + plot_mod.candidate_titles(film.title, film.year)
-                plot = plot_mod.WikiPlot().fetch_any(titles)
-            if plot is not None:
-                pp.write_text(json.dumps(plot.__dict__, indent=1, ensure_ascii=False), encoding="utf-8")
-        words = plot.word_count if plot else 0
-        if plot and words >= cfg.min_plot_words:
-            print(f"film: {film.label} · file {files.video_key}" + (f" + {files.srt_key}" if files.srt_key else " (no .srt)")
-                  + f" · {meta.source} metadata · plot {words} words from {plot.source}" + (f" ({plot.url})" if plot.url else ""),
-                  flush=True)
-            return (film, meta, plot, work, files), skipped
-        reason = f"plot too thin ({words} words; need {cfg.min_plot_words}) — add plots/{film.slug}.md" if plot else \
-                 "no Wikipedia plot section found — add plots/" + film.slug + ".md"
-        print(f"! skipping {film.label}: {reason}", flush=True)
-        skipped.append({"date": today, "kind": "skipped", "film": film.title, "year": film.year, "theme": film.theme,
-                        "topic": film.label, "reason": reason})
-    return None, skipped
+    return None
+
+
+def reference_plot(cfg: Config, film: films.Film, work: Path) -> tuple[meta_mod.MovieMeta, plot_mod.PlotText | None]:
+    """Metadata and, when Wikipedia has a usable plot, that plot as reference for the planner (cached in ``work``)."""
+    mp = work / "meta.json"
+    if mp.exists():
+        meta = meta_mod.MovieMeta.from_dict(json.loads(mp.read_text(encoding="utf-8")))
+    else:
+        meta = meta_mod.resolve(film.title, film.year)
+        mp.write_text(json.dumps(meta.to_dict(), indent=1, ensure_ascii=False), encoding="utf-8")
+    pp = work / "plot.json"
+    if pp.exists():
+        d = json.loads(pp.read_text(encoding="utf-8"))
+        return meta, (plot_mod.PlotText(**d) if d else None)
+    plot = plot_mod.operator_plot(cfg.plots_dir, film.slug, title=film.title)
+    if plot is None:
+        try:
+            titles = ([meta.wikipedia_title] if meta.wikipedia_title else []) + plot_mod.candidate_titles(film.title, film.year)
+            plot = plot_mod.WikiPlot().fetch_any(titles)
+        except Exception as exc:  # noqa: BLE001 — reference only
+            log.warning("wikipedia unavailable: %s", exc)
+            plot = None
+    if plot is not None and plot.word_count < cfg.min_plot_words:
+        plot = None
+    pp.write_text(json.dumps(plot.__dict__ if plot else {}, indent=1, ensure_ascii=False), encoding="utf-8")
+    return meta, plot
 
 
 def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
@@ -127,27 +114,46 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
 
     _stage("film")
     if not store.configured(cfg):
-        print("✗ no film store: R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY are not set — nothing is posted "
+        print("✗ no film store: set GDRIVE_SERVICE_ACCOUNT_JSON (+ GDRIVE_FOLDER_ID) or the R2_* secrets — nothing is posted "
               "without the film itself", flush=True)
         return EXIT_NO_FILM
     try:
         keys = store.list_keys(cfg)
     except Exception as exc:  # noqa: BLE001
-        print(f"✗ cannot list r2://{cfg.r2_bucket}: {str(exc)[:200]}", flush=True)
+        print(f"✗ cannot list {store.label(cfg)}: {str(exc)[:200]}", flush=True)
         return EXIT_NO_FILM
-    print(f"bucket r2://{cfg.r2_bucket}: {len(keys)} objects", flush=True)
-    picked, skipped = pick_film(cfg, rows, Path(cfg.work_dir), today, keys)
+    print(f"store {store.label(cfg)}: {len(keys)} files", flush=True)
+    picked = pick_film(cfg, rows, keys)
     if picked is None:
-        if skipped and not cfg.is_smoke and not cfg.skip_upload:
-            for r in skipped:
-                ledger.append_entry(cfg.ledger_path, r)
-            if os.environ.get("GITHUB_ACTIONS"):
-                ledger.git_commit_and_push(cfg.ledger_path, {**skipped[-1], "video_id": "skipped"})
-        print("no queued film has its file in the bucket (and a usable plot); nothing posted — upload "
-              "<slug>.mp4 + <slug>.srt to the bucket", flush=True)
+        print("no queued film has its file in the store; nothing posted — upload <slug>.mp4 + <slug>.srt", flush=True)
         return EXIT_NO_FILM
-    film, meta, plot, work, files = picked
-    plot_text = plot_mod.trim_plot(plot.text, cfg.max_plot_chars)
+    film, files = picked
+    work = Path(cfg.work_dir) / f"{today}-{film.slug}"
+    work.mkdir(parents=True, exist_ok=True)
+    film_files = store.fetch_film(cfg, film.slug, work)
+    if not film_files or not film_files.video_path:
+        print(f"✗ could not download {files.video_key}; nothing posted", flush=True)
+        return EXIT_NO_FILM
+    duration_film = cut.duration_seconds(film_files.video_path)
+    print(f"film: {film.label} · {files.video_key} ({film_files.size / 1e9:.2f} GB, {duration_film / 60:.0f} min)"
+          + (f" + {files.srt_key}" if files.srt_key else " (no .srt: transcribing on the CPU)"), flush=True)
+
+    _stage("transcript")
+    cues: list[align.Cue] = []
+    how = "srt"
+    if film_files.srt_path and Path(film_files.srt_path).exists():
+        cues = align.parse_srt(Path(film_files.srt_path).read_text(encoding="utf-8", errors="replace"))
+    if not cues:
+        cues = align.transcribe(film_files.video_path, work, model=cfg.whisper_model)
+        how = "whisper"
+    if len(cues) < cfg.min_cues:
+        print(f"✗ only {len(cues)} dialogue cues ({how}); the recap is written from the dialogue, so nothing is posted", flush=True)
+        return EXIT_NO_FILM
+    transcript = align.transcript_lines(cues, max_chars=cfg.transcript_max_chars)
+    (work / "transcript.txt").write_text(transcript, encoding="utf-8")
+    print(f"transcript: {len(cues)} cues ({how}) · {len(transcript) // 1000}k chars", flush=True)
+    meta, plot = reference_plot(cfg, film, work)
+    print(f"reference: {meta.source} metadata" + (f" · Wikipedia plot {plot.word_count} words" if plot else " · no plot reference"), flush=True)
 
     _stage("plan")
     plan_path = work / "plan.json"
@@ -155,8 +161,9 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         plan = planner.FilmPlan.from_dict(json.loads(plan_path.read_text(encoding="utf-8")))
     else:
         try:
-            plan = planner.plan_film(llm, title=film.title, year=film.year or meta.year, plot_text=plot_text, lead=plot.lead,
-                                     meta=meta.to_dict(), target_words=cfg.target_words, acts_range=cfg.acts_range,
+            plan = planner.plan_film(llm, title=film.title, year=film.year or meta.year, transcript=transcript, duration=duration_film,
+                                     plot_text=plot_mod.trim_plot(plot.text, cfg.max_plot_chars) if plot else "",
+                                     target_words=cfg.target_words, acts_range=cfg.acts_range,
                                      shorts_per_film=cfg.shorts_per_film if shorts_enabled else 1,
                                      short_max_words=cfg.short_max_words, noslop_rounds=cfg.noslop_rounds,
                                      fast_model=cfg.sof.fast_model)
@@ -171,22 +178,13 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         print("noslop: " + " · ".join(f"{k} {v['before']}→{v['after']} ({v['rewritten']} rewritten)" for k, v in plan.slop.items()), flush=True)
 
     _stage("film shots")                      # before any narration is spent: a bad file must cost nothing
-    film_files = store.fetch_film(cfg, film.slug, work)
-    if not film_files or not film_files.video_path:
-        print(f"✗ could not download {files.video_key}; nothing posted", flush=True)
-        return EXIT_NO_FILM
-    vis_plan, film_info = visuals.film_visuals(cfg, acts=plan.acts, work=work, llm=llm, title=film.label,
-                                               video=film_files.video_path, srt=film_files.srt_path,
-                                               vertical_for={int(s["act_index"]) for s in (plan.shorts if shorts_enabled else [])})
-    cfg.video_dim = cfg.film_dim
+    vis_plan = visuals.film_visuals(cfg, acts=plan.acts, sections=sections, work=work, video=film_files.video_path,
+                                    vertical_for={int(s["act_index"]) for s in (plan.shorts if shorts_enabled else [])})
     n_clips = sum(len(v.get("clips") or []) for v in vis_plan.values())
-    print(f"film: {Path(film_files.video_path).name} ({film_files.size / 1e9:.2f} GB) · {film_info.get('how')} alignment"
-          + (f" · {film_info.get('cues')} subtitle cues" if film_info.get("cues") else "")
-          + f" · {n_clips} shots over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
+    print(f"shots: {n_clips} over {len(plan.acts)} acts · {sum(1 for v in vis_plan.values() if v.get('borrowed'))} borrowed", flush=True)
     if n_clips == 0 or any(not v.get("clips") for v in vis_plan.values()):
         print("✗ the film yielded no usable shots for every act; nothing posted", flush=True)
         return EXIT_NO_FILM
-    source = "film"
 
     _stage("tts")
     narration = work / "narration.mp3"
@@ -222,15 +220,15 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     if not final.exists():
         reel = work / "reel.mp4"
         if not reel.exists():
-            render.build_long(cfg, work=work, sections=sections, section_seconds=sec_secs, visuals=vis_plan, film=film.label)
+            render.build_long(cfg, work=work, sections=sections, section_seconds=sec_secs, visuals=vis_plan)
         sof_render.assemble(str(reel), str(soundtrack), str(final), audio_duration=duration, fps=cfg.fps)
         reel.unlink(missing_ok=True)
     thumb = work / "thumb.jpg"
     if not thumb.exists():
-        first = next((c for v in (vis_plan.get(i) for i in sorted(vis_plan)) for c in (v or {}).get("clips") or []), None)
-        base = thumbnail.grab_frame(first, str(work / "thumb_base.jpg")) if first else None
-        thumbnail.compose(base=base, out=str(thumb), film=film.title, year=film.year or meta.year,
-                          hook=str(plan.long_form.get("thumb_text") or ""))
+        hook_act = int(plan.shorts[0]["act_index"]) if plan.shorts else 0
+        cands = (vis_plan.get(hook_act) or {}).get("clips") or next((v["clips"] for v in vis_plan.values() if v.get("clips")), [])
+        base = thumbnail.grab_frame(cands[len(cands) // 2], str(work / "thumb_base.jpg"), at=1.0) if cands else None
+        thumbnail.compose(base=base, out=str(thumb), hook=str(plan.long_form.get("thumb_text") or ""))
     try:
         sof_render.sample_frames(str(final), str(work / "frames"), render.frames_to_check(duration))
     except Exception as exc:  # noqa: BLE001
@@ -247,15 +245,14 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                 v = vis_plan.get(int(s["act_index"]), {})
                 try:
                     render.build_short(cfg, work=work, name=name, text=str(s["text"]), title=str(s["title"]), audio=audio,
-                                       clips=list(v.get("clips_v") or v.get("clips") or []), photos=[])
+                                       clips=list(v.get("clips_v") or v.get("clips") or []))
                 except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the recap over it
                     log.exception("short %d failed", k + 1)
                     print(f"! short {k + 1} skipped ({exc})", flush=True)
                     continue
             short_files.append(str(out))
             print(f"short {k + 1}: {tts.duration_seconds(audio):.0f} s · \"{s['title']}\"", flush=True)
-
-    if film_files and film_files.video_path and Path(film_files.video_path).exists():
+    if Path(film_files.video_path).exists():
         Path(film_files.video_path).unlink(missing_ok=True)        # 2-4 GB on a small runner disk; the shots are cut
 
     if cfg.skip_upload:
@@ -263,12 +260,9 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         return EXIT_OK
 
     _stage("upload")
-    variant = len(live) % seo.TITLE_VARIANTS
-    title = seo.long_title(film.title, film.year or meta.year, minutes=seo.fmt_minutes(duration),
-                           writer_title=str(plan.long_form.get("title") or ""), variant=variant)
+    title = seo.long_title(str(plan.long_form.get("title") or ""), fallback=f"{film.title} explained")
     description = seo.long_description(film=film.title, year=film.year or meta.year, blurb=str(plan.long_form.get("description") or ""),
-                                       chapters=chapters, plot_url=plot.url, director=meta.director, theme=film.theme,
-                                       footage=source)
+                                       chapters=chapters, director=meta.director, theme=film.theme, plot_url=plot.url if plot else "")
     tags = seo.long_tags(film.title, director=meta.director, genres=meta.genres, cast=meta.cast,
                          extra=list(plan.long_form.get("tags") or []), theme=film.theme)
     body = seo.video_body(title=title, description=description, tags=tags, privacy=cfg.privacy)
@@ -290,8 +284,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                       now=uploaded_at) if cfg.privacy == "public" and not cfg.is_smoke else None
             sbody = seo.video_body(title=seo.short_title(str(s["title"]), film.title),
                                    description=seo.short_description(film=film.title, year=film.year or meta.year, long_video_id=video_id,
-                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or []),
-                                                                     footage=source),
+                                                                     hook=str(s.get("hook") or ""), tags=list(s.get("tags") or [])),
                                    tags=seo.short_tags(film.title, list(s.get("tags") or [])), privacy=cfg.privacy, publish_at=at)
             sid = upload.upload_video(yt, path, sbody, None)
             short_entries.append({"video_id": sid, "title": sbody["snippet"]["title"], "seconds": round(tts.duration_seconds(short_audio[k])),
@@ -304,21 +297,17 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
         "date": today, "kind": "video", "film": film.title, "year": film.year or meta.year, "theme": film.theme,
         "topic": film.label, "video_id": video_id, "title": title, "privacy": cfg.privacy,
         "uploaded_at": uploaded_at.isoformat(timespec="seconds"), "duration_seconds": round(duration), "words": words,
-        "acts": len(plan.acts), "plot_source": plot.source, "plot_url": plot.url, "plot_words": plot.word_count,
-        "footage_clips": n_clips, "footage": source, "alignment": film_info.get("how"), "shorts": short_entries,
-        "slop": plan.slop or None,
-        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "film_file": files.video_key,
-        "run_url": _run_url(),
+        "acts": len(plan.acts), "transcript": how, "cues": len(cues), "plot_reference": bool(plot),
+        "shots": n_clips, "film_file": files.video_key, "shorts": short_entries, "slop": plan.slop or None,
+        "llm_calls": dict(getattr(llm, "stats", {}) or {}), "voice": tts.voice_label(cfg.sof), "run_url": _run_url(),
     }
     if cfg.is_smoke:
         print(f"smoke run uploaded as https://youtu.be/{video_id} (unlisted); ledger not written", flush=True)
         return EXIT_OK
-    for r in skipped:
-        ledger.append_entry(cfg.ledger_path, r)
     ledger.append_entry(cfg.ledger_path, entry)
     if os.environ.get("GITHUB_ACTIONS"):
         ledger.git_commit_and_push(cfg.ledger_path, entry)
-    if film_files and cfg.r2_delete_after and store.delete_film(cfg, film_files):
-        print(f"removed {film_files.video_key} from the bucket (published)", flush=True)
+    if cfg.delete_after and store.delete_film(cfg, film_files):
+        print(f"removed {film_files.video_key} from the store (published)", flush=True)
     print(f"✓ {film.label} → https://youtu.be/{video_id} · {(time.time() - t0) / 60:.1f} min total", flush=True)
     return EXIT_OK

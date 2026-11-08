@@ -1,7 +1,3 @@
-import json
-
-import pytest
-
 from cny import align, cut, store
 
 SRT = "﻿1\r\n00:00:05,000 --> 00:00:07,500\r\n<i>Hello.</i>\r\n\r\n2\r\n00:00:08,000 --> 00:00:09,000\r\n{\\an8}Who are you?\r\nI don't know.\r\n\r\n\r\n00:01:40,120 --> 00:01:42,000\r\nLater.\r\n"
@@ -15,51 +11,6 @@ def test_parse_srt_and_transcript_lines():
     big = [align.Cue(i * 10.0, i * 10.0 + 2, "x" * 100) for i in range(800)]
     thin = align.transcript_lines(big, max_chars=30000)
     assert len(thin) < 45000 and thin.count("\n") == 799 and thin.startswith("[00:00] xxxx")
-
-
-def _acts(n):
-    return [{"index": i, "title": f"A{i}", "summary": "s"} for i in range(n)]
-
-
-def test_windows_validation_and_proportional():
-    acts = _acts(3)
-    good = {"windows": [{"act_index": 0, "start_seconds": 100, "end_seconds": 200}, {"act_index": 1, "start_seconds": 300, "end_seconds": 400},
-                        {"act_index": 2, "start_seconds": 500, "end_seconds": 650}]}
-    out = align.validate_windows(good, acts, duration=7000, min_s=45, max_s=180)
-    assert [w["act_index"] for w in out] == [0, 1, 2] and out[0]["how"] == "transcript"
-    bad = json.loads(json.dumps(good)); bad["windows"][1]["start_seconds"], bad["windows"][1]["end_seconds"] = 150, 330
-    with pytest.raises(align.AlignError, match="overlaps"):
-        align.validate_windows(bad, acts, duration=7000, min_s=45, max_s=180)
-    short = json.loads(json.dumps(good)); short["windows"][2]["end_seconds"] = 520
-    with pytest.raises(align.AlignError, match="must be 45-180s"):
-        align.validate_windows(short, acts, duration=7000, min_s=45, max_s=180)
-    with pytest.raises(align.AlignError, match="one window per act"):
-        align.validate_windows({"windows": good["windows"][:2]}, acts, duration=7000, min_s=45, max_s=180)
-    prop = align.proportional_windows(_acts(4), duration=7200, min_s=45, max_s=180)
-    assert len(prop) == 4 and prop[0]["start_seconds"] >= 216 and prop[-1]["end_seconds"] <= 7200 and prop[0]["how"] == "proportional"
-    assert all(b["start_seconds"] >= a["end_seconds"] for a, b in zip(prop, prop[1:]))
-
-
-class FakeLLM:
-    def __init__(self, answers):
-        self.answers, self.prompts = list(answers), []
-
-    def generate_json(self, prompt, **kw):
-        self.prompts.append(prompt)
-        return self.answers.pop(0)
-
-
-def test_align_acts_retries_then_falls_back():
-    acts = _acts(2)
-    cues = align.parse_srt(SRT)
-    ok = {"windows": [{"act_index": 0, "start_seconds": 0, "end_seconds": 60}, {"act_index": 1, "start_seconds": 70, "end_seconds": 130}]}
-    llm = FakeLLM([{"windows": []}, ok])
-    out = align.align_acts(llm, title="X", acts=acts, cues=cues, duration=200, min_s=45, max_s=180)
-    assert out[1]["start_seconds"] == 70 and "rejected" in llm.prompts[1] and "[00:00] Hello." in llm.prompts[0]
-    llm = FakeLLM([{"windows": []}, {"windows": []}])
-    out = align.align_acts(llm, title="X", acts=acts, cues=cues, duration=200, min_s=45, max_s=180)
-    assert out[0]["how"] == "proportional"
-    assert align.align_acts(None, title="X", acts=acts, cues=[], duration=200, min_s=45, max_s=180)[0]["how"] == "proportional"
 
 
 def test_pick_shots_spreads_across_scene_cuts():
@@ -97,3 +48,9 @@ def test_store_key_matching_and_config(monkeypatch):
     assert store.configured(cfg) and cfg.r2_bucket == "cinybe-films"
     monkeypatch.delenv("R2_SECRET_ACCESS_KEY")
     assert not store.configured(config.Config.from_env(minutes=10))
+    # Drive wins over R2 when a service-account key is set; the folder is found by name unless an id is given
+    monkeypatch.setenv("GDRIVE_SERVICE_ACCOUNT_JSON", '{"type": "service_account"}')
+    cfg = config.Config.from_env(minutes=10)
+    assert store.backend(cfg) == "drive" and store.label(cfg) == "drive:cinybe-films"
+    monkeypatch.setenv("GDRIVE_FOLDER_ID", "1abc")
+    assert store.label(config.Config.from_env(minutes=10)) == "drive:1abc"

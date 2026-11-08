@@ -4,14 +4,14 @@ on:
   schedule:
     # Daily at 09:41 UTC (17:41 Manila); the pipeline itself keeps to one film every 2nd day (films.ran_recently,
     # gap 36 h), so a late GitHub start never skips a day for good. After the sleep run (08:23) so the two
-    # never queue on the same minute. Gian, 2026-11-07. A run with no film file in the bucket exits before any
-    # narration is spent and posts nothing (Gian, 2026-11-08).
+    # never queue on the same minute. Gian, 2026-11-07. A run with no film file in the Drive folder exits before
+    # any narration is spent and posts nothing (Gian, 2026-11-08: no stock fallback, ever).
     - cron: "41 9 * * *"
   workflow_dispatch:
     inputs:
       minutes:
         description: "Target recap minutes (<=3 = smoke run, always unlisted)"
-        default: "10"
+        default: "20"
       film:
         description: "Force a film title (optional; with year)"
         default: ""
@@ -92,7 +92,11 @@ jobs:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          # the film files Gian supplies (private R2 bucket, S3 API). No film in the bucket → nothing is posted.
+          # the film files Gian supplies: a Google Drive folder shared with a service account (first choice), or an R2
+          # bucket. No film in the store → nothing is posted.
+          GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          GDRIVE_FOLDER: cinybe-films
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -104,7 +108,7 @@ jobs:
           YT_REFRESH_TOKEN_CINYBE: ${{ secrets.YT_REFRESH_TOKEN_CINYBE }}
           # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_CINYBE exists (Charon, free tier).
           TTS_BACKEND: pocket
-          IN_MINUTES: ${{ github.event.inputs.minutes || '10' }}
+          IN_MINUTES: ${{ github.event.inputs.minutes || '20' }}
           IN_FILM: ${{ github.event.inputs.film || '' }}
           IN_YEAR: ${{ github.event.inputs.year || '' }}
           IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
@@ -129,7 +133,7 @@ jobs:
             cloud/cinybe-shorts/work/**/meta.json
             cloud/cinybe-shorts/work/**/chapters.json
             cloud/cinybe-shorts/work/**/visuals.json
-            cloud/cinybe-shorts/work/**/windows.json
+            cloud/cinybe-shorts/work/**/transcript.txt
             cloud/cinybe-shorts/work/**/thumb.jpg
             cloud/cinybe-shorts/work/**/frames/*.jpg
             cloud/cinybe-shorts/work/**/short*.mp4

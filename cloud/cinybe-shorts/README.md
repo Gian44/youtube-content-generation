@@ -1,49 +1,51 @@
 # CinybeShorts — cloud pipeline (narrated movie recaps)
 
-Unattended narrated recaps of one film every 2nd day, rendered on GitHub Actions and uploaded to the
-CinybeShorts YouTube channel: a ~10-minute long recap plus 3 Shorts per film. No desktop app, no database,
-no PC. Visuals come from **the film itself** when Gian has put its file in the private R2 bucket (shots cut
-from the scenes each act describes), otherwise from stock b-roll; act title cards in both cases. Wikipedia's
-plot is the only text source.
+Unattended narrated recaps in the recap-channel style, rendered on GitHub Actions and uploaded to the
+CinybeShorts YouTube channel: one ~20-minute recap plus 3 Shorts per film, one film every 2nd day. No desktop
+app, no database, no PC. **Everything on screen is the film itself** — shots cut, in screen order, from the
+scenes each act covers — and the recap is written from the film's own dialogue (its subtitles). There is no
+stock fallback: a queued film whose file is not in the store is passed over, and nothing is posted
+(Gian, 2026-11-08: "If it is not from the movie itself, do not post anything").
 
 ```
-films.yml (themes in order; the first film without a ledger row)
-  → metadata: Wikidata (director, cast, genres, the Wikipedia title); TMDB first when TMDB_API_KEY is set
-  → plot: the article's Plot/Synopsis section (≥ 250 words) or plots/<slug>.md written by the operator;
-    thinner → `kind: skipped` ledger row, next film
-  → plan (cny/planner.py, ported from the StoryFactory narrated-recap branch): acts (9–13 for 10 min) with
-    b-roll searches → long-form sections + 3 Shorts, validated, retried once with the errors, then the
-    no-AI-slop pass (sof/noslop.py, mode "recap") on flagged paragraphs only
+films.yml (themes in order; the first film without a ledger row whose file is in the store)
+  → the film (cny/store.py): `<slug>.mkv|mp4` + `<slug>.srt` downloaded from the Google Drive folder shared
+    with the service account (or an R2 bucket); deleted from the runner after the shots are cut, trashed in
+    the store once the recap is published
+  → transcript (cny/align.py): the .srt as "[mm:ss] dialogue" lines (one per 10 s), trimmed to ~90k chars;
+    faster-whisper on the runner's CPU when there is no .srt; fewer than 120 cues → nothing posted
+  → reference (cny/meta.py, cny/plot.py): Wikidata/TMDB metadata; Wikipedia's Plot section as an optional
+    reference the writer may use — never the source of the script; unavailable → the run goes on
+  → plan (cny/planner.py): call 1 reads the transcript → 16–22 acts for 20 min, each with its own time range
+    in the film (validated: in order, inside the runtime, ≥ 20 s) + the people as descriptors ("the extractor",
+    "his dead wife"); call 2 writes the narration per act, a hook title (50–80 chars, never the film's name),
+    thumbnail text, description (names the film), tags, 3 Shorts; validated, retried once with the errors;
+    then the no-AI-slop pass (sof/noslop.py, "recap") on flagged paragraphs only
+  → shots (cny/visuals.py, cny/cut.py), before any narration is spent: ffmpeg scene detection inside each
+    act's time range → enough 2.5–8 s shots to carry that act's narration (one per 4.5 s + 2), letterboxed to
+    16:9, silent; the Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours',
+    a film that yields none fails the run
   → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner) by
     default; TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
-  → the film (cny/store.py, cny/align.py, cny/cut.py): `<slug>.mp4` + `<slug>.srt` fetched from the R2 bucket;
-    the .srt becomes a "[mm:ss] dialogue" transcript and one writer call picks a 45–180 s window per act
-    (validated: in order, inside the runtime; faster-whisper on the CPU when there is no .srt; proportional
-    windows as the last resort); ffmpeg scene detection inside each window → 5 shots of 3–8 s per act, cut
-    silent and normalised; the file is deleted after the Shorts are rendered
-  → otherwise b-roll per act: Pexels/Pixabay video search on the act's queries, preview frames checked by
-    Codex/Claude ("does this fit the moment?"), 3 clips per act; stock photos when nothing fits; neighbours'
-    clips when the photos fail too
-  → long recap: act card (2.5 s) + the act's clips rotating under that section's narration, crossfaded,
-    cut to the exact section length; faint ambient bed; chapters at act starts; thumbnail = a frame of the
-    film's own b-roll + title + hook
-  → Shorts: 1080×1920 crops of the act's clips, burned captions, title band; voiced with the same voice,
-    −16 LUFS
+  → long recap (cny/render.py, cc/segments.py): per act, its shots played once each, in order, hard-cut, sized
+    to the narration's exact length; no title cards; faint ambient bed; chapters at act starts; thumbnail =
+    a frame of the film (bars trimmed) + the thumbnail text in gold caps + a "MOVIE RECAP" tag, no film name
+  → Shorts: the act's 9:16 shots under the Short's narration, burned captions, hook as title band; −16 LUFS
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
-    days later; ledger.json committed
+    days later; ledger.json committed; the film trashed in the store
 ```
 
 Everything that is not recap-specific is imported from `../sleep-on-facts/sof` (see `cny/__init__.py`):
-writer (`llm`), voice (`tts`), footage and photos, vision checks, no-slop, uploader, ledger. One fix there
-lands here; this package never modifies `sof`.
+writer (`llm`), voice (`tts`), no-slop, uploader, ledger, music; segment planning from `../common/cc`. One fix
+there lands here; this package never modifies `sof`.
 
 ## Running
 
 ```bash
-gh workflow run cinybe-daily.yml -f minutes=3 -f skip_upload=true      # tests + render only (~20 min)
+gh workflow run cinybe-daily.yml -f minutes=3 -f skip_upload=true      # tests + render only
 gh workflow run cinybe-daily.yml -f minutes=3                          # smoke: unlisted upload, ledger untouched
-gh workflow run cinybe-daily.yml -f minutes=10 -f film=Inception -f year=2010   # a chosen film, public
-gh workflow run cinybe-daily.yml                                        # the next film in films.yml
+gh workflow run cinybe-daily.yml -f minutes=20 -f film=Inception -f year=2010   # a chosen film, public
+gh workflow run cinybe-daily.yml                                        # the next queued film with a file
 ```
 
 Locally: `python run.py --minutes 3 --skip-upload --film Memento --year 2000` (needs ffmpeg, the Python deps
@@ -51,30 +53,37 @@ and the env below; Pocket TTS needs `HF_TOKEN`).
 
 ## Secrets (repo → Settings → Secrets → Actions)
 
-Shared with the sleep channel: `CLAUDE_CODE_OAUTH_TOKEN`, `CODEX_AUTH_JSON`, `HF_TOKEN`, `GEMINI_API_KEY`
-(script fallback), `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `YT_CLIENT_ID`, `YT_CLIENT_SECRET`, `OPENAI_API_KEY`
-(optional). This channel's own: `YT_CLIENT_ID_CINYBE`, `YT_CLIENT_SECRET_CINYBE`, `YT_REFRESH_TOKEN_CINYBE` (each StoryFactory
-channel was authorised with its own Google OAuth client; re-authorise with the StoryFactory CLI
-`channel connect-youtube --channel cinybe-shorts` on the PC, then `_cowork_tmp/two-channels/set_channel_secrets.py`
-copies them), optional `GEMINI_API_KEY_CINYBE` (a key from a Google Cloud project of its own, for the Charon
-voice) and `TMDB_API_KEY`. The film store: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (an R2 API
-token with Object Read & Write on the bucket; `R2_BUCKET` is a workflow env, default `cinybe-films`).
+Shared with the sleep channel: `CLAUDE_CODE_OAUTH_TOKEN`, `HF_TOKEN`, `GEMINI_API_KEY` (script fallback),
+`OPENAI_API_KEY` (optional). This channel's own: `YT_CLIENT_ID_CINYBE`, `YT_CLIENT_SECRET_CINYBE`,
+`YT_REFRESH_TOKEN_CINYBE` (each StoryFactory channel was authorised with its own Google OAuth client;
+re-authorise with the StoryFactory CLI `channel connect-youtube --channel cinybe-shorts` on the PC, then
+`_cowork_tmp/two-channels/set_channel_secrets.py` copies them), optional `GEMINI_API_KEY_CINYBE` (a key from a
+Google Cloud project of its own, for the Charon voice) and `TMDB_API_KEY`.
+
+The film store, first choice **Google Drive** (free, no card): `GDRIVE_SERVICE_ACCOUNT_JSON` = the content of a
+service-account key (Google Cloud → IAM → Service accounts → Keys; Drive API enabled on the project) and
+`GDRIVE_FOLDER_ID` (optional: the folder is otherwise found by its name, `GDRIVE_FOLDER` = `cinybe-films`).
+The folder lives in the channel's own Google Drive and is shared with the service account's e-mail as Editor.
+Alternative, **Cloudflare R2**: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (`R2_BUCKET` is a
+workflow env, default `cinybe-films`).
 
 ## The film files
 
-Upload with rclone (the same R2 credentials, S3 endpoint `https://<account id>.r2.cloudflarestorage.com`) as
-`<slug>.mp4|.mkv|.mov` plus `<slug>.srt` (or `<slug>.en.srt`), slug as in `films.yml`'s comment, e.g.
-`inception-2010.mkv` + `inception-2010.srt`. A folder prefix is fine. The run downloads the file for the film
-it is about to make (2–4 GB, a minute or two), cuts the shots and deletes it from the runner. Descriptions
-carry the commentary/criticism line instead of the stock-footage line. Films without a file in the bucket go
-out with stock b-roll, so the queue never waits on an upload.
+Drop two files into the Drive folder `cinybe-films`: `<slug>.mkv` (or `.mp4`, `.mov`, `.m4v`, `.webm`) plus
+`<slug>.srt` (or `<slug>.en.srt`), slug as in `films.yml`'s comment, e.g. `inception-2010.mkv` +
+`inception-2010.srt`. The next run downloads the file for the film it is about to make (2–4 GB, a minute or
+two), cuts the shots, deletes it from the runner, and — once the recap is uploaded — moves it to the Drive's
+trash. A film in `films.yml` without a file is simply passed over until its file appears; a film whose `.srt`
+is missing is transcribed on the CPU (slower, ~1 min per 10 min of film). Descriptions name the film and
+carry the commentary/criticism line.
 
 ## Queue and ledger
 
 `films.yml` is the queue (comments inside). `ledger.json` rows: `kind: video` (published: film, year, theme,
-video_id, title, shorts, plot source, voice, run) and `kind: skipped` (film, reason). The daily cron does
-nothing while the last video is younger than 36 h (`gap_hours`); a forced `film` input always runs. The
-operator keeps `films.yml` and `plots/` fed by commit; nothing else needs a human.
+video_id, title, shorts, transcript source and cue count, plot reference used, shots, film file, voice, run).
+The daily cron does nothing while the last video is younger than 36 h (`gap_hours`); a forced `film` input
+always runs. The operator keeps `films.yml` and the Drive folder fed; `plots/<slug>.md` is an optional
+hand-written reference synopsis.
 
 ## Files
 
@@ -83,13 +92,13 @@ operator keeps `films.yml` and `plots/` fed by commit; nothing else needs a huma
 | `cny/config.py` | tunables; wraps `sof.config.Config` for keys and voice |
 | `cny/films.py` | films.yml, next film, the 36-hour gap |
 | `cny/meta.py` | Wikidata / TMDB metadata |
-| `cny/plot.py` | Wikipedia plot + lead; operator synopses |
-| `cny/planner.py` | acts → scripts, validators, no-slop pass |
-| `cny/store.py` | the R2 bucket: key matching, download |
-| `cny/align.py` | .srt parsing, act → time windows (writer call), whisper fallback, proportional fallback |
-| `cny/cut.py` | scene detection and shot extraction |
-| `cny/visuals.py` | film shots per act, or b-roll per act with the vision check; photo fallback |
-| `cny/render.py` | segment planning, act cards, long recap and Shorts composition |
-| `cny/thumbnail.py` | the thumbnail |
-| `cny/seo.py` | titles, descriptions, tags, Short publish times |
+| `cny/plot.py` | Wikipedia plot (reference only); operator synopses |
+| `cny/store.py` | the film store: Google Drive (service account) or R2; key matching, download, trash |
+| `cny/align.py` | .srt parsing → timed transcript; whisper fallback |
+| `cny/planner.py` | transcript → acts with time ranges + people; scripts; validators; no-slop pass |
+| `cny/cut.py` | scene detection and shot extraction (letterbox / centre-crop) |
+| `cny/visuals.py` | shots per act from the act's own time range; neighbours' shots when an act has none |
+| `cny/render.py` | long recap and Shorts composition (sequence planning in `cc/segments.py`) |
+| `cny/thumbnail.py` | the thumbnail: film frame + hook, no film name |
+| `cny/seo.py` | titles (hook, never the film name), descriptions, tags, Short publish times |
 | `cny/pipeline.py` | orchestration, resumable `work/<date>-<slug>/`, ledger |
