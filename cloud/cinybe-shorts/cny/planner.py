@@ -211,6 +211,31 @@ def _num(v, name: str) -> float:
         raise PlanError(f"{name} is not a number: {v!r}")
 
 
+def _repair_overlaps(acts: list, act_min_seconds: float) -> int:
+    """Neighbouring acts whose ranges overlap (a fuzzy boundary, the writer's most common slip) get one shared
+    boundary: the later act keeps its start and the earlier one ends there, unless that would leave the earlier act
+    too short — then the later act starts where the earlier one ends. Acts out of order are left for the validator."""
+    fixed = 0
+    for prev, cur in zip(acts, acts[1:]):
+        if not (isinstance(prev, dict) and isinstance(cur, dict)):
+            continue
+        try:
+            ps, pe = float(prev["start_seconds"]), float(prev["end_seconds"])
+            cs = float(cur["start_seconds"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if cs >= pe or cs < ps:
+            continue
+        if cs - ps >= act_min_seconds:
+            prev["end_seconds"] = cs
+        else:
+            cur["start_seconds"] = pe
+        fixed += 1
+    if fixed:
+        log.info("repaired %d overlapping act boundaries", fixed)
+    return fixed
+
+
 def validate_acts(data, *, acts_min: int, acts_max: int, duration: float, act_min_seconds: float = ACT_MIN_SECONDS) -> tuple[list[dict], list[dict]]:
     """(acts, people). Acts must be contiguous, in screen order, with ordered non-overlapping time ranges inside the
     runtime; the people list is optional."""
@@ -219,6 +244,7 @@ def validate_acts(data, *, acts_min: int, acts_max: int, duration: float, act_mi
     errors: list[str] = []
     if not isinstance(acts, list):
         raise PlanError("acts must be a JSON array under \"acts\"")
+    _repair_overlaps(acts, act_min_seconds)
     if not (acts_min <= len(acts) <= acts_max):
         errors.append(f"expected {acts_min}-{acts_max} acts, got {len(acts)}")
     prev_end = -1.0

@@ -43,8 +43,17 @@ def test_validate_acts_checks_order_ranges_and_people():
     assert [a["index"] for a in acts] == [0, 1, 2, 3, 4] and acts[1]["start_seconds"] == 660.0 and len(people) == 2
     with pytest.raises(planner.PlanError, match="expected 4-6 acts"):
         planner.validate_acts({"acts": _acts(2)}, acts_min=4, acts_max=6, duration=4000)
+    # a fuzzy boundary is repaired, not fatal (run 42474716380 died twice on one): the later act keeps its start
+    fuzzy = _acts(5)
+    fuzzy[2]["start_seconds"] = fuzzy[1]["end_seconds"] - 40
+    got, _ = planner.validate_acts({"acts": fuzzy}, acts_min=4, acts_max=6, duration=4000)
+    assert got[1]["end_seconds"] == got[2]["start_seconds"] == fuzzy[1]["end_seconds"]
+    tiny = _acts(5)
+    tiny[2]["start_seconds"] = tiny[1]["start_seconds"] + 10           # would leave act 1 only 10 s → act 2 moves instead
+    got, _ = planner.validate_acts({"acts": tiny}, acts_min=4, acts_max=6, duration=4000)
+    assert got[2]["start_seconds"] == got[1]["end_seconds"]
     bad = _acts(5)
-    bad[2]["start_seconds"] = bad[1]["start_seconds"] + 10            # overlaps act 1
+    bad[2]["start_seconds"] = bad[1]["start_seconds"] - 100            # out of order: still an error
     bad[4]["end_seconds"] = 9000                                       # outside the runtime
     bad[3]["end_seconds"] = bad[3]["start_seconds"] + 5                # too short
     with pytest.raises(planner.PlanError) as e:
