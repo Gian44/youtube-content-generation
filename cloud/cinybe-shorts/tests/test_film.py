@@ -163,3 +163,19 @@ def test_film_sound_ducks_under_the_voice_and_returns_in_the_gaps(tmp_path):
     subprocess.run(render.mix_film_cmd(voice, bed, mix), check=True)
     under, gap = _tone_db(mix, 330, 1.0), _tone_db(mix, 330, 4.0)
     assert 8.0 <= gap - under <= 20.0, (under, gap)
+
+
+def test_burned_in_bars_are_detected_and_cropped_before_the_fill(tmp_path):
+    import subprocess
+    # pure: largest area seen wins (dark scenes over-crop), centred; no real bars → None
+    assert cut.union_crop([(1440, 1080, 240, 0), (1300, 1000, 300, 40), (1440, 1076, 240, 2)], 1920, 1080) == "1440:1080:240:0"
+    assert cut.union_crop([(1920, 1080, 0, 0), (1900, 1070, 10, 4)], 1920, 1080) is None
+    assert cut.union_crop([], 1920, 1080) is None
+    assert cut.union_crop([(1920, 800, 0, 140)], 1920, 1080) == "1920:800:0:140"            # scope film, letterboxed
+    vf = cut.shot_vf(width=1080, height=1920, fps=30, fit="crop", crop="1440:1080:240:0")
+    assert vf.startswith("crop=1440:1080:240:0,scale=1080:1920")
+    # real ffmpeg: a 4:3 picture burned into a 16:9 file with black pillars
+    src = str(tmp_path / "boxed.mp4")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=480x360:rate=25:duration=12",
+                    "-vf", "pad=640:360:80:0:black", "-c:v", "libx264", "-preset", "ultrafast", src], check=True)
+    assert cut.detect_crop(src, 12.0, points=3) == "480:360:80:0"

@@ -28,11 +28,14 @@ def film_visuals(cfg, *, acts: list[dict], sections: list[dict], work: Path, vid
     plan_path = work / "visuals.json"
     if plan_path.exists():
         saved = json.loads(plan_path.read_text(encoding="utf-8"))
-        rows = {int(k): v for k, v in saved.items() if k != "_source"}
+        rows = {int(k): v for k, v in saved.items() if not str(k).startswith("_")}
         if saved.get("_source") == "film" and rows and all(Path(p).exists() for v in rows.values()
                                                             for p in v.get("clips", []) + v.get("clips_v", [])):
             return rows
     t0 = time.monotonic()
+    crop = cut.detect_crop(video, cut.duration_seconds(video))         # bars burned into the file come off first
+    if crop:
+        print(f"bars burned into the file: picture is {crop.split(':')[0]}x{crop.split(':')[1]}; cropping before the fill", flush=True)
     words_by_act = {int(s["act_index"]): len(str(s.get("body") or "").split()) for s in sections}
     out: dict[int, dict] = {}
     for a in acts:
@@ -41,11 +44,11 @@ def film_visuals(cfg, *, acts: list[dict], sections: list[dict], work: Path, vid
         window = {"start_seconds": float(a["start_seconds"]), "end_seconds": float(a["end_seconds"])}
         clips, shots = cut.act_shots(video, str(work / "shots"), act_index=i, window=window, want=want,
                                      min_len=cfg.shot_min_seconds, max_len=cfg.shot_max_seconds, threshold=cfg.scene_threshold,
-                                     width=cfg.width, height=cfg.height, fps=cfg.fps)
+                                     width=cfg.width, height=cfg.height, fps=cfg.fps, crop=crop)
         out[i] = {"clips": clips, "shots": shots, "film": True, "window": [window["start_seconds"], window["end_seconds"]], "wanted": want}
         if i in vertical_for:                      # the Shorts' acts: the same shots, centre-cropped to 9:16
             out[i]["clips_v"] = cut.extract_shots(video, shots, str(work / "shots_v"), prefix=f"act{i:02d}", width=cfg.shorts_width,
-                                                  height=cfg.shorts_height, fps=cfg.shorts_fps, fit="crop")
+                                                  height=cfg.shorts_height, fps=cfg.shorts_fps, fit="crop", crop=crop)
         print(f"act {i + 1}: {len(clips)} shots (wanted {want}) from {window['start_seconds']:.0f}-{window['end_seconds']:.0f} s", flush=True)
     for i, v in out.items():                        # an act with no shots borrows its neighbours'
         if not v["clips"]:
@@ -53,7 +56,7 @@ def film_visuals(cfg, *, acts: list[dict], sections: list[dict], work: Path, vid
             v["clips"], v["borrowed"] = pool[:v["wanted"]], True
         if i in vertical_for and not v.get("clips_v"):
             v["clips_v"] = [c for j in sorted(out, key=lambda j: abs(j - i)) for c in out[j].get("clips_v") or []][:v["wanted"]]
-    plan_path.write_text(json.dumps({"_source": "film", **{str(k): v for k, v in out.items()}}, indent=1), encoding="utf-8")
+    plan_path.write_text(json.dumps({"_source": "film", "_crop": crop, **{str(k): v for k, v in out.items()}}, indent=1), encoding="utf-8")
     log.info("film visuals for %d acts in %.0f s", len(acts), time.monotonic() - t0)
     return out
 

@@ -63,10 +63,55 @@ def pick_shots(start: float, end: float, cuts: list[float], *, want: int, min_le
     return out
 
 
-def shot_vf(*, width: int, height: int, fps: int, fit: str = "blur") -> str:
+_CROP = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
+
+
+def video_size(video: str) -> tuple[int, int]:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", video],
+                       capture_output=True, text=True, timeout=60)
+    try:
+        w, h = (int(x) for x in r.stdout.strip().split(",")[:2])
+        return w, h
+    except ValueError:
+        return 0, 0
+
+
+def union_crop(found: list[tuple[int, int, int, int]], width: int, height: int, *, keep: float = 0.98) -> str | None:
+    """Pure: the picture area inside bars burned into the file, from cropdetect results at several points of the
+    film. Dark scenes make cropdetect cut into the picture, so the largest area seen wins (bars never move); centred,
+    even sizes. None when there are no real bars (the area is ≥ ``keep`` of the frame both ways)."""
+    if not found or width <= 0 or height <= 0:
+        return None
+    w = max(f[0] for f in found)
+    h = max(f[1] for f in found)
+    if w >= width * keep and h >= height * keep:
+        return None
+    w, h = min(width, w) // 2 * 2, min(height, h) // 2 * 2
+    return f"{w}:{h}:{(width - w) // 2}:{(height - h) // 2}"
+
+
+def detect_crop(video: str, duration: float, *, points: int = 8) -> str | None:
+    """``w:h:x:y`` of the picture inside black bars burned into the file (many Archive prints are 4:3 films in a
+    16:9 file), or None."""
+    width, height = video_size(video)
+    found = []
+    for k in range(points):
+        at = duration * (0.1 + 0.8 * k / max(1, points - 1))
+        r = subprocess.run(["ffmpeg", "-v", "info", "-nostats", "-ss", f"{at:.1f}", "-i", video, "-frames:v", "25", "-an",
+                            "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+        m = _CROP.findall(r.stderr or "")
+        if m:
+            found.append(tuple(int(x) for x in m[-1]))
+    crop = union_crop(found, width, height)
+    log.info("crop detect %s (%dx%d, %d samples): %s", Path(video).name, width, height, len(found), crop or "none")
+    return crop
+
+
+def shot_vf(*, width: int, height: int, fps: int, fit: str = "blur", crop: str | None = None) -> str:
     """``fit="blur"`` keeps the whole frame and fills the rest with the same frame blurred and darkened (a 4:3 print
     in the 16:9 recap, Gian 2026-11-08); ``"pad"`` fills with black; ``"crop"`` fills the frame from the centre
     (the 9:16 Shorts)."""
+    pre = f"crop={crop}," if crop else ""                 # bars burned into the file come off first
     if fit == "crop":
         vf = f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
     elif fit == "pad":
@@ -78,14 +123,15 @@ def shot_vf(*, width: int, height: int, fps: int, fit: str = "blur") -> str:
               f"eq=brightness=-0.07:saturation=0.9,scale={width}:{height}[bgb];"
               f"[fg]scale={width}:{height}:force_original_aspect_ratio=decrease:flags=lanczos[fgs];"
               f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2")
-    return vf + f",fps={fps},setsar=1,format=yuv420p"
+    return pre + vf + f",fps={fps},setsar=1,format=yuv420p"
 
 
-def shot_cmd(video: str, out: str, *, start: float, seconds: float, width: int, height: int, fps: int, fit: str = "blur") -> list[str]:
+def shot_cmd(video: str, out: str, *, start: float, seconds: float, width: int, height: int, fps: int, fit: str = "blur",
+             crop: str | None = None) -> list[str]:
     """One silent shot; the film's sound is laid under the narration separately (``film_audio_cmd``), cut to the
     same moments."""
     return ["ffmpeg", "-y", "-v", "error", "-ss", f"{start:.3f}", "-i", video, "-t", f"{seconds:.3f}", "-an",
-            "-vf", shot_vf(width=width, height=height, fps=fps, fit=fit),
+            "-vf", shot_vf(width=width, height=height, fps=fps, fit=fit, crop=crop),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-map_metadata", "-1", out]
 
 
@@ -109,7 +155,7 @@ def extract_film_audio(video: str, out: str) -> str | None:
 
 
 def extract_shots(video: str, shots: list[tuple[float, float]], out_dir: str, *, prefix: str, width: int, height: int,
-                  fps: int, fit: str = "blur") -> list[str]:
+                  fps: int, fit: str = "blur", crop: str | None = None) -> list[str]:
     """Cut each (start, seconds) shot → ``<out_dir>/<prefix>_<k>.mp4`` (resumable: existing files are kept)."""
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
@@ -120,8 +166,8 @@ def extract_shots(video: str, shots: list[tuple[float, float]], out_dir: str, *,
             out.append(p)
             continue
         try:
-            subprocess.run(shot_cmd(video, p, start=st, seconds=secs, width=width, height=height, fps=fps, fit=fit), check=True,
-                           capture_output=True, timeout=600)
+            subprocess.run(shot_cmd(video, p, start=st, seconds=secs, width=width, height=height, fps=fps, fit=fit, crop=crop),
+                           check=True, capture_output=True, timeout=600)
             out.append(p)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             log.warning("shot %d (%s) failed: %s", k, prefix, exc)
@@ -129,12 +175,12 @@ def extract_shots(video: str, shots: list[tuple[float, float]], out_dir: str, *,
 
 
 def act_shots(video: str, out_dir: str, *, act_index: int, window: dict, want: int, min_len: float, max_len: float,
-              threshold: float, width: int, height: int, fps: int) -> tuple[list[str], list[tuple[float, float]]]:
+              threshold: float, width: int, height: int, fps: int, crop: str | None = None) -> tuple[list[str], list[tuple[float, float]]]:
     """The act's shots: (clip paths, the (start, seconds) list they were cut from)."""
     s, e = float(window["start_seconds"]), float(window["end_seconds"])
     cuts = scene_cuts(video, start=s, end=e, threshold=threshold)
     shots = pick_shots(s, e, cuts, want=want, min_len=min_len, max_len=max_len)
-    out = extract_shots(video, shots, out_dir, prefix=f"act{act_index:02d}", width=width, height=height, fps=fps, fit="blur")
+    out = extract_shots(video, shots, out_dir, prefix=f"act{act_index:02d}", width=width, height=height, fps=fps, fit="blur", crop=crop)
     log.info("act %d: %d shots from %d scene cuts in %.0f-%.0f s", act_index, len(out), len(cuts), s, e)
     return out, shots
 
