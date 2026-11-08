@@ -8,7 +8,7 @@
     "topic": "Inception (2010)",
     "video_id": "ZOYe-hdO_S4",
     "title": "Inception 2010 and the Idea Cobb Must Plant | Full Recap",
-    "privacy": "public",
+    "privacy": "private",
     "uploaded_at": "2026-11-07T17:16:16+00:00",
     "duration_seconds": 490,
     "words": 1209,
@@ -22,22 +22,22 @@
         "video_id": "4TuxB0KjMSo",
         "title": "Inception (2010) The Rain Level Goes Wrong #Shorts",
         "seconds": 20,
-        "publish_at": "2026-11-07T18:16:16Z",
-        "act_index": 4
+        "act_index": 4,
+        "privacy": "private"
       },
       {
         "video_id": "K-rrLmKGst0",
         "title": "Inception (2010) What Happened to Mal #Shorts",
         "seconds": 20,
-        "publish_at": "2026-11-08T18:16:16Z",
-        "act_index": 6
+        "act_index": 6,
+        "privacy": "private"
       },
       {
         "video_id": "Aquf0BFdZFk",
         "title": "Inception (2010) The Fortress Falls Apart #Shorts",
         "seconds": 19,
-        "publish_at": "2026-11-09T18:16:16Z",
-        "act_index": 8
+        "act_index": 8,
+        "privacy": "private"
       }
     ],
     "slop": {
@@ -64,6 +64,7 @@
       "unanswered": 0
     },
     "voice": "pocket narrator.wav",
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42393280771"
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42393280771",
+    "taken_down": "2026-11-08: v1 stock-footage version set private with its Shorts (Gian: delete it from the posted videos); v3 may remake Inception from his own file"
   }
 ]
