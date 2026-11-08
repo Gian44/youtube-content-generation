@@ -37,7 +37,7 @@ films.yml (themes in order; the first film without a ledger row that the run can
     Shorts' acts also centre-cropped to 9:16; an act with no shots borrows its neighbours', a film that yields
     none fails the run
   → narration: the Sleep On Facts voice stack (sof/tts.py) — voice F (Pocket TTS, free, on the runner) by
-    default; each chunk has its pauses capped at ~0.24 s and is played ×1.4 (atempo) → ~240 words per minute,
+    default; each chunk has its pauses capped at ~0.24 s (alone +30 %) and is played ×1.15 (atempo) → ~242 wpm,
     quicker than the fastest sample (226) — Gian: "make it faster to retain audience"; TTS_BACKEND=gemini +
     GEMINI_API_KEY_CINYBE switches to Charon on this channel's own free tier
   → long recap (cny/render.py, cc/segments.py): per act, its shots played once each, in order, hard-cut, sized

@@ -13,8 +13,10 @@ from dataclasses import dataclass, field
 from sof.config import Config as SofConfig
 
 NATURAL_WPM = 162               # voice F on recap text: 219 wpm measured at ×1.35 (review run 42456841529, 2026-11-08)
-VOICE_TEMPO = 1.4               # Gian 2026-11-08 "make it faster to retain audience": ×1.4 (ffmpeg atempo) and pauses
-PAUSE_GAIN = 1.06               # capped at ~0.24 s (VOICE_TIGHTEN) → ~240 wpm, quicker than the fastest sample (226)
+PAUSE_GAIN = 1.30               # capping its pauses at ~0.24 s (VOICE_TIGHTEN) alone makes it 30 % faster: 295 wpm
+                                # measured at ×1.4 (review run 42465054249) — too fast to follow
+VOICE_TEMPO = 1.15              # Gian 2026-11-08 "make it faster to retain audience": ×1.15 on top → ~242 wpm, quicker
+                                # than the fastest sample (226), less time-stretch than ×1.4
 VOICE_TIGHTEN = ("silenceremove=start_periods=1:start_threshold=-42dB:start_silence=0.05:"
                  "stop_periods=-1:stop_duration=0.12:stop_threshold=-42dB:stop_silence=0.1")
 WORDS_PER_MINUTE = round(NATURAL_WPM * VOICE_TEMPO * PAUSE_GAIN)

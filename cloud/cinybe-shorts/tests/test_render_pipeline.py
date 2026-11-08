@@ -186,7 +186,7 @@ def test_quicken_caps_pauses_and_speeds_up_each_chunk(tmp_path):
     import subprocess
     from cny import config, pipeline
     cfg = config.Config()
-    assert "silenceremove" in pipeline.voice_filter(cfg) and "atempo=1.4" in pipeline.voice_filter(cfg)
+    assert "silenceremove" in pipeline.voice_filter(cfg) and "atempo=1.15" in pipeline.voice_filter(cfg)
     src = str(tmp_path / "c0.mp3")                     # 0.4 s lead-in, 1.2 s "speech", 0.6 s pause, 1.2 s, 0.5 s tail
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-f", "lavfi", "-i",
                     "sine=frequency=300:duration=1.2,volume=0.3", "-filter_complex",
@@ -194,7 +194,7 @@ def test_quicken_caps_pauses_and_speeds_up_each_chunk(tmp_path):
                     "[a][t0][b][t1][c]concat=n=5:v=0:a=1", "-ar", "24000", src], check=True)
     out = pipeline.quicken([src], tmp_path / "fast", cfg)
     before, after = render.tts.duration_seconds(src), render.tts.duration_seconds(out[0])
-    assert before > 3.8 and after < before / 1.4 - 0.2                              # faster than tempo alone: pauses capped
+    assert before > 3.8 and after < before / 1.15 - 0.3                             # faster than tempo alone: pauses capped
     assert pipeline.quicken([src], tmp_path / "fast", cfg) == out                   # resumable
     cfg.voice_tempo, cfg.voice_tighten = 1.0, ""
     assert pipeline.quicken([src], tmp_path / "x", cfg) == [src]
