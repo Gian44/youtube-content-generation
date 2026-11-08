@@ -66,17 +66,5 @@
     "voice": "pocket narrator.wav",
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42393280771",
     "taken_down": "2026-11-08: v1 stock-footage version set private with its Shorts (Gian: delete it from the posted videos); v3 may remake Inception from his own file"
-  },
-  {
-    "date": "2026-11-08",
-    "kind": "skipped",
-    "film": "Night of the Living Dead",
-    "year": 1968,
-    "theme": "Public domain classics",
-    "topic": "Night of the Living Dead (1968)",
-    "video_id": "skipped-night-of-the-living-dead-1968-2026-11-08",
-    "reason": "planning failed: short 2 text is 112 words; must be 1-110",
-    "film_file": "archive.org/Night.Of.The.Living.Dead_1080p/NightOfTheLivingDead_PS3.mp4",
-    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42463543209"
   }
 ]
