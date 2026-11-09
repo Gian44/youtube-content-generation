@@ -130,5 +130,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42501325939"
+  },
+  {
+    "date": "2026-11-09",
+    "kind": "shorts",
+    "topic": "3 shorts: relationships, mysteries, family_drama",
+    "video_id": "wUVp5bT5_hs",
+    "stories": [
+      {
+        "video_id": "wUVp5bT5_hs",
+        "title": "My Boyfriend Secretly Paid My Car Insurance #Shorts",
+        "category": "relationships",
+        "persona": "calm",
+        "hook": "The insurance agent said, \"I'll need Theo on the line, his card pays this policy.\"",
+        "words": 143,
+        "seconds": 55,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "Z2Lu7EeL7n8",
+        "title": "The Lighthouse Keeper's Logbook Kept Writing Itself #Shorts",
+        "category": "mysteries",
+        "persona": "calm",
+        "hook": "The ferry captain handed me a logbook and said, \"This was on the dock at Pell Island this morning, and it's got your name in it.\"",
+        "words": 148,
+        "seconds": 64,
+        "publish_at": "2026-11-10T05:02:03Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "8GvzH2HjKls",
+        "title": "Dad's Will Read Over Thanksgiving Pie #Shorts",
+        "category": "family_drama",
+        "persona": "calm",
+        "hook": "My sister Wendy had the lawyer read Dad's will out loud at Thanksgiving, with the pie still on the table.",
+        "words": 134,
+        "seconds": 58,
+        "publish_at": "2026-11-10T13:02:03Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42696679017"
   }
 ]
