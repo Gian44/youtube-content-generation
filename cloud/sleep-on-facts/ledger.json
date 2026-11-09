@@ -1517,5 +1517,87 @@
       "tLIi9S0zW4c"
     ],
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42507478570"
+  },
+  {
+    "date": "2026-11-09",
+    "topic": "Challenger Deep",
+    "category": "oceans & the deep sea",
+    "wiki_title": "Challenger Deep",
+    "video_id": "7g-9LINS1_4",
+    "title": "The Challenger Deep Lies Far From Any Continent | 2.5-Hour Ocean Documentary for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-10T01:30:00Z",
+    "duration_seconds": 8190,
+    "words": 19523,
+    "images": 30,
+    "image_sources": {
+      "commons": 19,
+      "nasa": 0,
+      "pexels": 11,
+      "pixabay": 0
+    },
+    "story_format": "story",
+    "title_variant": 1,
+    "timeline": {
+      "slots": 410,
+      "thing_slots": 71,
+      "cue_slots": 82,
+      "things_shown": 10,
+      "distinct_photos": 69,
+      "lag_median": 0.96
+    },
+    "short": {
+      "video_id": "WX2n96zYNrg",
+      "title": "Vityaz Sounded the Challenger Deep at 36,198 Feet #Shorts",
+      "seconds": 44.2,
+      "publish_at": "2026-11-10T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "WX2n96zYNrg",
+        "title": "Vityaz Sounded the Challenger Deep at 36,198 Feet #Shorts",
+        "seconds": 44.2,
+        "publish_at": "2026-11-10T02:30:00Z"
+      },
+      {
+        "video_id": "lp6wLc5C_AM",
+        "title": "James Cameron Dove the Challenger Deep Alone #Shorts",
+        "seconds": 31.9,
+        "publish_at": "2026-11-11T02:30:00Z"
+      },
+      {
+        "video_id": "uXtTWXxWvco",
+        "title": "The Challenger Deep Takes Its Name From a Ship #Shorts",
+        "seconds": 35.1,
+        "publish_at": "2026-11-12T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 49,
+      "after": 10,
+      "paragraphs": 267,
+      "rewritten": 36,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 6,
+        "fragmentation": 2,
+        "banned_word": 1,
+        "robotic_rhythm": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 91,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 121,
+      "claude": 1,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42678644025"
   }
 ]
