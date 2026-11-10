@@ -196,5 +196,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42696679017"
+  },
+  {
+    "date": "2026-11-10",
+    "kind": "shorts",
+    "topic": "3 shorts: workplace_drama, aita, customer_service_drama",
+    "video_id": "FQS-WQq6Ch0",
+    "stories": [
+      {
+        "video_id": "FQS-WQq6Ch0",
+        "title": "The Coworker Who Laminated a Fish Warning #Shorts",
+        "category": "workplace_drama",
+        "persona": "sarcastic",
+        "hook": "Marcy from accounting laminated a sign for the break room microwave that said, \"Whoever heated fish, we know it was you.\"",
+        "words": 131,
+        "seconds": 54,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "4jdN5tOtVl4",
+        "title": "I Insulted Her Mom's Soup Out Loud #Shorts",
+        "category": "aita",
+        "persona": "confession",
+        "hook": "I told my roommate Priya her mom's soup tasted like dishwater, and her mom was standing right behind me.",
+        "words": 146,
+        "seconds": 56,
+        "publish_at": "2026-11-11T02:07:32Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "Q47vc39xw9E",
+        "title": "Customer Returns Christmas Tree In January #Shorts",
+        "category": "customer_service_drama",
+        "persona": "sarcastic",
+        "hook": "A man in a golf visor dropped a seven-foot Fraser fir on my counter and said, \"This one stopped working.\"",
+        "words": 143,
+        "seconds": 55,
+        "publish_at": "2026-11-11T10:07:32Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42870058403"
   }
 ]
