@@ -66,5 +66,71 @@
     "voice": "pocket narrator.wav",
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42393280771",
     "taken_down": "2026-11-08: v1 stock-footage version set private with its Shorts (Gian: delete it from the posted videos); v3 may remake Inception from his own file"
+  },
+  {
+    "date": "2026-11-10",
+    "kind": "video",
+    "film": "Night of the Living Dead",
+    "year": 1968,
+    "theme": "Public domain classics",
+    "topic": "Night of the Living Dead (1968)",
+    "video_id": "7c6bUAYmlBA",
+    "title": "Siblings Visit a Grave and Barricade Themselves in a Farmhouse as the Dead Rise to Eat the Living",
+    "privacy": "public",
+    "uploaded_at": "2026-11-10T17:55:02+00:00",
+    "duration_seconds": 782,
+    "words": 3120,
+    "acts": 15,
+    "transcript": "whisper",
+    "cues": 859,
+    "plot_reference": true,
+    "beats": 128,
+    "shots": 326,
+    "film_file": "archive.org/Night.Of.The.Living.Dead_1080p/NightOfTheLivingDead_PS3.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "ncBicg1v0Ks",
+        "title": "A Cruel Joke at a Grave Goes Horribly Wrong #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-10T18:55:02Z",
+        "act_index": 1
+      },
+      {
+        "video_id": "ox8JfrETMeE",
+        "title": "Two Men Split a Besieged House Into Cellar and Upstairs #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-11T18:55:02Z",
+        "act_index": 7
+      },
+      {
+        "video_id": "569ClBjrnbU",
+        "title": "The Rescuers Arrive at Dawn and Make One Fatal Mistake #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-12T18:55:02Z",
+        "act_index": 14
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 9,
+        "after": 5,
+        "rewritten": 3
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42863175660"
   }
 ]
