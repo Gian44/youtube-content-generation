@@ -1679,5 +1679,84 @@
     "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×11)",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42855027070"
+  },
+  {
+    "date": "2026-11-11",
+    "topic": "Andromeda Galaxy",
+    "category": "space & astronomy",
+    "wiki_title": "Andromeda Galaxy",
+    "video_id": "KNB0FqRMqKk",
+    "title": "Andromeda Galaxy: Why Andromeda Is Drifting Toward the Milky Way | Space Facts for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-12T01:30:00Z",
+    "duration_seconds": 7130,
+    "words": 18894,
+    "images": 150,
+    "image_sources": {
+      "commons": 129,
+      "nasa": 21,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "parts",
+    "title_variant": 3,
+    "timeline": {
+      "slots": 357,
+      "thing_slots": 146,
+      "cue_slots": 100,
+      "things_shown": 39,
+      "distinct_photos": 237,
+      "lag_median": 4.8
+    },
+    "short": {
+      "video_id": "j1hdcmOJ3N0",
+      "title": "Andromeda Lies 2.5 Million Light-Years Away #Shorts",
+      "seconds": 28.8,
+      "publish_at": "2026-11-12T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "j1hdcmOJ3N0",
+        "title": "Andromeda Lies 2.5 Million Light-Years Away #Shorts",
+        "seconds": 28.8,
+        "publish_at": "2026-11-12T02:30:00Z"
+      },
+      {
+        "video_id": "syIWezGUGqY",
+        "title": "Andromeda's Giant Gas Clouds Span About 100 Light-Years #Shorts",
+        "seconds": 25.4,
+        "publish_at": "2026-11-13T02:30:00Z"
+      },
+      {
+        "video_id": "DTXKmr6CrdA",
+        "title": "Andromeda Is Visible Without a Telescope Under Dark Skies #Shorts",
+        "seconds": 30.2,
+        "publish_at": "2026-11-14T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 31,
+      "after": 3,
+      "paragraphs": 253,
+      "rewritten": 23,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 3
+      }
+    },
+    "llm_calls": {
+      "claude": 82,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 194,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×11)",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43057922117"
   }
 ]
