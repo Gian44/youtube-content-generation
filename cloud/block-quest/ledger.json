@@ -262,5 +262,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42870058403"
+  },
+  {
+    "date": "2026-11-11",
+    "kind": "shorts",
+    "topic": "3 shorts: wholesome, revenge, cheating",
+    "video_id": "FQqdqgvJtDU",
+    "stories": [
+      {
+        "video_id": "FQqdqgvJtDU",
+        "title": "The Hardware Store Bill Already Paid #Shorts",
+        "category": "wholesome",
+        "persona": "warm",
+        "hook": "The cashier at Halvorsen Hardware said my forty-one dollars and eight cents was already paid.",
+        "words": 136,
+        "seconds": 52,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "OyO3RRQicV4",
+        "title": "My Neighbor Sold My Ladder Back To Me #Shorts",
+        "category": "revenge",
+        "persona": "sarcastic",
+        "hook": "Gerald from across the street was selling my ladder at his yard sale for fifteen dollars.",
+        "words": 133,
+        "seconds": 48,
+        "publish_at": "2026-11-12T02:04:13Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "5DN29L47hEw",
+        "title": "The Hotel Key in My Husband's Blazer #Shorts",
+        "category": "cheating",
+        "persona": "dramatic",
+        "hook": "The dry cleaner on Fulton Street held up my husband's gray blazer and said, \"Ma'am, there's a hotel key in the pocket.\"",
+        "words": 145,
+        "seconds": 57,
+        "publish_at": "2026-11-12T10:04:13Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43072879715"
   }
 ]
