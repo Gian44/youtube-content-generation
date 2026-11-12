@@ -132,5 +132,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/42863175660"
+  },
+  {
+    "date": "2026-11-12",
+    "kind": "video",
+    "film": "Charade",
+    "year": 1963,
+    "theme": "Public domain classics",
+    "topic": "Charade (1963)",
+    "video_id": "_GRNmY6-xS8",
+    "title": "Widow Buries Her Husband and Learns Three Killers Want a Fortune She Cannot Find",
+    "privacy": "public",
+    "uploaded_at": "2026-11-12T18:21:10+00:00",
+    "duration_seconds": 905,
+    "words": 3344,
+    "acts": 17,
+    "transcript": "whisper",
+    "cues": 1612,
+    "plot_reference": true,
+    "beats": 116,
+    "shots": 359,
+    "film_file": "archive.org/charade-1963-cary-grant-audrey-hepburn-walter-matthau-1080p-reup/Charade (1963) [720p Blu-Ray Rip].mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "0GYVqrq90sk",
+        "title": "A Stranger Corners Her in a Phone Booth With a Death Threat #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-12T19:21:10Z",
+        "act_index": 4
+      },
+      {
+        "video_id": "FU9B4Gx6_wU",
+        "title": "Gunman on a Rooftop Gets Hung Off the Ledge by His Target #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-13T19:21:10Z",
+        "act_index": 7
+      },
+      {
+        "video_id": "1Bk1jOYl15c",
+        "title": "Two Men Each Say the Other Is the Killer, and She Must Choose #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-14T19:21:10Z",
+        "act_index": 14
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 10,
+        "after": 2,
+        "rewritten": 8
+      },
+      "shorts": {
+        "before": 1,
+        "after": 1,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43272495641"
   }
 ]
