@@ -328,5 +328,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43072879715"
+  },
+  {
+    "date": "2026-11-12",
+    "kind": "shorts",
+    "topic": "3 shorts: entitled_parents, creepy_encounters, confessions",
+    "video_id": "bVEpPT0Pi3g",
+    "stories": [
+      {
+        "video_id": "bVEpPT0Pi3g",
+        "title": "Mom Demanded I Fix Her Son's Swim Time #Shorts",
+        "category": "entitled_parents",
+        "persona": "dramatic",
+        "hook": "A mother in a green parka reached over the lane rope and clicked my stopwatch to zero.",
+        "words": 139,
+        "seconds": 64,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "k220aP8TPc0",
+        "title": "The Man at the Dead Bus Stop #Shorts",
+        "category": "creepy_encounters",
+        "persona": "horror",
+        "hook": "The man at the bus shelter on Alder Street said, \"Your porch light's been out since Tuesday.\"",
+        "words": 127,
+        "seconds": 54,
+        "publish_at": "2026-11-13T02:36:49Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "NiixVwc_SVc",
+        "title": "The Money I Found in a Piano Bench #Shorts",
+        "category": "confessions",
+        "persona": "confession",
+        "hook": "The envelope slid out of the piano bench the minute I got it home, and it had two thousand four hundred dollars in it.",
+        "words": 144,
+        "seconds": 49,
+        "publish_at": "2026-11-13T10:36:49Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43279494520"
   }
 ]
