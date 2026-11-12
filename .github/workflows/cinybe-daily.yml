@@ -2,16 +2,18 @@ name: cinybe-shorts daily
 
 on:
   schedule:
-    # Daily (Gian, 2026-11-12): one ~17-min recap per UTC day. GitHub starts scheduled runs hours late (6-10 h seen)
-    # and sometimes drops one, so there are four triggers; the gate job below lets only the first one after
-    # 09:00 UTC (17:00 Manila) on a day without a recap go on to render (cny/daily.py) — the others end in seconds.
-    # Off-the-hour minutes, clear of the sleep (08:23) and Block Quest (10:17) runs. The film is Gian's file in the
-    # Drive folder or, when that is empty, the next public-domain print from the Internet Archive (films.yml
-    # `archive:`); nothing else, ever (Gian, 2026-11-08: no stock fallback).
+    # Daily (Gian, 2026-11-12): one ~17-min recap per UTC day. GitHub starts these hours late (6.5-10.3 h measured
+    # on 11-08..11-11) and sometimes drops one, so there are four triggers; the gate job below lets only the first
+    # one that lands after 09:00 UTC (17:00 Manila) on a day without a recap go on to render (cny/daily.py), the
+    # others end in seconds. Early triggers on purpose: started on time, 01:41/05:41 are held and 09:41 renders;
+    # started ~8 h late, 01:41 renders and the rest are same-day retries. (Evening triggers would land after
+    # midnight and be held.) Off-the-hour minutes, clear of the sleep (08:23) and Block Quest (10:17) runs. The film
+    # is Gian's file in the Drive folder or, when that is empty, the next public-domain print from the Internet
+    # Archive (films.yml `archive:`); nothing else, ever (Gian, 2026-11-08: no stock fallback).
+    - cron: "41 1 * * *"
+    - cron: "41 5 * * *"
     - cron: "41 9 * * *"
     - cron: "41 13 * * *"
-    - cron: "41 17 * * *"
-    - cron: "41 21 * * *"
   workflow_dispatch:
     inputs:
       minutes:

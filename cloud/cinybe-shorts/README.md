@@ -115,8 +115,8 @@ Content ID claims on them (dispute with the Archive link). Finding items: `_cowo
 video_id, title, shorts, transcript source and cue count, plot reference used, shots, film file and source, voice,
 run) and `kind: skipped` (an archive film the run gave up on, with the reason; delete the row to retry).
 **Daily cadence** (Gian, 2026-11-12; `cny/daily.py`): one recap per UTC day. GitHub starts scheduled runs hours
-late (6–10 h seen) and sometimes drops one, so the workflow has four triggers (09:41, 13:41, 17:41, 21:41 UTC) and
-a `gate` job that reads the latest `ledger.json` with the standard library alone (`gate.py`, seconds, before any
+late (6.5–10.3 h measured) and sometimes drops one, so the workflow has four triggers (01:41, 05:41, 09:41, 13:41
+UTC: early, so that late starts still land the same day) and a `gate` job that reads the latest `ledger.json` with the standard library alone (`gate.py`, seconds, before any
 install): before 09:00 UTC, or once a recap made today is up, the trigger ends there; the first one after 09:00
 on a day without a recap renders. A recap counts for the day its run started (`date`), so one that starts at 23:00
 and uploads after midnight does not take the next day's slot. Under that, `gap_hours` (6) keeps two recaps from
