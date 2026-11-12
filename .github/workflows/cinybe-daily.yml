@@ -2,12 +2,16 @@ name: cinybe-shorts daily
 
 on:
   schedule:
-    # Daily at 09:41 UTC (17:41 Manila); the pipeline itself keeps to one film every 2nd day (films.ran_recently,
-    # gap 36 h), so a late GitHub start never skips a day for good. After the sleep run (08:23) so the two
-    # never queue on the same minute. Gian, 2026-11-07. The film is Gian's file in the Drive folder or, when that is
-    # empty, the next public-domain print from the Internet Archive (films.yml `archive:`); nothing else, ever
-    # (Gian, 2026-11-08: no stock fallback). No film to be had → the run exits before any narration is spent.
+    # Daily (Gian, 2026-11-12): one ~17-min recap per UTC day. GitHub starts scheduled runs hours late (6-10 h seen)
+    # and sometimes drops one, so there are four triggers; the gate job below lets only the first one after
+    # 09:00 UTC (17:00 Manila) on a day without a recap go on to render (cny/daily.py) — the others end in seconds.
+    # Off-the-hour minutes, clear of the sleep (08:23) and Block Quest (10:17) runs. The film is Gian's file in the
+    # Drive folder or, when that is empty, the next public-domain print from the Internet Archive (films.yml
+    # `archive:`); nothing else, ever (Gian, 2026-11-08: no stock fallback).
     - cron: "41 9 * * *"
+    - cron: "41 13 * * *"
+    - cron: "41 17 * * *"
+    - cron: "41 21 * * *"
   workflow_dispatch:
     inputs:
       minutes:
@@ -37,7 +41,23 @@ permissions:
   contents: write
 
 jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      go: ${{ steps.gate.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}     # the branch head now, not the commit the trigger saw (a queued run must see today's row)
+          sparse-checkout: cloud/cinybe-shorts
+      - name: Today's recap already up? (scheduled triggers only; manual runs always go on)
+        id: gate
+        working-directory: cloud/cinybe-shorts
+        run: python3 gate.py
+
   render:
+    needs: gate
+    if: needs.gate.outputs.go == 'true'
     runs-on: ubuntu-24.04  # pinned like the sleep workflow: ubuntu-latest (26.04, FFmpeg 8) broke the render tests
     timeout-minutes: 300          # a film without .srt adds a CPU transcription
     defaults:
@@ -45,6 +65,8 @@ jobs:
         working-directory: cloud/cinybe-shorts
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}     # latest ledger, for the same reason
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

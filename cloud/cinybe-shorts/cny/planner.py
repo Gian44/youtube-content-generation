@@ -24,7 +24,8 @@ from cny import beats as beatmod
 
 log = logging.getLogger("cny.planner")
 LONG_FORM_TOLERANCE = (0.7, 1.3)
-SHORT_SLACK = 1.3            # a Short up to 30 % over the cap is trimmed back at a sentence end instead of failing the plan
+SHORT_SLACK = 2.0            # a Short up to twice the cap loses its last beats instead of failing the plan (147 of 110
+                             # words failed the 2026-11-09 run)
 ACT_MIN_SECONDS = 20.0
 
 
@@ -284,9 +285,17 @@ def validate_acts(data, *, acts_min: int, acts_max: int, duration: float, act_mi
 
 
 def _names_film(text: str, film: str) -> bool:
-    words = [w for w in re.findall(r"[a-z0-9]+", film.lower()) if len(w) > 3 and w not in ("the", "and", "part", "film", "movie")]
-    t = text.lower()
-    return bool(words) and all(w in t for w in words)
+    """The film's title appears as a phrase (its words, in order, side by side; a leading article optional). Words of
+    the title scattered through the text don't count — "the dead rise and eat the living one night" does not name
+    Night of the Living Dead (a run on 2026-11-09 was rejected for that)."""
+    words = re.findall(r"[a-z0-9]+", film.lower())
+    while len(words) > 1 and words[0] in ("the", "a", "an"):
+        words = words[1:]
+    if not words:
+        return False
+    t = re.findall(r"[a-z0-9]+", text.lower())
+    n = len(words)
+    return any(t[i:i + n] == words for i in range(len(t) - n + 1))
 
 
 def _names_person(text: str, people: list[dict]) -> str | None:
@@ -438,15 +447,21 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
 
 # ----------------------------------------------------------------- planning
 
-def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, max_tokens: int) -> object:
-    """One writer call; on PlanError the errors go back once with the same prompt."""
-    try:
-        return validate(llm.generate_json(prompt, system=system, temperature=temperature, max_tokens=max_tokens))
-    except PlanError as first:
-        log.warning("plan rejected, retrying once: %s", str(first)[:300])
-        retry = (f"{prompt}\n\nYour previous answer was rejected. Validation errors:\n{first}\n"
-                 "Return corrected JSON that satisfies every rule.")
-        return validate(llm.generate_json(retry, system=system, temperature=temperature, max_tokens=max_tokens))
+ATTEMPTS = 3                 # a daily channel: one bad draft must not cost the day
+
+
+def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, max_tokens: int, attempts: int = ATTEMPTS) -> object:
+    """One writer call; on PlanError the errors go back with the same prompt, up to ``attempts`` tries in all."""
+    errors: PlanError | None = None
+    for k in range(max(1, attempts)):
+        ask = prompt if errors is None else (f"{prompt}\n\nYour previous answer was rejected. Validation errors:\n{errors}\n"
+                                             "Return corrected JSON that satisfies every rule.")
+        try:
+            return validate(llm.generate_json(ask, system=system, temperature=temperature, max_tokens=max_tokens))
+        except PlanError as exc:
+            errors = exc
+            log.warning("plan rejected (try %d of %d): %s", k + 1, attempts, str(exc)[:300])
+    raise errors
 
 
 def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, duration: float, plot_text: str = "",

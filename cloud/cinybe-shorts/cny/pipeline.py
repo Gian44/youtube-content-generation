@@ -24,7 +24,7 @@ from sof import ledger, music, tts, upload
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from cny import align, beats as beatmod, cut, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, subs, thumbnail, visuals
+from cny import align, beats as beatmod, cut, daily, films, meta as meta_mod, plot as plot_mod, planner, render, seo, store, subs, thumbnail, visuals
 from cny.config import Config
 
 log = logging.getLogger("cny.pipeline")
@@ -146,7 +146,9 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     live = [r for r in rows if r.get("kind", "video") == "video" and r.get("video_id")]
 
     if not cfg.is_smoke and not cfg.film and not cfg.skip_upload:
-        why = films.ran_recently(live, gap_hours=cfg.gap_hours)
+        scheduled = os.environ.get("GITHUB_EVENT_NAME", "") == "schedule"
+        why = (daily.hold(live, scheduled=scheduled, post_from_hour=cfg.post_from_hour)
+               or films.ran_recently(live, gap_hours=cfg.gap_hours))
         if why:
             print(f"{why}; nothing to do", flush=True)
             return EXIT_OK

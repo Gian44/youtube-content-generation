@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -40,6 +41,34 @@ def test_ran_recently_uses_the_last_video_row():
     assert films.ran_recently(rows, gap_hours=20, now=now) is None
     assert films.ran_recently([], gap_hours=36, now=now) is None
     assert films.ran_recently([_row("X", 1, date="2026-11-08")], gap_hours=36, now=now)      # date-only rows count too
+
+
+def test_daily_one_recap_per_utc_day_from_nine():
+    from cny import daily
+    up = _row("One", 2001, uploaded_at="2026-11-12T17:30:00+00:00")
+    gone = dict(_row("Old", 1999, uploaded_at="2026-11-13T10:00:00+00:00"), taken_down=True)
+    skipped = _row("Two", 2002, kind="skipped", date="2026-11-13")
+    at = lambda h, d=13: datetime(2026, 11, d, h, 5, tzinfo=timezone.utc)  # noqa: E731
+    assert daily.hold([up], now=at(18, 12)) and "already up" in daily.posted_today([up], now=at(23, 12))
+    assert "before 09:00" in daily.hold([up], now=at(3))                     # last night's late trigger lands after midnight
+    assert daily.hold([up], now=at(3), scheduled=False) is None              # a manual run is not held by the hour
+    assert daily.hold([up, gone, skipped], now=at(16)) is None               # taken down / skipped rows are not today's recap
+    assert daily.hold([dict(up, uploaded_at="2026-11-13T09:40:00Z")], now=at(22)) is not None
+    assert daily.hold([dict(up, uploaded_at="bad")], now=at(22)) is None
+    late = dict(up, date="2026-11-12", uploaded_at="2026-11-13T00:40:00+00:00")   # started 23:10 on the 12th, up after midnight
+    assert daily.hold([late], now=at(10)) is None and daily.hold([late], now=at(23, 12))
+    assert daily.hold([], now=at(9)) is None and daily.load_rows("/nonexistent/ledger.json") == []
+
+
+def test_gate_script_runs_without_dependencies(tmp_path):
+    import os
+    import subprocess
+    import sys
+    here = Path(__file__).resolve().parents[1]
+    out = tmp_path / "out.txt"
+    env = dict(os.environ, GITHUB_EVENT_NAME="workflow_dispatch", GITHUB_OUTPUT=str(out))
+    subprocess.run([sys.executable, "-I", "-S", str(here / "gate.py")], env=env, check=True, capture_output=True)  # -S: no site-packages
+    assert out.read_text().strip() == "go=true"
 
 
 def test_strip_wikitext_removes_refs_templates_links():

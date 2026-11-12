@@ -1,7 +1,7 @@
 # CinybeShorts — cloud pipeline (narrated movie recaps)
 
 Unattended narrated recaps in the recap-channel style, rendered on GitHub Actions and uploaded to the
-CinybeShorts YouTube channel: one ~17-minute recap (told fast) plus 3 Shorts per film, one film every 2nd day. No desktop
+CinybeShorts YouTube channel: one ~17-minute recap (told fast) plus 3 Shorts per film, **one film a day**. No desktop
 app, no database, no PC. **Everything on screen is the film itself** — shots cut, in screen order, from the
 scenes each act covers — and the recap is written from the film's own dialogue (its subtitles). There is no
 stock fallback: a queued film whose file is not in the store is passed over, and nothing is posted
@@ -114,8 +114,17 @@ Content ID claims on them (dispute with the Archive link). Finding items: `_cowo
 `films.yml` is the queue (comments inside). `ledger.json` rows: `kind: video` (published: film, year, theme,
 video_id, title, shorts, transcript source and cue count, plot reference used, shots, film file and source, voice,
 run) and `kind: skipped` (an archive film the run gave up on, with the reason; delete the row to retry).
-The daily cron does nothing while the last video is younger than 36 h (`gap_hours`); a forced `film` input
-always runs. The operator keeps `films.yml` and the Drive folder fed; `plots/<slug>.md` is an optional
+**Daily cadence** (Gian, 2026-11-12; `cny/daily.py`): one recap per UTC day. GitHub starts scheduled runs hours
+late (6–10 h seen) and sometimes drops one, so the workflow has four triggers (09:41, 13:41, 17:41, 21:41 UTC) and
+a `gate` job that reads the latest `ledger.json` with the standard library alone (`gate.py`, seconds, before any
+install): before 09:00 UTC, or once a recap made today is up, the trigger ends there; the first one after 09:00
+on a day without a recap renders. A recap counts for the day its run started (`date`), so one that starts at 23:00
+and uploads after midnight does not take the next day's slot. Under that, `gap_hours` (6) keeps two recaps from
+landing within hours of each other. Manual runs skip the hour rule, not the one-a-day rule; a forced `film` always
+runs. The writer gets three tries per call (`planner.ATTEMPTS`), and a Short up to twice its word cap loses its
+last beats instead of failing the plan, so one bad draft does not cost the day. With 3 Shorts per film (at +1 h,
++1 d, +2 d), a daily recap means ~3 Shorts a day; that is ~6,400 of the channel project's 10,000 YouTube units.
+The public-domain queue holds ~6 weeks of films; a file Gian drops in Drive for an earlier queued film goes first. The operator keeps `films.yml` and the Drive folder fed; `plots/<slug>.md` is an optional
 hand-written reference synopsis.
 
 ## Files
@@ -123,7 +132,9 @@ hand-written reference synopsis.
 | file | purpose |
 |---|---|
 | `cny/config.py` | tunables; wraps `sof.config.Config` for keys and voice |
-| `cny/films.py` | films.yml, next film, the 36-hour gap |
+| `cny/films.py` | films.yml, next film, the minimum gap between recaps |
+| `cny/daily.py` | one recap per UTC day: the trigger rule (standard library only) |
+| `gate.py` | the workflow's gate job: does this trigger make today's recap? |
 | `cny/meta.py` | Wikidata / TMDB metadata |
 | `cny/plot.py` | Wikipedia plot (reference only); operator synopses |
 | `cny/store.py` | the film store: Google Drive (service account) or R2; key matching, download, trash; archive dispatch |

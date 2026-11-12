@@ -107,6 +107,12 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
     assert planner._names_person("the man who knew too much", [{"name": "The Man"}]) is None
     # a two-word film name counts only when both words appear
     assert planner._names_film("the dark knight rises again", "The Dark Knight") and not planner._names_film("a dark night", "The Dark Knight")
+    assert planner._names_film("In Dark Knight, a man", "The Dark Knight")                       # the leading article is optional
+    # the title as a phrase, not its words scattered about (the 2026-11-09 run was rejected for this)
+    notld = "Night of the Living Dead"
+    assert not planner._names_film("One night the dead rise and the living hide in a farmhouse", notld)
+    assert planner._names_film("This is Night of the Living Dead, 1968", notld)
+    assert planner._names_film("he watched memento twice", "Memento") and not planner._names_film("a memento of her", "Mementos")
 
 
 class FakeLLM:
@@ -153,12 +159,18 @@ def test_plan_film_from_transcript_retries_once_and_polishes():
     assert planner.FilmPlan.from_dict(plan.to_dict()).long_form["title"] == plan.long_form["title"]
 
 
-def test_plan_film_raises_after_second_failure():
+def test_plan_film_tries_three_times_then_raises():
     acts = _acts(5)
-    llm = FakeLLM([{"acts": acts}, _scripts(acts, words_per=5), _scripts(acts, words_per=5)])
+    llm = FakeLLM([{"acts": acts}] + [_scripts(acts, words_per=5)] * 3)
     with pytest.raises(planner.PlanError):
         planner.plan_film(llm, title="X", year=None, transcript="t", duration=4000, target_words=300, acts_range=(4, 6),
                           shorts_per_film=3, short_max_words=80)
+    assert len(llm.prompts) == 4 and "Validation errors" in llm.prompts[3][0]
+    # a third draft that passes saves the day (a daily channel: one bad draft must not cost the run)
+    llm = FakeLLM([{"acts": acts}, _scripts(acts, words_per=5), _scripts(acts, words_per=5), _scripts(acts), {"paragraphs": []}])
+    plan = planner.plan_film(llm, title="X", year=None, transcript="t", duration=4000, target_words=300, acts_range=(4, 6),
+                             shorts_per_film=3, short_max_words=80, noslop_rounds=0)
+    assert len(plan.sections) == 5
 
 
 def test_despop_works_per_beat_and_keeps_short_within_cap():
@@ -204,7 +216,7 @@ def test_short_title_and_publish_times():
     assert body["snippet"]["categoryId"] == "1" and body["status"]["privacyStatus"] == "private"
 
 
-def test_short_slightly_over_the_cap_loses_its_last_beats_not_the_plan():
+def test_short_over_the_cap_loses_its_last_beats_not_the_plan():
     acts = _acts(5)
     sc = _scripts(acts)
     sc["shorts"][1]["beats"] = [{"at": "11:00", "text": "He runs. " * 20}, {"at": "11:10", "text": "He runs. " * 20},
@@ -214,7 +226,12 @@ def test_short_slightly_over_the_cap_loses_its_last_beats_not_the_plan():
     assert len(s1["text"].split()) <= 80 and len(s1["beats"]) == 2 and s1["text"] == " ".join(b["text"] for b in s1["beats"])
     too_long = _scripts(acts)
     too_long["shorts"][0]["beats"] = [{"at": "01:30", "text": "word " * 60}, {"at": "02:00", "text": "word " * 60}]
-    with pytest.raises(planner.PlanError, match="120 words"):
+    out = planner.validate_scripts(too_long, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    assert len(out["shorts"][0]["text"].split()) <= 80                     # 120 of 80 words: trimmed, not rejected (147 of 110 failed 11-09)
+    too_long = _scripts(acts)
+    too_long["shorts"][0]["beats"] = [{"at": "01:30", "text": "word " * 60}, {"at": "02:00", "text": "word " * 60},
+                                      {"at": "02:30", "text": "word " * 60}]
+    with pytest.raises(planner.PlanError, match="180 words"):
         planner.validate_scripts(too_long, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     assert planner.trim_words("One two. Three four five.", 3) == "One two." and planner.trim_words("a b c", 5) == "a b c"
     assert planner.trim_words("no stop here at all ever", 3) == "no stop here."

@@ -36,7 +36,9 @@ class Config:
     films_path: str = "films.yml"
     plots_dir: str = "plots"
     ledger_path: str = "ledger.json"
-    gap_hours: float = 36.0             # one film every 2nd day: a daily cron is a no-op inside this gap
+    gap_hours: float = 6.0              # daily (Gian 2026-11-12): one recap per UTC day (cny/daily.py); this gap only
+                                        # stops two recaps landing within hours of each other across midnight
+    post_from_hour: int = 9             # scheduled triggers before 09:00 UTC (17:00 Manila) make nothing (cny/daily.py)
     max_tries: int = 3                  # films (with a file) tried per run when plots are thin
     max_candidates: int = 500           # queued films checked per run: the whole queue, so the archive theme at the end is reached
     min_plot_words: int = 250           # a Wikipedia plot shorter than this is not offered as reference
