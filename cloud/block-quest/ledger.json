@@ -394,5 +394,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43279494520"
+  },
+  {
+    "date": "2026-11-13",
+    "kind": "shorts",
+    "topic": "3 shorts: family_drama, aita, scary_stories",
+    "video_id": "mb6nV1LQdcY",
+    "stories": [
+      {
+        "video_id": "mb6nV1LQdcY",
+        "title": "Mom Left Me a Can of Screws #Shorts",
+        "category": "family_drama",
+        "persona": "calm",
+        "hook": "Mom handed my brother Rick the keys to her Buick, then handed me a coffee can of old screws.",
+        "words": 139,
+        "seconds": 54,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "YDpCi4WH574",
+        "title": "I Ate the Last Tamale at the Funeral #Shorts",
+        "category": "aita",
+        "persona": "confession",
+        "hook": "I ate the last tamale at Grandpa's funeral reception, and my cousin Lupe watched me do it.",
+        "words": 124,
+        "seconds": 45,
+        "publish_at": "2026-11-14T02:01:57Z",
+        "slop": {
+          "before": 1,
+          "after": 0,
+          "rewritten": 1
+        }
+      },
+      {
+        "video_id": "FAtJkLvEklA",
+        "title": "The Humming on the Baby Monitor #Shorts",
+        "category": "scary_stories",
+        "persona": "horror",
+        "hook": "The baby monitor in our rental picked up a woman humming, and Dana swore it wasn't her.",
+        "words": 133,
+        "seconds": 50,
+        "publish_at": "2026-11-14T10:01:57Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 5,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 3,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43476844074"
   }
 ]
