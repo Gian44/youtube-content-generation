@@ -198,5 +198,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43272495641"
+  },
+  {
+    "date": "2026-11-13",
+    "kind": "video",
+    "film": "His Girl Friday",
+    "year": 1940,
+    "theme": "Public domain classics",
+    "topic": "His Girl Friday (1940)",
+    "video_id": "dgWK1-nw9ug",
+    "title": "Newspaper Editor Tricks His Ex-Wife Into One Last Story and Hides a Condemned Man in a Desk",
+    "privacy": "public",
+    "uploaded_at": "2026-11-13T13:48:52+00:00",
+    "duration_seconds": 807,
+    "words": 3137,
+    "acts": 15,
+    "transcript": "archive-asr",
+    "cues": 1286,
+    "plot_reference": true,
+    "beats": 159,
+    "shots": 343,
+    "film_file": "archive.org/his_girl_friday/his_girl_friday.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "22zI19cbXKs",
+        "title": "She Quits the Paper by Tearing Up Her Own Story #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-13T14:48:52Z",
+        "act_index": 6
+      },
+      {
+        "video_id": "SHBEhzY4jaU",
+        "title": "Desk Siege Ends When a Man Climbs Out of Hiding #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-14T14:48:52Z",
+        "act_index": 11
+      },
+      {
+        "video_id": "1rG_o8afJCo",
+        "title": "Editor Lets Her Go, Then the Phone Rings #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-15T14:48:52Z",
+        "act_index": 13
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 11,
+        "after": 4,
+        "rewritten": 7
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43433574193"
   }
 ]
