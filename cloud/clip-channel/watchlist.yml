@@ -8,7 +8,7 @@ accent: "#FF8A00"       # Style B accent colour
 creators:
   # --- Tier 1: live clipping programs -------------------------------------------------------------
   - {name: Flamingo,            url: "https://www.youtube.com/@Flamingo",          verified: true,  rate: "$2.50/1k (Vyro, Total Drama Roblox)"}
-  - {name: Jo Koy,              url: "https://www.youtube.com/@JoKoy",             verified: true,  rate: "$2/1k (Content Rewards; TikTok+IG listed)"}
+  - {name: Jo Koy,              url: "https://www.youtube.com/@JoKoy",             verified: false, note: "switched off 2026-11-14: uploads are cuts of the Blue in the Face special and drew a Content ID claim", rate: "$2/1k (Content Rewards; TikTok+IG listed)"}
   - {name: Tony Hawk,           url: "https://www.youtube.com/@TonyHawk",          verified: true,  rate: "$1.50/1k (Content Rewards)"}
   - {name: Mark Manson,         url: "https://www.youtube.com/@IAmMarkManson",     verified: true,  rate: "$1.25/1k (Content Rewards)"}
   - {name: MrBeast,             url: "https://www.youtube.com/@MrBeast",           verified: true,  rate: "$1/1k (Vyro)"}
@@ -30,3 +30,9 @@ creators:
   - {name: The Diary Of A CEO,  url: "https://www.youtube.com/@TheDiaryOfACEO",    verified: false}
   - {name: PBD Podcast,         url: "https://www.youtube.com/@PBDPodcast",        verified: false}
   - {name: ThePrimeagen,        url: "https://www.youtube.com/@ThePrimeTimeagen",  verified: false}
+
+# Twitch streamers for the "most viewed clips" ranking (run.py twitch, the cloud job). Same rule as above:
+# verified: true only for a creator with a clipping campaign or a clearly stated clip-friendly stance.
+twitch:
+  # captions: false = the stream already shows live captions, so ours are left off
+  - {name: Kai Cenat,           login: kaicenat,   verified: true, captions: false}

@@ -198,3 +198,200 @@ def pick_moments(creator: str, info: dict, words: list[dict], n: int = 2) -> lis
                       "headlines": heads, "emojis": str(c.get("emojis") or ""), "title": str(c.get("title") or "")[:95],
                       "why": str(c.get("why") or "")})
     return clips
+
+
+MULTI_RANK_PROMPT = """You plan a "ranking" Short: five very short clips on ONE narrow theme, each taken from a DIFFERENT
+source video, shown under a title with a numbered list that fills in as each clip plays.
+
+Themes already used (pick a different one): {used}
+
+Source videos. Each transcript line starts with its time in seconds; "..." marks skipped parts.
+
+{videos}
+
+Rules:
+- The theme is one specific, comparable kind of moment that really happens in at least five of these videos, such
+  as the moment the prize is won, the worst fail, the biggest reaction, the most expensive thing. Never a vague
+  theme like "best moments" or "craziest moments".
+- Pick exactly five moments, each from a different video. If you cannot, return {{"theme": ""}}.
+- Each moment is 7 to 11 seconds: one sentence of setup so a stranger knows what is happening, the key line, then
+  the reaction to it. Start at the beginning of a sentence and end after a sentence or the reaction has finished,
+  never in the middle of one.
+- "rank": 1 is the most extreme example of the theme and 5 the mildest. Rank by the theme itself (bigger prize,
+  harder fail), not by the order of the videos.
+- "label": 1 to 3 words plus exactly one emoji at the end. If the theme ranks something measurable (money, size,
+  speed, a count), the label is that number as said in the clip, for example "$250,000 💰". Otherwise it is what a
+  friend would blurt out, for example "Wiped out 💀". The label must match what the clip itself shows or says.
+- A higher rank must visibly beat the one below it (bigger number, more extreme moment). Avoid ties: with more
+  than five candidate videos, drop the ones that would tie.
+- "title_plain" and "title_accent" form the on-screen title, for example "Ranking MrBeast's" and "Biggest Wins".
+  Together under 32 characters.
+- "upload_title": under 60 characters, says what is ranked and may tease number 1.
+
+Return JSON only:
+{{"theme": "", "title_plain": "", "title_accent": "", "upload_title": "", "items": [{{"rank": 1, "video": "V1", "start": 0, "end": 0, "label": ""}}]}}"""
+
+
+def _video_text(info: dict, words: list[dict], cap: int = 60_000) -> str:
+    """Transcript for the ranking prompt: whole video, or for long ones the most-replayed parts plus the ending."""
+    duration = float(info.get("duration") or 0)
+    wins = hot_windows(info, pad=75, top=8) if duration > LONG_VIDEO_S else []
+    if not wins:
+        return transcript_lines(words, None, 10)[:cap]
+    merged: list[tuple[float, float]] = []
+    for a, b in sorted(wins + [(max(0.0, duration - 240), duration + 5)]):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return transcript_lines(words, merged, 10)[:cap]
+
+
+def pick_ranking_multi(sources: list[dict], used_themes=()) -> dict | None:
+    """One theme and five ranked moments, each from a different source video. sources = [{key, id, creator, info,
+    words}]. Returns None when no theme covers five different videos."""
+    blocks = [f"=== {s['key']} | {s['creator']} | {s['info'].get('title') or ''} | "
+              f"{float(s['info'].get('duration') or 0):.0f}s\n{_video_text(s['info'], s['words'])}" for s in sources]
+    data = ask_claude(MULTI_RANK_PROMPT.format(videos="\n\n".join(blocks), used=", ".join(t for t in used_themes if t) or "none"),
+                      timeout=900)
+    by_key = {s["key"]: s for s in sources}
+    items: dict[int, dict] = {}
+    for it in data.get("items") or []:
+        try:
+            rank, key, s, e = int(it["rank"]), str(it["video"]).strip().upper(), float(it["start"]), float(it["end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        src, label = by_key.get(key), str(it.get("label") or "").strip()[:26]
+        if not src or not label or not 1 <= rank <= 5:
+            continue
+        if s < 0 or e - s < 2 or e > float(src["info"].get("duration") or 0) + 2:
+            continue
+        items[rank] = {"rank": rank, "key": key, "video_id": src["id"], "creator": src["creator"],
+                       "start": s, "end": e, "label": label}
+    theme = str(data.get("theme") or "").strip()[:40]
+    if not theme or len(items) != 5 or len({it["video_id"] for it in items.values()}) < 5:
+        return None
+    plain, accent = str(data.get("title_plain") or "Ranking").strip()[:24], str(data.get("title_accent") or theme).strip()[:24]
+    # the first pass only sees a timestamp every 10 s, so its cut points are rough: a second pass sets them
+    # sentence by sentence
+    return {"theme": theme, "title_plain": plain, "title_accent": accent,
+            "upload_title": str(data.get("upload_title") or f"Ranking {theme}").strip()[:95],
+            "items": refine_spans(f"{plain} {accent}", [items[r] for r in sorted(items)], {s["id"]: s["words"] for s in sources})}
+
+
+def sentences(words: list[dict]) -> list[tuple[float, float, str]]:
+    """(start, end, text) per sentence. A sentence ends on . ? ! or before a pause of 1.2 s or more."""
+    out, cur = [], []
+    for i, w in enumerate(words):
+        cur.append(w)
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        long_run = w["t"] - cur[0]["t"] >= 6.0 and nxt is not None and nxt["t"] - w["t"] >= 0.5   # unpunctuated captions
+        if nxt is None or re.search(r"[.?!][\"')]*$", w["w"]) or nxt["t"] - w["t"] >= 1.2 or long_run:
+            out.append((cur[0]["t"], min(cur[-1]["e"], cur[-1]["t"] + 1.2), " ".join(x["w"] for x in cur)))
+            cur = []
+    return out
+
+
+def widen_span(words: list[dict], s: float, e: float, target: float = 9.0, max_len: float = 13.0) -> tuple[float, float]:
+    """Grow a picked span to whole sentences, then add the sentence before and after until it reaches `target`
+    seconds. Clips that stop mid-sentence or start without their setup were the main complaint about the first
+    rankings (Gian, 2026-11-14). Never shrinks the span and never exceeds max_len."""
+    sents = sentences(words)
+    hit = [i for i, (a, b, _) in enumerate(sents) if b > s and a < e]
+    if not hit:
+        return s, e
+    i, j = hit[0], hit[-1]
+    a, b = min(s, sents[i][0]), max(e, sents[j][1])
+    if b - a > max_len:                     # a run-on with no punctuation: keep the pick, only let it finish
+        return s, max(e, min(b, s + max_len))
+    while b - a < target:
+        grew = False
+        if i > 0 and a - sents[i - 1][1] < 2.0 and b - sents[i - 1][0] <= max_len:
+            i -= 1
+            a, grew = sents[i][0], True
+        if b - a < target and j + 1 < len(sents) and sents[j + 1][0] - b < 2.0 and sents[j + 1][1] - a <= max_len:
+            j += 1
+            b, grew = sents[j][1], True
+        if not grew:
+            break
+    return max(0.0, a - 0.06), b - 0.03     # a sentence's end time is the next word's onset: stop just short of it
+
+
+REFINE_PROMPT = """These clips are entries in a ranking Short titled "{title}". Each was picked roughly. Set exact start and
+end times so every clip makes sense alone and does not stop abruptly.
+
+For each entry you get the sentences around the rough pick, each written as [start-end] text, in seconds.
+
+{blocks}
+
+Rules for each entry:
+- Whole sentences only: start at a sentence's start time and end at a sentence's end time.
+- Include one or two sentences of setup so a stranger knows what is happening, the line that makes the entry's
+  label true, and the reaction right after it.
+- 7 to 12 seconds long, never more than 14.
+- The sentence that states the entry's point (the win, the number, the fail itself) must be inside the clip. If
+  something has to go, shorten the reaction after it, never the setup or that sentence.
+- Stop before the talk moves on to something else.
+
+Return JSON only: {{"spans": [{{"rank": 1, "start": 0.0, "end": 0.0}}]}}"""
+
+
+def refine_spans(title: str, items: list[dict], words_by_id: dict) -> list[dict]:
+    """Second pass for rankings: exact cut points chosen from whole sentences around each rough pick. An entry the
+    model answers badly for falls back to widen_span()."""
+    blocks, local = [], {}
+    for it in items:
+        sents = [x for x in sentences(words_by_id.get(it["video_id"]) or []) if x[1] > it["start"] - 22 and x[0] < it["end"] + 22]
+        local[it["rank"]] = sents
+        blocks.append(f"Entry {it['rank']}: label \"{it['label']}\" (rough pick {it['start']:.0f}-{it['end']:.0f})\n"
+                      + "\n".join(f"[{a:.1f}-{b:.1f}] {t}" for a, b, t in sents))
+    try:
+        data = ask_claude(REFINE_PROMPT.format(title=title, blocks="\n\n".join(blocks)), timeout=300)
+    except Exception:
+        data = {}
+    spans = {}
+    for sp in data.get("spans") or []:
+        try:
+            spans[int(sp["rank"])] = (float(sp["start"]), float(sp["end"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    out = []
+    for it in items:
+        sents, (s, e) = local[it["rank"]], spans.get(it["rank"], (None, None))
+        ok = bool(sents) and s is not None and sents[0][0] - 0.5 <= s < e <= sents[-1][1] + 0.5
+        if ok:  # snap to real sentence edges so a rounded number cannot cut a word
+            s = min((x[0] for x in sents), key=lambda v: abs(v - s))
+            e = min((x[1] for x in sents), key=lambda v: abs(v - e))
+            ok = 4.0 <= e - s <= 14.5
+        if ok:
+            s, e = max(0.0, s - 0.06), e - 0.03
+        else:
+            s, e = widen_span(words_by_id.get(it["video_id"]) or [], it["start"], it["end"])
+        out.append({**it, "start": round(s, 2), "end": round(e, 2), "refined": ok})
+    return out
+
+
+def cached_words(video_id: str) -> list[dict]:
+    """Word timings from the captions already on disk for this video, fetched only if they are missing."""
+    subs = sorted((WORK / video_id).glob("src.*.json3"), key=lambda p: ("orig" not in p.name, p.name))
+    if subs:
+        return parse_json3(json.loads(subs[0].read_text(encoding="utf-8")))
+    return fetch_transcript(video_id)[1]
+
+
+def label_said(label: str, text: str) -> bool:
+    """True when a number in the label is actually spoken in the clip (labels without digits always pass)."""
+    digits = re.sub(r"\D", "", label)
+    if not digits:
+        return True
+    t = text.lower()
+    nums = [re.sub(r"\D", "", n) for n in re.findall(r"\d[\d,]*", t)]
+    if digits in nums:
+        return True
+    if digits.endswith("000000"):
+        lead = digits[:-6]
+        if "million" in t and (lead in nums or (lead == "1" and re.search(r"\b(a|one) million", t))):
+            return True
+    if digits.endswith("000") and digits[:-3] in nums and re.search(r"grand|thousand|\bk\b", t):
+        return True
+    return digits == "500000" and "half" in t and "million" in t

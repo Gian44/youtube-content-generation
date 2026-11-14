@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .find import YTDLP, sh
+from .find import YTDLP, label_said, sh
 
 W, H = 1080, 1920
 PANEL_H = 700                    # style A: white headline panel height; the clip fills the rest
@@ -262,3 +262,154 @@ def make_clip(outdir: Path, creator: dict, video_id: str, info: dict, words: lis
         "emojis": clip.get("emojis"), "upload_title": clip.get("title"), "why": clip.get("why"), "face_x": round(fx, 3),
     }, indent=1, ensure_ascii=False), encoding="utf-8")
     return outs
+
+
+# ---- Style C: ranking (reference: project doc claude/clipping-style-ranking.md) ------------------------------------
+R_TOP, R_H = 360, 1280           # clip box under the black title band
+RANK_ORDER = [3, 5, 4, 2, 1]     # play order: the list fills in out of order and number 1 lands last
+GOLD, RED, WHITE, BLACK = (255, 200, 40, 255), (255, 59, 48, 255), (255, 255, 255, 255), (0, 0, 0, 255)
+# short falling "bloop" played as each entry lands; synthesized, so there is nothing to license
+POP = "aevalsrc=0.5*sin(2*PI*(900-2400*t)*t)*exp(-16*t):d=0.25:s=48000"
+
+
+def _split_emoji(label: str) -> tuple[str, str]:
+    text = "".join(ch for ch in label if ord(ch) < 0x2190 and ord(ch) != 0x200D).strip()
+    emoji = "".join(ch for ch in label if ord(ch) >= 0x2190 and ord(ch) != 0xFE0F)
+    return text, emoji
+
+
+def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict, shown: set, watermark: str) -> None:
+    """Overlay for one clip: two-colour title on the top band, the list 1..5 down the left of the clip. Only the
+    ranks in `shown` carry their label yet."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    size = 72
+    while True:
+        f = _font(FONTS_BOLD, size)
+        wp, wa = d.textlength(title_plain + " ", font=f), d.textlength(title_accent, font=f)
+        if wp + wa <= W - 80 or size <= 56:
+            break
+        size -= 4
+    if wp + wa <= W - 80:
+        x = (W - wp - wa) / 2
+        d.text((x, 236), title_plain + " ", font=f, fill=WHITE)
+        d.text((x + wp, 236), title_accent, font=f, fill=RED)
+    else:
+        for i, (text, col) in enumerate(((title_plain, WHITE), (title_accent, RED))):
+            s = 70
+            ff = _font(FONTS_BOLD, s)
+            while d.textlength(text, font=ff) > W - 80 and s > 40:
+                s -= 2
+                ff = _font(FONTS_BOLD, s)
+            d.text(((W - d.textlength(text, font=ff)) / 2, 166 + i * 86), text, font=ff, fill=col)
+    num_f, lab_f = _font(FONTS_BOLD, 62), _font(FONTS_BOLD, 52)
+    y = R_TOP + 80
+    for rank in range(1, 6):
+        d.text((44, y), f"{rank}.", font=num_f, fill=GOLD, stroke_width=5, stroke_fill=BLACK)
+        if rank in shown:
+            text, emoji = _split_emoji(labels[rank])
+            d.text((136, y + 6), text, font=lab_f, fill=WHITE, stroke_width=5, stroke_fill=BLACK)
+            em = _emoji_image(emoji, 56) if emoji else None
+            if em:
+                img.alpha_composite(em, (int(136 + d.textlength(text, font=lab_f) + 14), y + 8))
+        y += 104
+    if watermark:
+        d.text((44, R_TOP + R_H - 76), watermark, font=_font(FONTS_BOLD, 36), fill=(255, 255, 255, 120),
+               stroke_width=1, stroke_fill=(0, 0, 0, 110))
+    img.save(path)
+
+
+def write_ass_rank(path: Path, chunks) -> None:
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+             "[V4+ Styles]",
+             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+             f"Style: Cap,Arial,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (R_TOP + R_H) + 70},1",
+             "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    for t0, t1, text in chunks:
+        text = text.replace("{", "(").replace("}", ")").replace("\\", "/")
+        lines.append(f"Dialogue: 1,{_ts(t0)},{_ts(t1)},Cap,,0,0,0,,{text[:1].upper() + text[1:]}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _has_audio(path: Path) -> bool:
+    r = sh(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", str(path)], timeout=60)
+    return bool((r.stdout or "").strip())
+
+
+def render_rank_part(seg: Path, panel: Path, ass: Path, out: Path, face_x: float) -> None:
+    sw, sh_, dur = probe(seg)
+    scale = max(W / sw, R_H / sh_)
+    tw, th = int(sw * scale / 2 + 0.5) * 2, int(sh_ * scale / 2 + 0.5) * 2
+    x = int(min(max(face_x * tw - W / 2, 0), tw - W))
+    y = (th - R_H) // 2
+    vf = (f"[0:v]fps=30,scale={tw}:{th},crop={W}:{R_H}:{x}:{y},setsar=1,pad={W}:{H}:0:{R_TOP}:black,"
+          f"subtitles={ass.name}[b];[b][1:v]overlay=0:0[v]")
+    stereo = "aformat=sample_rates=48000:channel_layouts=stereo"
+    if _has_audio(seg):
+        # short fades so one clip's sound does not snap into the next
+        af = (f"[0:a]{stereo},afade=t=in:d=0.06,afade=t=out:st={max(dur - 0.2, 0):.3f}:d=0.2[a0];[2:a]{stereo}[p];"
+              "[a0][p]amix=inputs=2:duration=first:normalize=0[a]")
+    else:
+        af = f"[2:a]{stereo},apad=whole_dur={dur:.3f}[a]"
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", seg.name, "-i", panel.name, "-f", "lavfi", "-i", POP,
+                        "-filter_complex", vf + ";" + af, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}",
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+                        "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", out.name],
+                       cwd=seg.parent, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    if r.returncode != 0 or not out.exists():
+        raise RuntimeError(f"ffmpeg failed: {(r.stderr or '')[-400:]}")
+
+
+def cut_local(src: Path, start: float, end: float, dest: Path) -> Path:
+    """Cut [start, end] out of a file already on disk (Twitch clips are downloaded whole). Re-encoded, so the cut
+    lands on the exact frame."""
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{max(start, 0):.3f}", "-i", str(src),
+                        "-t", f"{max(end - start, 0.5):.3f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                        "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", str(dest)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+    if r.returncode != 0 or not dest.exists() or dest.stat().st_size < 20_000:
+        raise RuntimeError(f"cut failed for {src.name}: {(r.stderr or '')[-300:]}")
+    return dest
+
+
+def make_ranking(outdir: Path, plan: dict, words_by_id: dict, cfg: dict) -> Path:
+    """Five clips from five different videos; the list fills in as each plays, number 1 last. Writes option1.mp4
+    and info.json into outdir."""
+    outdir.mkdir(parents=True, exist_ok=True)
+    labels = {it["rank"]: it["label"] for it in plan["items"]}
+    by_rank = {it["rank"]: it for it in plan["items"]}
+    parts, shown, said = [], set(), {}
+    for rank in RANK_ORDER:
+        it = by_rank[rank]
+        shown.add(rank)
+        seg = (cut_local(Path(it["src_file"]), it["start"], it["end"], outdir / f"src{rank}.mp4") if it.get("src_file")
+               else download_segment(it["video_id"], it["start"], it["end"], outdir / f"src{rank}.mp4"))
+        _, _, dur = probe(seg)
+        heard = " ".join(w["w"] for w in words_by_id.get(it["video_id"], []) if it["start"] <= w["t"] < it["start"] + dur)
+        said[rank] = label_said(it["label"], heard)      # a number on the list that nobody says in the clip is suspect
+        ass = outdir / f"caps{rank}.ass"
+        # captions stop at the planned end, not the file's: the download can run a frame or two long, and the next
+        # sentence's first word would flash on screen
+        chunks = (caption_chunks(words_by_id.get(it["video_id"], []), it["start"], min(it["start"] + dur, it["end"]))
+                  if plan.get("captions", True) else [])       # off for streams that already show live captions
+        write_ass_rank(ass, chunks)
+        panel = outdir / f"list{rank}.png"
+        rank_frame_png(panel, plan["title_plain"], plan["title_accent"], labels, set(shown), cfg.get("channel_name") or "")
+        part = outdir / f"part{rank}.mp4"
+        render_rank_part(seg, panel, ass, part, face_center_x(seg))
+        parts.append(part)
+    (outdir / "parts.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
+    out = outdir / "option1.mp4"
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "parts.txt", "-c", "copy",
+                        "-movflags", "+faststart", out.name], cwd=outdir, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=600)
+    if r.returncode != 0 or not out.exists():
+        raise RuntimeError(f"concat failed: {(r.stderr or '')[-400:]}")
+    (outdir / "info.json").write_text(json.dumps({
+        "style": "C", "theme": plan["theme"], "title": [plan["title_plain"], plan["title_accent"]],
+        "upload_title": plan["upload_title"], "play_order": RANK_ORDER,
+        "items": [{**{k: v for k, v in it.items() if k != "src_file"}, "label_said": said.get(it["rank"]),
+                   "source": it.get("source_url") or f"https://www.youtube.com/watch?v={it['video_id']}&t={int(it['start'])}s"}
+                  for it in plan["items"]],
+    }, indent=1, ensure_ascii=False), encoding="utf-8")
+    return out
