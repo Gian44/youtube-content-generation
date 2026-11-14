@@ -264,5 +264,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43433574193"
+  },
+  {
+    "date": "2026-11-14",
+    "kind": "video",
+    "film": "The Last Man on Earth",
+    "year": 1964,
+    "theme": "Public domain classics",
+    "topic": "The Last Man on Earth (1964)",
+    "video_id": "jmIyAR_DbKM",
+    "title": "Last Man Alive Hunts Vampires by Day, Then Learns Who He Has Really Been Killing",
+    "privacy": "public",
+    "uploaded_at": "2026-11-14T12:51:23+00:00",
+    "duration_seconds": 847,
+    "words": 3228,
+    "acts": 17,
+    "transcript": "srt",
+    "cues": 543,
+    "plot_reference": true,
+    "beats": 129,
+    "shots": 349,
+    "film_file": "archive.org/the-last-man-on-earth-1964_202409/The Last Man On Earth 1964.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "a971jcGWkY4",
+        "title": "He Buried His Wife, Then She Knocked on the Door at Night #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-14T13:51:23Z",
+        "act_index": 7
+      },
+      {
+        "video_id": "JPdtpeibBM8",
+        "title": "The Only Survivor Learns Many Vampires He Staked Were Still Alive #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-15T13:51:23Z",
+        "act_index": 13
+      },
+      {
+        "video_id": "s6x01R6tmDI",
+        "title": "He Dies at the Altar Saying the World Was Afraid of Him #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-16T13:51:23Z",
+        "act_index": 16
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 12,
+        "after": 1,
+        "rewritten": 11
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43595131411"
   }
 ]
