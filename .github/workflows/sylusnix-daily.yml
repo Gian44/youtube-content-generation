@@ -68,7 +68,7 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "ledger: sylusnix $(date -u +%F)"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done
-      - name: Keep the run's clip details (no video files: the repo is public)
+      - name: "Keep the run's clip details (no video files, the repo is public)"
         if: always()
         uses: actions/upload-artifact@v4
         with:
