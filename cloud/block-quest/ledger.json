@@ -460,5 +460,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43476844074"
+  },
+  {
+    "date": "2026-11-14",
+    "kind": "shorts",
+    "topic": "3 shorts: relationships, customer_service_drama, revenge",
+    "video_id": "0vWGGduKdOM",
+    "stories": [
+      {
+        "video_id": "0vWGGduKdOM",
+        "title": "His Mother Handed Me the Ring Box #Shorts",
+        "category": "relationships",
+        "persona": "calm",
+        "hook": "Joel's mother slid a ring box across the table at his sister's rehearsal dinner and said, \"He bought this in March.\"",
+        "words": 134,
+        "seconds": 55,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "-9adIF4SGAQ",
+        "title": "She Wanted a Bigger Chicken After Eating Half #Shorts",
+        "category": "customer_service_drama",
+        "persona": "sarcastic",
+        "hook": "The woman set a half-eaten rotisserie chicken on my service desk and said, \"This one's too small, I want the bigger one.\"",
+        "words": 138,
+        "seconds": 58,
+        "publish_at": "2026-11-15T00:48:03Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "HasAiJIXsoo",
+        "title": "Brenda Critiqued My Lasagna Pan Note #Shorts",
+        "category": "revenge",
+        "persona": "sarcastic",
+        "hook": "Brenda returned my lasagna pan with a sticky note on the foil that said, \"Salt, hon.\"",
+        "words": 139,
+        "seconds": 56,
+        "publish_at": "2026-11-15T08:48:03Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43616663706"
   }
 ]
