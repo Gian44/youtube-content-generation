@@ -1,0 +1,32 @@
+﻿# Clip finder watchlist. The finder only reads creators with verified: true unless --include-unverified is passed.
+# verified: true  = a live clipping program was listed for this creator (Clyper directory, checked 2026-10-23..11-11).
+#                   Campaigns open and close often and each has its own rules: recheck the listing and join it first.
+# verified: false = reported as tolerant of clip channels, but no stated permission was found yet.
+channel_name: "sylusnix"      # watermark text burned on the clip; empty = no watermark
+accent: "#FF8A00"       # Style B accent colour
+
+creators:
+  # --- Tier 1: live clipping programs -------------------------------------------------------------
+  - {name: Flamingo,            url: "https://www.youtube.com/@Flamingo",          verified: true,  rate: "$2.50/1k (Vyro, Total Drama Roblox)"}
+  - {name: Jo Koy,              url: "https://www.youtube.com/@JoKoy",             verified: true,  rate: "$2/1k (Content Rewards; TikTok+IG listed)"}
+  - {name: Tony Hawk,           url: "https://www.youtube.com/@TonyHawk",          verified: true,  rate: "$1.50/1k (Content Rewards)"}
+  - {name: Mark Manson,         url: "https://www.youtube.com/@IAmMarkManson",     verified: true,  rate: "$1.25/1k (Content Rewards)"}
+  - {name: MrBeast,             url: "https://www.youtube.com/@MrBeast",           verified: true,  rate: "$1/1k (Vyro)"}
+  - {name: IShowSpeed,          url: "https://www.youtube.com/@IShowSpeed",        verified: true,  rate: "$1/1k (Content Rewards, Expedia)"}
+  - {name: 2 Bears 1 Cave,      url: "https://www.youtube.com/@YMHStudios",        verified: true,  rate: "$1/1k (Content Rewards)"}
+  - {name: Jeremy Ethier,       url: "https://www.youtube.com/@JeremyEthier",      verified: true,  rate: "$1/1k (Content Rewards)"}
+  - {name: Brad Mondo,          url: "https://www.youtube.com/@BradMondo",         verified: true,  rate: "$1/1k (Content Rewards)"}
+  - {name: The Iced Coffee Hour, url: "https://www.youtube.com/@TheIcedCoffeeHour", verified: true,  rate: "$0.75/1k (Content Rewards)"}
+  - {name: Jake Paul,           url: "https://www.youtube.com/@jakepaul",          verified: true,  rate: "$0.75/1k (Content Rewards)"}
+  - {name: Dhar Mann,           url: "https://www.youtube.com/@DharMann",          verified: true,  rate: "not published (Whop)"}
+  - {name: Kai Cenat,           url: "https://www.youtube.com/@KaiCenatLive",      verified: true,  rate: "$10k pool (Content Rewards)"}
+  # --- Tier 2: reported as tolerant, permission not yet confirmed --------------------------------
+  - {name: Theo Von,            url: "https://www.youtube.com/@TheoVon",           verified: false}
+  - {name: Lex Fridman,         url: "https://www.youtube.com/@lexfridman",        verified: false}
+  - {name: Chris Williamson,    url: "https://www.youtube.com/@ChrisWillx",        verified: false}
+  - {name: Alex Hormozi,        url: "https://www.youtube.com/@AlexHormozi",       verified: false}
+  - {name: Andrew Huberman,     url: "https://www.youtube.com/@hubermanlab",       verified: false}
+  - {name: My First Million,    url: "https://www.youtube.com/@MyFirstMillionPod", verified: false}
+  - {name: The Diary Of A CEO,  url: "https://www.youtube.com/@TheDiaryOfACEO",    verified: false}
+  - {name: PBD Podcast,         url: "https://www.youtube.com/@PBDPodcast",        verified: false}
+  - {name: ThePrimeagen,        url: "https://www.youtube.com/@ThePrimeTimeagen",  verified: false}
