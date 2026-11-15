@@ -330,5 +330,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43595131411"
+  },
+  {
+    "date": "2026-11-15",
+    "kind": "video",
+    "film": "House on Haunted Hill",
+    "year": 1959,
+    "theme": "Public domain classics",
+    "topic": "House on Haunted Hill (1959)",
+    "video_id": "bLOhSwILC2o",
+    "title": "Millionaire Offers Five Strangers $10,000 to Survive a Night in a Murder House, But the Ghosts Are",
+    "privacy": "public",
+    "uploaded_at": "2026-11-15T17:21:12+00:00",
+    "duration_seconds": 905,
+    "words": 3497,
+    "acts": 17,
+    "transcript": "srt",
+    "cues": 799,
+    "plot_reference": true,
+    "beats": 161,
+    "shots": 383,
+    "film_file": "archive.org/house_on_haunted_hill_1959-fhd/house_on_haunted_hill_1959.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "VTrIncRZNf0",
+        "title": "A Pilot Vanishes Behind a Cellar Door and Is Found Beaten #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-15T18:21:12Z",
+        "act_index": 5
+      },
+      {
+        "video_id": "HvvfmvkHH98",
+        "title": "The Dead Wife Was Never Dead and Her Plan Is Almost Done #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-16T18:21:12Z",
+        "act_index": 13
+      },
+      {
+        "video_id": "yPW7MsUPcII",
+        "title": "A Skeleton Rises From the Acid and Speaks in a Dead Man's Voice #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-17T18:21:12Z",
+        "act_index": 15
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 4,
+        "after": 2,
+        "rewritten": 2
+      },
+      "shorts": {
+        "before": 1,
+        "after": 1,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 5,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43736187680"
   }
 ]
