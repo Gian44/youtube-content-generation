@@ -2081,5 +2081,22 @@
     "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×11)",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43731538421"
+  },
+  {
+    "date": "2026-11-15",
+    "kind": "marathon",
+    "topic": "Marathon: The Silk Road, Stonehenge, Roman Empire",
+    "category": "history & ancient civilisations",
+    "video_id": "ik4gPy2CaW0",
+    "title": "6 Hours of History to Fall Asleep To | The Silk Road, Stonehenge & Roman Empire",
+    "privacy": "public",
+    "publish_at": "2026-11-16T00:30:00Z",
+    "duration_seconds": 20590,
+    "segments": [
+      "2iOBKh3q8ko",
+      "BLeoLI_0Y2I",
+      "DLgAePvumd4"
+    ],
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43749322183"
   }
 ]
