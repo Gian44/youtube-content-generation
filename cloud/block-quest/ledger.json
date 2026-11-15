@@ -526,5 +526,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43616663706"
+  },
+  {
+    "date": "2026-11-15",
+    "kind": "shorts",
+    "topic": "3 shorts: creepy_encounters, workplace_drama, mysteries",
+    "video_id": "uIm3c9wc9Vk",
+    "stories": [
+      {
+        "video_id": "uIm3c9wc9Vk",
+        "title": "The Boots in My Back Seat #Shorts",
+        "category": "creepy_encounters",
+        "persona": "horror",
+        "hook": "The old man at pump six tapped my window and said, \"Your passenger left his boots.\"",
+        "words": 135,
+        "seconds": 55,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "YKnVeXKrPJA",
+        "title": "My Promotion Was a Twenty-Five Dollar Coffee Card #Shorts",
+        "category": "workplace_drama",
+        "persona": "sarcastic",
+        "hook": "Lyle handed me a twenty-five dollar coffee card at Tuesday standup and announced it as my promotion.",
+        "words": 140,
+        "seconds": 55,
+        "publish_at": "2026-11-16T01:25:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "7QJyFdrazxM",
+        "title": "A Library Book Returned After Thirty-Eight Years #Shorts",
+        "category": "mysteries",
+        "persona": "calm",
+        "hook": "The book drop at our branch held a field guide to mushrooms that was due back in March of 1987.",
+        "words": 144,
+        "seconds": 50,
+        "publish_at": "2026-11-16T09:25:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43740086049"
   }
 ]
