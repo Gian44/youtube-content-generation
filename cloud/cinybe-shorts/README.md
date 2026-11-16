@@ -45,7 +45,7 @@ films.yml (themes in order; the first film without a ledger row that the run can
     lays the film's own sound, cut with the same pieces, under the voice instead, sidechain-ducked ~12 dB);
     chapters at act starts; thumbnail = the film's own frame at the first Short's moment + the thumbnail text
     in gold caps + a "MOVIE RECAP" tag, no film name
-  → Shorts: the same, 9:16 (≤ 3.5-s shots), captions timed per beat, hook as title band; −16 LUFS voice
+  → Shorts: the same, 9:16 (≤ 3.5-s shots), captions timed per beat, no title band over the footage (`shorts_title_band`, off since 2026-11-16); −16 LUFS voice
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
     days later; ledger.json committed; the film trashed in the store
 ```

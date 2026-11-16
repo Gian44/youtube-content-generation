@@ -55,8 +55,8 @@ def beat_cues(beats: list[dict], durs: list[float]) -> list[tuple[float, float, 
 
 def build_short(cfg, *, work: Path, name: str, video: str, short: dict, durs: list[float], cuts: list[float], crop: str | None,
                 end: float, film_end: float, audio: str, film_audio: bool = False) -> str:
-    """Vertical Short: each beat's moment, 9:16, short cuts, under the Short's own voice; captions per beat and the hook
-    as title band."""
+    """Vertical Short: each beat's moment, 9:16, short cuts, under the Short's own voice; captions per beat. The hook as
+    title band over the footage only when ``cfg.shorts_title_band`` (off: it covered the picture)."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -78,7 +78,8 @@ def build_short(cfg, *, work: Path, name: str, video: str, short: dict, durs: li
             log.warning("%s: film sound skipped (%s)", name, exc)
     cues = beat_cues(short["beats"], durs)
     pngs = [sof_shorts.caption_png(t, str(tmp / f"cue_{i:03d}.png"), width=w, height=h) for i, (_, _, t) in enumerate(cues)]
-    tpng = sof_shorts.title_png(str(short["title"]), cfg.brand, str(tmp / "title.png"), width=w, height=h)
+    tpng = (sof_shorts.title_png(str(short["title"]), cfg.brand, str(tmp / "title.png"), width=w, height=h)
+            if getattr(cfg, "shorts_title_band", False) else None)
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=None,
                                           duration=duration, fps=fps), 900)

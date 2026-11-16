@@ -67,6 +67,8 @@ class Config:
     film_lufs: float = -24.0            # the film bed's level in the gaps; ducked ~9 dB further while the voice speaks
     shorts_film_lufs: float = -22.0
     brand: str = "CinybeShorts"
+    shorts_title_band: bool = False     # Gian 2026-11-16: "removing the title on top of the videos. It is covering the entire
+                                        # short" — no hook title / channel name burned over the footage; captions only
     shorts_delay_minutes: int = 60      # Short 1 an hour after the long video, then one a day
     shorts_spacing_hours: float = 24.0
     upload_check_seconds: int = 300
