@@ -1,0 +1,49 @@
+name: cross-subscribe
+on: workflow_dispatch
+permissions: {}
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Subscribe each channel to the others
+        env:
+          C_SOF: ${{ secrets.YT_CLIENT_ID }}
+          S_SOF: ${{ secrets.YT_CLIENT_SECRET }}
+          R_SOF: ${{ secrets.YT_REFRESH_TOKEN }}
+          C_BQD: ${{ secrets.YT_CLIENT_ID_BLOCKQUEST }}
+          S_BQD: ${{ secrets.YT_CLIENT_SECRET_BLOCKQUEST }}
+          R_BQD: ${{ secrets.YT_REFRESH_TOKEN_BLOCKQUEST }}
+          C_CNY: ${{ secrets.YT_CLIENT_ID_CINYBE }}
+          S_CNY: ${{ secrets.YT_CLIENT_SECRET_CINYBE }}
+          R_CNY: ${{ secrets.YT_REFRESH_TOKEN_CINYBE }}
+          C_SYL: ${{ secrets.YT_CLIENT_ID_SYLUSNIX }}
+          S_SYL: ${{ secrets.YT_CLIENT_SECRET_SYLUSNIX }}
+          R_SYL: ${{ secrets.YT_REFRESH_TOKEN_SYLUSNIX }}
+        shell: python
+        run: |
+          import os, json, urllib.request, urllib.parse, urllib.error
+          def call(url, data=None, token=None, method=None):
+              h = {"Content-Type": "application/json"} if data is not None and token else {}
+              if token: h["Authorization"] = "Bearer " + token
+              body = (json.dumps(data).encode() if token else urllib.parse.urlencode(data).encode()) if data is not None else None
+              req = urllib.request.Request(url, data=body, headers=h, method=method)
+              try:
+                  with urllib.request.urlopen(req) as r: return r.status, json.loads(r.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  return e.code, json.loads(e.read() or b"{}")
+          ch = {}
+          for k in ["SOF", "BQD", "CNY", "SYL"]:
+              st, t = call("https://oauth2.googleapis.com/token", {"client_id": os.environ["C_"+k], "client_secret": os.environ["S_"+k], "refresh_token": os.environ["R_"+k], "grant_type": "refresh_token"})
+              if st != 200: print(k, "TOKEN FAIL", st, t.get("error")); continue
+              tok = t["access_token"]
+              st, me = call("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", token=tok)
+              if st != 200 or not me.get("items"): print(k, "CHANNEL FAIL", st); continue
+              it = me["items"][0]
+              ch[k] = (tok, it["id"], it["snippet"]["title"])
+              print(k, "=", it["snippet"]["title"], "| scopes:", t.get("scope"))
+          for a, (tok, aid, an) in ch.items():
+              for b, (_, bid, bn) in ch.items():
+                  if a == b: continue
+                  st, r = call("https://www.googleapis.com/youtube/v3/subscriptions?part=snippet", {"snippet": {"resourceId": {"kind": "youtube#channel", "channelId": bid}}}, token=tok, method="POST")
+                  reason = "" if st == 200 else (r.get("error", {}).get("errors") or [{}])[0].get("reason", "")
+                  print(f"{an} -> {bn}: {st} {reason}")
