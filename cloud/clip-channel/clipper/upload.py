@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ENV = ROOT / ".env"
 REDIRECT = "http://127.0.0.1:8765/"
-SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
+SCOPES = "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
