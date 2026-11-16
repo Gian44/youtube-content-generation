@@ -592,5 +592,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43740086049"
+  },
+  {
+    "date": "2026-11-16",
+    "kind": "shorts",
+    "topic": "3 shorts: cheating, aita, entitled_parents",
+    "video_id": "xAvRNLgaf2o",
+    "stories": [
+      {
+        "video_id": "xAvRNLgaf2o",
+        "title": "The Florist Confirmed Roses to Room 214 #Shorts",
+        "category": "cheating",
+        "persona": "dramatic",
+        "hook": "The florist called our landline and said, \"Confirming two dozen red roses to the Dunmore Inn, room 214, same as last year.\"",
+        "words": 139,
+        "seconds": 56,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "HH3hHJtCVDE",
+        "title": "I Swapped Name Cards at the Church Potluck #Shorts",
+        "category": "aita",
+        "persona": "confession",
+        "hook": "I swapped two name cards at the church potluck last Saturday, and I did it on purpose.",
+        "words": 136,
+        "seconds": 50,
+        "publish_at": "2026-11-17T04:44:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "oBKeFgxFGsk",
+        "title": "Mom Blocked the School Bus for a Waffle #Shorts",
+        "category": "entitled_parents",
+        "persona": "dramatic",
+        "hook": "\"Bus 14 doesn't leave until Mason finishes his waffle,\" the mother said, standing in front of my bumper with her arms out.",
+        "words": 142,
+        "seconds": 65,
+        "publish_at": "2026-11-17T12:44:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 3,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43950968880"
   }
 ]
