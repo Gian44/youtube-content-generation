@@ -272,12 +272,17 @@ def _wrap(d, text: str, font, max_w: int) -> list[str]:
     return lines
 
 
+CAPTION_SCALE = 0.026     # caption font size as a share of the frame height (50 px at 1920)
+
+
 def caption_png(text: str, out: str, *, width: int, height: int) -> str:
-    """Big centred captions under the photo (around 79 % down, above YouTube's Shorts bottom UI),
-    white on a soft dark pill, with a thin outline."""
+    """Centred captions over the picture (around 79 % down, above YouTube's Shorts bottom UI): white with a black
+    outline and a soft drop shadow, nothing behind the words. Gian 2026-11-16, every channel's Shorts: "make the font
+    of the subtitles smaller" (0.034 → 0.026 of the height) and "remove the transparent background the text is
+    hovering over" (the dark pill) — the outline alone has to carry it over bright footage, so it is thicker."""
     from PIL import Image, ImageDraw
 
-    size = max(40, round(height * 0.034))
+    size = max(30, round(height * CAPTION_SCALE))
     font = _font(size)
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
@@ -285,16 +290,12 @@ def caption_png(text: str, out: str, *, width: int, height: int) -> str:
     lh = round(size * 1.25)
     block_h = lh * len(lines)
     y0 = round(height * 0.79) - block_h // 2
-    pad = round(size * 0.6)
-    widest = max(d.textlength(l, font=font) for l in lines) if lines else 0
-    d.rounded_rectangle([(width - widest) / 2 - pad, y0 - pad * 0.6, (width + widest) / 2 + pad, y0 + block_h + pad * 0.4],
-                        radius=pad, fill=(0, 0, 0, 120))
+    stroke, drop = max(3, round(size * 0.1)), max(2, round(size * 0.06))
     for i, line in enumerate(lines):
         x = (width - d.textlength(line, font=font)) / 2
         y = y0 + i * lh
-        for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
-            d.text((x + dx, y + dy), line, font=font, fill=(0, 0, 0, 230))
-        d.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        d.text((x + drop, y + drop), line, font=font, fill=(0, 0, 0, 150), stroke_width=stroke, stroke_fill=(0, 0, 0, 150))
+        d.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
     im.save(out, "PNG")
     return out
 
@@ -451,8 +452,10 @@ def loudnorm_cmd(inp: str, out: str, pre: str = "") -> list[str]:
 
 def build_video(*, photos: list[str], narration: str, audio: str, work: Path, title: str, brand: str,
                 credits: dict[str, str], width: int, height: int, fps: int, crossfade: float = 0.5,
-                name: str = "short") -> str:
-    """``work/<name>.mp4``: clips of equal length over the audio, crossfaded, captions and overlays burned in."""
+                name: str = "short", title_band: bool = False) -> str:
+    """``work/<name>.mp4``: clips of equal length over the audio, crossfaded, captions and overlays burned in. The
+    hook title + channel name over the top of the picture only with ``title_band`` (off since 2026-11-16, Gian: "It
+    is covering the entire short")."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -473,7 +476,7 @@ def build_video(*, photos: list[str], narration: str, audio: str, work: Path, ti
         render.run(render.xfade_chain_cmd(clips, [per] * len(clips), reel, crossfade=crossfade, fps=fps), 900)
     cues = caption_cues(narration, duration)
     pngs = [caption_png(text, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, text) in enumerate(cues)]
-    tpng = title_png(title, brand, str(tmp / "title.png"), width=width, height=height)
+    tpng = title_png(title, brand, str(tmp / "title.png"), width=width, height=height) if title_band else None
     lines = sorted({credits[p] for p in photos if credits.get(p)})
     cpng = credit_png(credit_text(lines), str(tmp / "credit.png"), width=width, height=height) if lines else None
     out = str(work / f"{name}.mp4")

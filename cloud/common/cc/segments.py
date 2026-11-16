@@ -151,8 +151,9 @@ def render_segments(segs: list[Segment], tmp: Path, *, width: int, height: int, 
 
 def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand: str, audio: str, clips: list[str], photos: list[str],
                          width: int = 1080, height: int = 1920, fps: int = 30, clip_seconds: float = 6.0, crossfade: float = 0.4,
-                         slow: float = 1.0, hold_card: str | None = None) -> str:
-    """A vertical Short: the clips (or photos) under the narration, captions and a title band → ``work/<name>.mp4``."""
+                         slow: float = 1.0, hold_card: str | None = None, title_band: bool = False) -> str:
+    """A vertical Short: the clips (or photos) under the narration, captions → ``work/<name>.mp4``. The title band over
+    the picture only with ``title_band`` (off since 2026-11-16, Gian: "It is covering the entire short")."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -166,7 +167,7 @@ def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand:
                            out=str(tmp / "reel.mp4"))
     cues = sof_shorts.caption_cues(text, duration)
     pngs = [sof_shorts.caption_png(t, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, t) in enumerate(cues)]
-    tpng = sof_shorts.title_png(title, brand, str(tmp / "title.png"), width=width, height=height)
+    tpng = sof_shorts.title_png(title, brand, str(tmp / "title.png"), width=width, height=height) if title_band else None
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=None,
                                           duration=duration, fps=fps), 900)

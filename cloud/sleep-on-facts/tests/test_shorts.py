@@ -331,3 +331,32 @@ def test_short_narration_survives_a_failing_editor():
     out = shorts.write_short(LLM({"section": 0, "hook_title": "t", "narration": sloppy}), topic="Venice",
                              sections=SECTIONS, words=60, model="fast")
     assert out["narration"].startswith("Venice is not a city.")
+
+
+def test_caption_png_is_small_and_has_no_box_behind_the_words(tmp_path):
+    """Gian 2026-11-16: smaller subtitles, no translucent background."""
+    from PIL import Image
+    out = shorts.caption_png("Lance steps through a cellar door and never answers when Nora calls.", str(tmp_path / "c.png"),
+                             width=1080, height=1920)
+    a = Image.open(out).getchannel("A")
+    left, top, right, bottom = a.getbbox()
+    assert bottom - top < 1920 * 0.11                 # three lines at 50 px; was four at 65 px inside a pill (~0.19)
+    hist = a.crop((left, top, right, bottom)).histogram()
+    inside = (right - left) * (bottom - top)
+    assert hist[0] > inside * 0.15                    # see-through between the letters: a pill would fill the block
+    assert hist[120] < inside * 0.02                  # and no flat alpha-120 fill
+    assert shorts.CAPTION_SCALE < 0.03
+
+
+def test_build_video_draws_no_title_band_by_default(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(shorts.tts, "duration_seconds", lambda a: 4.0)
+    monkeypatch.setattr(shorts, "cover_vertical", lambda p, o, **k: o)
+    monkeypatch.setattr(shorts, "title_png", lambda *a, **k: seen.setdefault("title", "title.png"))
+    monkeypatch.setattr(shorts.render, "run", lambda cmd, timeout=0: seen.__setitem__("cmd", cmd))
+    shorts.build_video(photos=["a.jpg"], narration="One fact.", audio="a.wav", work=tmp_path, title="A Hook", brand="B",
+                       credits={}, width=1080, height=1920, fps=30)
+    assert "title" not in seen and "title.png" not in " ".join(seen["cmd"])
+    shorts.build_video(photos=["a.jpg"], narration="One fact.", audio="a.wav", work=tmp_path, title="A Hook", brand="B",
+                       credits={}, width=1080, height=1920, fps=30, title_band=True)
+    assert "title.png" in " ".join(seen["cmd"])
