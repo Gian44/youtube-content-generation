@@ -658,5 +658,71 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43950968880"
+  },
+  {
+    "date": "2026-11-17",
+    "kind": "shorts",
+    "topic": "3 shorts: customer_service_drama, revenge, relationships",
+    "video_id": "OObZGBzPcfQ",
+    "stories": [
+      {
+        "video_id": "OObZGBzPcfQ",
+        "title": "Woman Demands Manager of Self-Checkout Four #Shorts",
+        "category": "customer_service_drama",
+        "persona": "sarcastic",
+        "hook": "A woman in a pink visor told me she needed to speak to the manager of Self-Checkout Four.",
+        "words": 141,
+        "seconds": 55,
+        "publish_at": null,
+        "slop": {
+          "before": 1,
+          "after": 1,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "kR6aoFF-dFA",
+        "title": "My Mailbox Was Too Yellow for the HOA #Shorts",
+        "category": "revenge",
+        "persona": "sarcastic",
+        "hook": "Walt from the homeowners board mailed me a forty dollar fine because my mailbox was \"excessively yellow.\"",
+        "words": 142,
+        "seconds": 58,
+        "publish_at": "2026-11-18T03:23:40Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      },
+      {
+        "video_id": "rDnTNQdjNm4",
+        "title": "My Boyfriend's Friday Nights Weren't at His Brother's #Shorts",
+        "category": "relationships",
+        "persona": "calm",
+        "hook": "Owen told me he was at his brother's every Friday, so I called Dale to ask what to bring to his birthday.",
+        "words": 138,
+        "seconds": 49,
+        "publish_at": "2026-11-18T11:23:40Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        }
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 6,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 3,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44156325925"
   }
 ]
