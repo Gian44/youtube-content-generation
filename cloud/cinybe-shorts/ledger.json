@@ -396,5 +396,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43736187680"
+  },
+  {
+    "date": "2026-11-16",
+    "kind": "video",
+    "film": "Carnival of Souls",
+    "year": 1962,
+    "theme": "Public domain classics",
+    "topic": "Carnival of Souls (1962)",
+    "video_id": "zjKsF7wXc14",
+    "title": "Organist Survives a Deadly Crash But Everyone She Meets Starts Treating Her Like a Ghost",
+    "privacy": "public",
+    "uploaded_at": "2026-11-17T00:12:53+00:00",
+    "duration_seconds": 748,
+    "words": 3066,
+    "acts": 14,
+    "transcript": "archive-asr",
+    "cues": 519,
+    "plot_reference": true,
+    "beats": 132,
+    "shots": 305,
+    "film_file": "archive.org/CarnivalofSouls/CarnivalOfSouls.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "e79SKqMwFY8",
+        "title": "Church Fires Its Organist Over One Strange Song #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-17T01:12:53Z",
+        "act_index": 9
+      },
+      {
+        "video_id": "8mh1TB_KGN8",
+        "title": "A Doctor Says the Man She Saw Was Only Guilt #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-18T01:12:53Z",
+        "act_index": 7
+      },
+      {
+        "video_id": "6lq5rhrkYkw",
+        "title": "She Runs From the Dead and Learns Where She Belongs #Shorts",
+        "seconds": 27,
+        "publish_at": "2026-11-19T01:12:53Z",
+        "act_index": 13
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 4,
+        "after": 3,
+        "rewritten": 1
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 7,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/43975311829"
   }
 ]
