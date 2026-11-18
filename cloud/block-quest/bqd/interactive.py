@@ -170,10 +170,11 @@ Return JSON:
 (copy the name exactly): {json.dumps(pool)}.
 For each game write three spoken clues, vaguest first; the third makes it easy.
 Rules:
-- Each clue is 5 to 14 words, a plain statement ("You can adopt a baby or a pet.").
+- Each clue is 5 to 9 words, a plain statement ("You can adopt a baby or a pet.").
 - Never use the game's name or any word of it, not even in another form.
 - Use only well-known features you are completely sure of and that have been in the game for years: what players
-  do there, the setting, the famous item. If you are unsure about a detail, leave it out.
+  do there, the setting, the famous item. No claims about menus, voting, settings, updates, prices or numbers.
+  If you are unsure about a detail, leave it out.
 {SAFETY}
 
 Return JSON:
@@ -234,8 +235,8 @@ def validate(fmt: str, data, params: dict) -> dict:
             if len(clues) != 3:
                 errors.append(f"round {i}: exactly 3 clues")
             for k, c in enumerate(clues, 1):
-                if not 5 <= _words(c) <= 14:
-                    errors.append(f"round {i} clue {k} must be 5-14 words")
+                if not 5 <= _words(c) <= 9:
+                    errors.append(f"round {i} clue {k} must be 5-9 words")
                 leak = _name_words(game) & {w.rstrip("s") for w in re.findall(r"[a-z]+", c.lower())}
                 if leak:
                     errors.append(f"round {i} clue {k} gives the name away ({', '.join(sorted(leak))})")
@@ -285,11 +286,11 @@ def make_beats(fmt: str, script: dict, *, hold: int = 3) -> list[Beat]:
         beats.append(Beat(f"Comment your {NUM_WORDS[n - 1] if n <= 5 else n} picks, like A, B, B, A.",
                           {"kind": "cta", "text": "COMMENT YOUR PICKS"}))
     elif fmt == "guess_the_game":
-        beats.append(Beat("Guess the Roblox game from three clues.", {"kind": "intro", "text": "3 CLUES. 1 GAME."}))
+        beats.append(Beat("Guess the Roblox game.", {"kind": "intro", "text": "3 CLUES. 1 GAME."}))
         for i, r in enumerate(rounds, 1):
             for k, c in enumerate(r["clues"], 1):
                 panel = {"kind": "clues", "round": i, "of": n, "clues": r["clues"][:k]}
-                beats.append(Beat(f"Clue {NUM_WORDS[k - 1]}: {c}", panel, hold if k == len(r["clues"]) else 0))
+                beats.append(Beat(c, panel, hold if k == len(r["clues"]) else 0))     # the panel numbers the clues
             beats.append(Beat(f"It's {r['game'].rstrip('!')}!", {"kind": "clues", "round": i, "of": n, "clues": r["clues"], "answer": r["game"]}))
         beats.append(Beat(f"How many did you get? Comment your score out of {NUM_WORDS[n - 1] if n <= 5 else n}.",
                           {"kind": "cta", "text": "COMMENT YOUR SCORE"}))

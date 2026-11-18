@@ -11,6 +11,9 @@ from sof import upload as sof_upload
 
 CATEGORY_ENTERTAINMENT = "24"
 CATEGORY_GAMING = "20"
+# A general-audience channel (Gian 2026-11-19: kid-safe, NOT "made for kids"): no tag or hashtag that tells YouTube the
+# videos are aimed at children, even when the writer suggests one ("kidsafe", "for kids", "kid friendly").
+_KIDDY = re.compile(r"kid|child|toddler|preschool|nursery|baby ?shark", re.I)
 _BAD = re.compile(r"[!#@\"“”]|\b(shocking|insane|unbelievable|you won't believe)\b", re.I)
 CATEGORY_LABELS = {"aita": "Am I Wrong?", "relationships": "Relationship Stories", "cheating": "Betrayal Stories",
                    "revenge": "Revenge Stories", "workplace_drama": "Workplace Stories", "entitled_parents": "Entitled Parents",
@@ -38,6 +41,11 @@ INTERACTIVE_TAGS = {"would_you_rather": ["roblox would you rather", "would you r
                     "pick_one": ["roblox pick one", "pick one", "choose one", "mystery egg"]}
 
 
+def _adult(tags: list[str]) -> list[str]:
+    """Drop the tags that would read as children's content."""
+    return [t for t in tags if t and not _KIDDY.search(str(t))]
+
+
 def _clean(s: str) -> str:
     return re.sub(r"\s+", " ", _BAD.sub("", str(s or ""))).strip(" -–—:|.")
 
@@ -55,7 +63,7 @@ def short_title(title: str, category: str, *, roblox: bool = False) -> str:
 def short_description(*, hook: str, category: str, tags: list[str], credit: str = "") -> str:
     label = CATEGORY_LABELS.get(category, category.replace("_", " ").title())
     lead = ["shorts", "roblox", "robloxstory", "storytime"] if credit else ["shorts", "storytime", category]
-    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + tags[:4]) if t))
+    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + _adult(tags)[:4]) if t))
     if credit:      # Roblox stories over Creative Commons gameplay: the maker of the gameplay is credited by name and link
         return (f"{hook.strip()}\n\n{label} — a new Roblox story every day on Block Quest Daily.\n\n"
                 "Original fiction written for this channel; any resemblance to real players or events is coincidental. "
@@ -69,7 +77,7 @@ def short_description(*, hook: str, category: str, tags: list[str], credit: str 
 def interactive_description(*, fmt: str, hook: str, tags: list[str], credit: str) -> str:
     label = CATEGORY_LABELS.get(fmt, fmt.replace("_", " ").title())
     lead = ["shorts", "roblox"] + [t.replace(" ", "") for t in INTERACTIVE_TAGS.get(fmt, [])[:2]]
-    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + tags[:3]) if t))
+    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + _adult(tags)[:3]) if t))
     return (f"{hook.strip()}\n\n{label}: {INTERACTIVE_CALLS.get(fmt, 'Comment your answers')}. A new Roblox Short every "
             "day on Block Quest Daily.\n\nNot affiliated with or endorsed by Roblox Corporation.\n"
             + (f"{credit}\n" if credit else "") + "\n" + hashtags)[:4900]
@@ -85,7 +93,7 @@ def short_tags(category: str, tags: list[str], *, roblox: bool = False) -> list[
     out, seen, size = [], set(), 0
     for t in base:
         t = re.sub(r"[<>\"]", "", str(t)).strip()[:60]
-        if not t or t.lower() in seen:
+        if not t or t.lower() in seen or _KIDDY.search(t):
             continue
         if size + len(t) + 2 > 480 or len(out) >= 25:
             break

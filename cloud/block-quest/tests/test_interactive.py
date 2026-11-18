@@ -23,13 +23,13 @@ WYR = {"title": "Pets Edition", "tags": ["pets", "roblox"],
                   {"a": "hatch a legendary egg every day", "b": "get one thousand Robux once"},
                   {"a": "beat every obby on your first try", "b": "never lag again in any game"},
                   {"a": "have the rarest hat in the game", "b": "have the fastest pet in the server"}]}
-GTG_OK = {"tags": ["quiz"], "rounds": [
+GTG_OK = {"tags": ["quiz", "kidsafe"], "rounds": [
     {"game": "Adopt Me!", "clues": ["You can raise a baby or a pet here.", "Eggs hatch into pets you can trade.",
                                     "A legendary neon pet is the big dream."]},
     {"game": "Tower of Hell", "clues": ["There are no checkpoints at all.", "The sections change every few minutes.",
-                                        "You climb as high as you can before time runs out."]},
+                                        "You climb as high as you can."]},
     {"game": "Jailbreak", "clues": ["You can play as police or a criminal.", "Players escape and rob stores.",
-                                    "Cops chase cars across a big city map."]}]}
+                                    "Cops chase cars across a big city."]}]}
 PICK = {"title": "Mystery Edition", "tags": ["pets"], "rounds": [
     {"thing": "egg", "rewards": ["a rainbow dragon pet", "a single wet sock", "100 Robux"]},
     {"thing": "chest", "rewards": ["a golden crown hat", "a slightly used banana", "a speed trail"]}]}
@@ -76,10 +76,11 @@ def test_guess_the_game_only_listed_games_and_no_name_in_the_clues():
     p = _params("guess_the_game")
     out = interactive.validate("guess_the_game", json.loads(json.dumps(GTG_OK)), p)
     beats = interactive.make_beats("guess_the_game", out)
-    assert beats[0].say == "Guess the Roblox game from three clues." and beats[3].hold == 3 and beats[4].say == "It's Adopt Me!"
+    assert beats[0].say == "Guess the Roblox game." and beats[3].hold == 3 and beats[4].say == "It's Adopt Me!"
+    assert beats[1].say == "You can raise a baby or a pet here."               # no spoken "Clue one:" (the panel numbers them)
     assert beats[4].panel["answer"] == "Adopt Me!" and beats[-1].panel["kind"] == "cta"
     leak = json.loads(json.dumps(GTG_OK))
-    leak["rounds"][1]["clues"][2] = "You climb a tall tower before time runs out."
+    leak["rounds"][1]["clues"][2] = "You climb a tall tower before time ends."
     with pytest.raises(stories.StoryError, match="gives the name away"):
         interactive.validate("guess_the_game", leak, p)
     unknown = json.loads(json.dumps(GTG_OK))
@@ -150,6 +151,10 @@ def test_interactive_seo():
     d = seo.interactive_description(fmt="would_you_rather", hook="Would you rather a, or b?", tags=["pets"], credit=credit)
     assert credit in d and "Not affiliated" in d and "#wouldyourather" in d and "comment" in d.lower()
     assert seo.interactive_tags("guess_the_game", ["adopt me!"])[0] == "roblox"
+    # general audience: no tag or hashtag that reads as children's content, whatever the writer suggests
+    assert not any("kid" in t.lower() for t in seo.interactive_tags("pick_one", ["kidsafe", "for kids", "pets"]))
+    assert "#kidsafe" not in seo.interactive_description(fmt="pick_one", hook="h", tags=["kidsafe", "pets"], credit="")
+    assert "#kidfriendly" not in seo.short_description(hook="h", category="obby_fails", tags=["kid friendly"], credit="c")
     assert seo.short_title("Roblox Would You Rather: Pets Edition", "would_you_rather", roblox=True).endswith("#roblox #Shorts")
 
 
