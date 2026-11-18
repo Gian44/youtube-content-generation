@@ -21,7 +21,21 @@ CATEGORY_LABELS = {"aita": "Am I Wrong?", "relationships": "Relationship Stories
                    "friends_and_betrayal": "Roblox Friend Stories", "banned_or_hacked": "Roblox Account Stories",
                    "robux_and_parents": "Robux Stories", "wholesome": "Wholesome Roblox Stories",
                    "revenge_on_trolls": "Roblox Troll Stories", "roleplay_drama": "Roblox Roleplay Stories",
-                   "creepy_servers": "Creepy Roblox Stories", "sibling_rivalry": "Roblox Sibling Stories"}
+                   "creepy_servers": "Creepy Roblox Stories", "sibling_rivalry": "Roblox Sibling Stories",
+                   # 2026-11-19: kid-safe, all-ages story categories + the interactive formats
+                   "obby_fails": "Roblox Obby Stories", "lucky_hatch": "Lucky Roblox Stories",
+                   "helping_a_noob": "Wholesome Roblox Stories", "roleplay_comedy": "Funny Roblox Roleplay Stories",
+                   "sibling_shenanigans": "Roblox Sibling Stories", "build_battle": "Roblox Build Stories",
+                   "epic_comeback": "Roblox Comeback Stories", "robux_and_chores": "Robux Stories",
+                   "best_friend_duo": "Roblox Friend Stories", "fair_trades": "Roblox Trading Stories",
+                   "would_you_rather": "Roblox Would You Rather", "guess_the_game": "Guess the Roblox Game",
+                   "pick_one": "Roblox Pick One"}
+INTERACTIVE_CALLS = {"would_you_rather": "Pick fast and comment your answers",
+                     "guess_the_game": "Guess before the timer runs out and comment your score",
+                     "pick_one": "Pick one, then comment what you got"}
+INTERACTIVE_TAGS = {"would_you_rather": ["roblox would you rather", "would you rather", "wyr", "this or that"],
+                    "guess_the_game": ["guess the roblox game", "roblox quiz", "guess the game", "roblox trivia"],
+                    "pick_one": ["roblox pick one", "pick one", "choose one", "mystery egg"]}
 
 
 def _clean(s: str) -> str:
@@ -50,6 +64,19 @@ def short_description(*, hook: str, category: str, tags: list[str], credit: str 
     return (f"{hook.strip()}\n\n{label} — a new story every day on Block Quest Daily.\n\n"
             "Original fiction written for this channel; any resemblance to real people or events is coincidental. "
             "Footage: Pexels and Pixabay.\n\n" + hashtags)[:4900]
+
+
+def interactive_description(*, fmt: str, hook: str, tags: list[str], credit: str) -> str:
+    label = CATEGORY_LABELS.get(fmt, fmt.replace("_", " ").title())
+    lead = ["shorts", "roblox"] + [t.replace(" ", "") for t in INTERACTIVE_TAGS.get(fmt, [])[:2]]
+    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + tags[:3]) if t))
+    return (f"{hook.strip()}\n\n{label}: {INTERACTIVE_CALLS.get(fmt, 'Comment your answers')}. A new Roblox Short every "
+            "day on Block Quest Daily.\n\nNot affiliated with or endorsed by Roblox Corporation.\n"
+            + (f"{credit}\n" if credit else "") + "\n" + hashtags)[:4900]
+
+
+def interactive_tags(fmt: str, tags: list[str]) -> list[str]:
+    return short_tags(fmt, INTERACTIVE_TAGS.get(fmt, []) + list(tags), roblox=True)
 
 
 def short_tags(category: str, tags: list[str], *, roblox: bool = False) -> list[str]:

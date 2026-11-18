@@ -1,4 +1,22 @@
-# Block Quest Daily — cloud pipeline (story Shorts)
+# Block Quest Daily — cloud pipeline (Roblox Shorts)
+
+**Since 2026-11-19** (Gian: kid-safe, all ages, no creepy stories; a general-audience channel, not "made for
+kids"): every day one Roblox story and two interactive Shorts, all over Creative Commons Roblox gameplay
+(`gameplay.yml`), the order shuffled by the date. Stories come from the 10 funny/wholesome/adventure categories in
+`topics.yml` (the writer rejects anything creepy, scammed, hacked or banned). The interactive formats live in
+`bqd/interactive.py`: **would_you_rather** (4 rounds, A red / B blue, 3-second countdown), **guess_the_game** (3
+games from a fixed kid-safe list, 3 clues each, the name never in a clue) and **pick_one** (pick an egg / chest /
+door: one, two or three, then all three open). Each spoken line is voiced on its own and joined with countdown
+ticks, so the panel always matches the voice. Ledger rows carry `format` for the two-week comparison.
+
+```bash
+gh workflow run block-quest-daily.yml -f count=3 -f smoke=true                         # today's mix, unlisted
+gh workflow run block-quest-daily.yml -f count=1 -f smoke=true -f format=pick_one      # one format, unlisted
+```
+
+The text below describes the original story pipeline; the stock-footage path still exists behind
+`background: "stock"`.
+
 
 Three original first-person story Shorts a day (the first live at once, the next 8 h and 16 h later), written,
 voiced, cut over stock b-roll and uploaded from GitHub Actions. No PC, no database. The channel's 45 earlier

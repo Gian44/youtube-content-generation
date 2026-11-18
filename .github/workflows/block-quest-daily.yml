@@ -2,9 +2,10 @@ name: block-quest daily
 
 on:
   schedule:
-    # Roblox stories over Creative Commons Roblox gameplay since 2026-11-18 (cloud/block-quest/gameplay.yml).
-    # Daily at 10:17 UTC (18:17 Manila): three story Shorts a day, the first live at once, the others 8 h and
-    # 16 h later (Gian, 2026-11-07). After the sleep (08:23) and cinybe (09:41) runs so none queue together.
+    # Roblox Shorts over Creative Commons Roblox gameplay since 2026-11-18 (cloud/block-quest/gameplay.yml); since
+    # 2026-11-19 kid-safe, all ages: one story + two interactive Shorts a day (would you rather / guess the game /
+    # pick one), order shuffled by the date. Daily at 10:17 UTC (18:17 Manila): the first live at once, the others
+    # 8 h and 16 h later (Gian, 2026-11-07). After the sleep (08:23) and cinybe (09:41) runs so none queue together.
     - cron: "17 10 * * *"
   workflow_dispatch:
     inputs:
@@ -12,7 +13,10 @@ on:
         description: "Shorts to make today"
         default: "3"
       category:
-        description: "Force a category from topics.yml (optional)"
+        description: "Force a story category from topics.yml (optional; every Short becomes a story)"
+        default: ""
+      format:
+        description: "Force one format: story | would_you_rather | guess_the_game | pick_one (optional)"
         default: ""
       smoke:
         description: "true = unlisted upload, ledger untouched"
@@ -102,6 +106,7 @@ jobs:
           TTS_BACKEND: pocket
           IN_COUNT: ${{ github.event.inputs.count || '3' }}
           IN_CATEGORY: ${{ github.event.inputs.category || '' }}
+          IN_FORMAT: ${{ github.event.inputs.format || '' }}
           IN_SMOKE: ${{ github.event.inputs.smoke || 'false' }}
           IN_PRIVACY: ${{ github.event.inputs.privacy || 'public' }}
           IN_SKIP_UPLOAD: ${{ github.event.inputs.skip_upload || 'false' }}
@@ -109,6 +114,7 @@ jobs:
           set -e
           ARGS=(--count "$IN_COUNT" --privacy "$IN_PRIVACY")
           if [ -n "$IN_CATEGORY" ]; then ARGS+=(--category "$IN_CATEGORY"); fi
+          if [ -n "$IN_FORMAT" ]; then ARGS+=(--format "$IN_FORMAT"); fi
           if [ "$IN_SMOKE" = "true" ]; then ARGS+=(--smoke); fi
           if [ "$IN_SKIP_UPLOAD" = "true" ]; then ARGS+=(--skip-upload); fi
           python run.py "${ARGS[@]}"
@@ -120,6 +126,7 @@ jobs:
           path: |
             cloud/block-quest/work/**/stories.json
             cloud/block-quest/work/**/footage.json
+            cloud/block-quest/work/**/timeline.json
             cloud/block-quest/work/**/frames/*.jpg
             cloud/block-quest/work/**/short*.mp4
           if-no-files-found: ignore

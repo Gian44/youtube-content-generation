@@ -1,4 +1,5 @@
-"""Orchestration: draw categories → write the day's stories → voice → b-roll → render → upload on a drip → ledger.
+"""Orchestration: plan the day's mix (story / interactive formats) → write each Short → voice → gameplay → render →
+upload on a drip → ledger.
 
 Resumable: ``work/<date>/`` keeps stories.json, the audio, footage and renders; the ledger is written only after
 the uploads (one row per day with every Short)."""
@@ -18,7 +19,7 @@ from sof import ledger, tts, upload, vision
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from bqd import gameplay, seo, stories
+from bqd import gameplay, interactive, seo, stories
 from bqd.config import Config
 
 log = logging.getLogger("bqd.pipeline")
@@ -35,26 +36,41 @@ def _run_url() -> str:
     return f"{srv}/{repo}/actions/runs/{rid}" if rid else ""
 
 
+def plan(cfg: Config, rows: list[dict], *, today: str) -> list[str]:
+    """The day's slots in publish order ("story" or an interactive format)."""
+    if cfg.category and not cfg.format:
+        return ["story"] * cfg.count
+    return interactive.plan_slots(list(cfg.mix), count=cfg.count, seed=today, avoid=interactive.recent_formats(rows, last=1),
+                                  force=cfg.format)
+
+
 def write_stories(cfg: Config, llm, rows: list[dict], *, today: str, work: Path) -> list[stories.Story]:
     path = work / "stories.json"
     if path.exists():
         return [stories.Story.from_dict(d) for d in json.loads(path.read_text(encoding="utf-8"))]
+    slots = plan(cfg, rows, today=today)
     cats, personas = stories.load_topics(cfg.topics_path)
     avoid = stories.recent_categories(rows, days=cfg.avoid_recent_days)
-    picks = stories.draw_categories(cats, count=cfg.count, avoid=avoid, seed=today, force=cfg.category)
+    picks = iter(stories.draw_categories(cats, count=max(1, slots.count("story")), avoid=avoid, seed=today, force=cfg.category))
     used = stories.recent_hooks(rows, limit=cfg.recent_hooks)
     out: list[stories.Story] = []
-    for cat in picks:
+    for slot in slots:
         try:
-            s = stories.write_story(llm, cat, persona_note=personas.get(cat.persona, ""), used_hooks=used + [x.hook for x in out],
-                                    words_min=cfg.words_min, words_max=cfg.words_max, words_target=cfg.words_target,
-                                    noslop_rounds=cfg.noslop_rounds, fast_model=cfg.sof.fast_model,
-                                    need_queries=cfg.background != "gameplay")
+            if slot == "story":
+                cat = next(picks)
+                s = stories.write_story(llm, cat, persona_note=personas.get(cat.persona, ""), used_hooks=used + [x.hook for x in out],
+                                        words_min=cfg.words_min, words_max=cfg.words_max, words_target=cfg.words_target,
+                                        noslop_rounds=cfg.noslop_rounds, fast_model=cfg.sof.fast_model,
+                                        need_queries=cfg.background != "gameplay")
+            else:
+                recent = interactive.recent_used(rows, slot)
+                s = interactive.write(llm, slot, seed=today, used=recent, recent_games=interactive.recent_games(rows),
+                                      hold=cfg.hold_seconds)
         except stories.StoryError as exc:
-            print(f"! {cat.key}: {exc}", flush=True)
+            print(f"! {slot}: {exc}", flush=True)
             continue
         out.append(s)
-        print(f"story {len(out)}: [{cat.key}/{cat.persona}] {s.words} words · \"{s.title}\""
+        print(f"short {len(out)}: [{s.format}{'/' + s.category + '/' + s.persona if s.format == 'story' else ''}] {s.words} words · \"{s.title}\""
               + (f" · noslop {s.slop.get('before')}→{s.slop.get('after')}" if s.slop else ""), flush=True)
     if out:
         path.write_text(stories.dump(out), encoding="utf-8")
@@ -100,6 +116,10 @@ def run(cfg: Config) -> int:
     _stage("tts")
     audio: list[str] = []
     for k, s in enumerate(tales):
+        if s.format != "story":                       # one voiced line per beat, joined with the countdown ticks
+            audio.append(interactive.voice(s, work, cfg, index=k, hold=cfg.hold_seconds))
+            print(f"short {k + 1}: {tts.duration_seconds(audio[-1]):.0f} s ({s.format})", flush=True)
+            continue
         raw = tts.speak([s.body], str(work / f"s{k}" / "tts"), cfg.sof, short=True)[0]
         out = work / f"short{k + 1}.mp3"
         if not out.exists():
@@ -156,6 +176,19 @@ def run(cfg: Config) -> int:
             print(f"! short {k + 1} has no gameplay clip; skipped", flush=True)
             files.append("")
             continue
+        if s.format != "story" and not library:
+            print(f"! short {k + 1} ({s.format}) needs gameplay; skipped", flush=True)
+            files.append("")
+            continue
+        if s.format != "story" and not out.exists():
+            try:
+                interactive.render(work=work, name=name, index=k, header=interactive.FORMATS[s.format]["header"],
+                                   background=backs[k].local, audio=a, width=cfg.width, height=cfg.height, fps=cfg.fps)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("short %d failed", k + 1)
+                print(f"! short {k + 1} render failed ({exc})", flush=True)
+                files.append("")
+                continue
         if library and not out.exists():
             try:
                 segments.build_background_short(work=work, name=name, text=s.body, audio=a, background=backs[k].local,
@@ -201,11 +234,17 @@ def run(cfg: Config) -> int:
             continue
         at = seo.publish_at(k_live, spacing_hours=cfg.spacing_hours, now=now) if cfg.privacy == "public" and not cfg.smoke else None
         back = backs[k]
-        body = seo.video_body(title=seo.short_title(s.title, s.category, roblox=bool(back)),
-                              description=seo.short_description(hook=s.hook, category=s.category, tags=s.tags,
-                                                                credit=back.credit if back else ""),
-                              tags=seo.short_tags(s.category, s.tags, roblox=bool(back)), privacy=cfg.privacy, publish_at=at,
-                              gaming=bool(back))
+        if s.format != "story":
+            body = seo.video_body(title=seo.short_title(s.title, s.category, roblox=True),
+                                  description=seo.interactive_description(fmt=s.format, hook=s.hook, tags=s.tags,
+                                                                          credit=back.credit if back else ""),
+                                  tags=seo.interactive_tags(s.format, s.tags), privacy=cfg.privacy, publish_at=at, gaming=True)
+        else:
+            body = seo.video_body(title=seo.short_title(s.title, s.category, roblox=bool(back)),
+                                  description=seo.short_description(hook=s.hook, category=s.category, tags=s.tags,
+                                                                    credit=back.credit if back else ""),
+                                  tags=seo.short_tags(s.category, s.tags, roblox=bool(back)), privacy=cfg.privacy, publish_at=at,
+                                  gaming=bool(back))
         try:
             vid = upload.upload_video(yt, path, body, None)
             state, reason = upload.wait_until_accepted(yt, vid, timeout=cfg.upload_check_seconds) if k_live == 0 else ("unchecked", "")
@@ -216,7 +255,9 @@ def run(cfg: Config) -> int:
         if state in upload.BAD_STATES:
             print(f"✗ YouTube did not accept short {k + 1}: {state} ({reason})", flush=True)
             continue
-        entries.append({"video_id": vid, "title": body["snippet"]["title"], "category": s.category, "persona": s.persona, "hook": s.hook,
+        extra = {"games": [r["game"] for r in s.script.get("rounds") or []]} if s.format == "guess_the_game" else {}
+        entries.append({"video_id": vid, "title": body["snippet"]["title"], "format": s.format, "category": s.category,
+                        "persona": s.persona, "hook": s.hook, **extra,
                         "words": s.words, "seconds": round(tts.duration_seconds(audio[k])), "publish_at": at,
                         "slop": s.slop or None, **({"gameplay": back.file, "gameplay_credit": back.credit} if back else {})})
         print(f"short {k + 1} uploaded https://youtu.be/{vid}" + (f" · live at {at}" if at else f" · {cfg.privacy}"), flush=True)

@@ -23,7 +23,12 @@ class Config:
     work_dir: str = "work"
     topics_path: str = "topics.yml"
     ledger_path: str = "ledger.json"
-    category: str | None = None         # force one category for every story of the run
+    category: str | None = None         # force one category for every story of the run (all slots become stories)
+    format: str | None = None           # force one format for every slot: story | would_you_rather | guess_the_game | pick_one
+    # Gian 2026-11-19: one story + two interactive Shorts a day; after two weeks the views decide the mix. The order
+    # of the day's three is shuffled by the date so each format takes each time slot in turn.
+    mix: tuple = ("story", "interactive", "interactive")
+    hold_seconds: int = 3               # the countdown after each interactive question
     words_min: int = 100
     words_max: int = 150                # ≈ 65 s at voice F's pace
     words_target: int = 125
@@ -71,9 +76,10 @@ class Config:
 
 
 def parse_args(argv=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Block Quest Daily cloud pipeline: story Shorts")
+    p = argparse.ArgumentParser(description="Block Quest Daily cloud pipeline: Roblox story and interactive Shorts")
     p.add_argument("--count", type=int, default=3, help="Shorts to make today")
-    p.add_argument("--category", default=None, help="force a category (see topics.yml)")
+    p.add_argument("--category", default=None, help="force a story category (see topics.yml); every Short is a story")
+    p.add_argument("--format", default=None, help="force one format: story | would_you_rather | guess_the_game | pick_one")
     p.add_argument("--privacy", choices=["public", "unlisted", "private"], default=None)
     p.add_argument("--smoke", action="store_true", help="unlisted, ledger untouched")
     p.add_argument("--skip-upload", action="store_true")

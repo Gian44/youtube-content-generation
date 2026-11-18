@@ -34,6 +34,7 @@ def _answer(n):
 
 def test_write_stories_skips_failures_and_is_resumable(tmp_path):
     cfg = _cfg(tmp_path, count=3)
+    cfg.mix = ("story",)                       # all three slots are stories here; the mix is tested in test_interactive
     cfg.noslop_rounds = 0
     cfg.words_min = 40
     work = tmp_path / "work" / "2026-11-08"

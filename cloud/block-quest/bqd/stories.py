@@ -19,6 +19,9 @@ from sof.llm import LLM, LLMError
 
 log = logging.getLogger("bqd.stories")
 BANNED_WORDS = re.compile(r"\b(reddit|subreddit|r/|op\b|upvote|karma)\b", re.I)
+# Gian 2026-11-19: kid-safe, all ages, nothing creepy. Stories that lean on these are rewritten, not published.
+DARK_WORDS = re.compile(r"\b(creep(y|ier|iest|ed)?|horror|haunt(ed|ing)?|stalk(er|ed|ing)?|kidnap\w*|blood\w*|gore|"
+                        r"hack(ed|er|ers|ing)?|scam(s|med|mer|mers)?|banned|password|home address|phone number)\b", re.I)
 
 
 class StoryError(RuntimeError):
@@ -43,6 +46,8 @@ class Story:
     broll_queries: list[str]
     tags: list[str] = field(default_factory=list)
     slop: dict = field(default_factory=dict)
+    format: str = "story"        # story | would_you_rather | guess_the_game | pick_one (bqd/interactive.py)
+    script: dict = field(default_factory=dict)   # the interactive formats' rounds; empty for a story
 
     @property
     def words(self) -> int:
@@ -50,7 +55,8 @@ class Story:
 
     def to_dict(self) -> dict:
         return {"category": self.category, "persona": self.persona, "title": self.title, "hook": self.hook, "body": self.body,
-                "broll_queries": self.broll_queries, "tags": self.tags, "slop": self.slop}
+                "broll_queries": self.broll_queries, "tags": self.tags, "slop": self.slop, "format": self.format,
+                "script": self.script}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Story":
@@ -79,8 +85,10 @@ def recent_categories(rows: list[dict], *, days: int, now: datetime | None = Non
     return out
 
 
-def recent_hooks(rows: list[dict], *, limit: int) -> list[str]:
-    hooks = [str(s.get("hook") or s.get("title") or "") for r in rows for s in (r.get("stories") or [])]
+def recent_hooks(rows: list[dict], *, limit: int, fmt: str = "story") -> list[str]:
+    """The last ``limit`` hooks of one format (rows written before 2026-11-19 carry no format: they are stories)."""
+    hooks = [str(s.get("hook") or s.get("title") or "") for r in rows for s in (r.get("stories") or [])
+             if str(s.get("format") or "story") == fmt]
     return [h for h in hooks if h][-limit:]
 
 
@@ -109,7 +117,8 @@ def draw_categories(cats: list[Category], *, count: int, avoid: set[str], seed: 
 SYSTEM = ("You write original short fiction read aloud as YouTube Shorts over Roblox gameplay: first-person stories "
           "told by a Roblox player about something that happened in a game, the way players tell them to each other. "
           "Completely original; never claim it is real; never mention any forum or social app. The listeners are "
-          "mostly 10 to 16 years old, so everything is clean. Output strict JSON.")
+          "Roblox players of every age, younger ones included, so every story is kid-safe: funny, wholesome or "
+          "exciting, never scary or mean. Output strict JSON.")
 
 PROMPT = """Write an original first-person Roblox story for the category "{category}" ({hints}).
 Narrator style: {persona} — {persona_note}.
@@ -124,10 +133,12 @@ Requirements:
   PAYOFF (a twist, a consequence or a quiet landing), then ONE closing question to the audience as the last
   sentence (e.g. "Would you have told her?").
 - Specific, physical details: names, places, objects, amounts. Plain words. Contractions are fine.
-- Clean for young listeners: no romance or online dating, no cheating partners, no sexual content, no swearing,
-  no slurs, no gore; nothing scarier than a spooky server. No real person, no real username, no real YouTuber.
-- A scam, hack or exploit may happen in the story, but never explain how to do one, and it never pays off.
-- Nobody shares a password, address, phone number or real name, except as the mistake the story warns about.
+- Kid-safe for every age: funny, wholesome or exciting. Nothing scary at all (no creepy players, no empty or
+  haunted servers, no one who knows things about the narrator's real life, no strangers asking for anything).
+  No scams, hacks, exploits, bans or stolen accounts. No bullying, revenge or betrayal; a rivalry ends friendly.
+  No romance or online dating, no swearing, no slurs, no violence beyond an avatar falling off an obby.
+- No real person, no real username, no real YouTuber. Nobody shares a password, address or real name.
+- The trouble in the story is light: a fail, a race, a mix-up, a silly rule, bad luck that turns good.
 - Avoid these recent hooks (different situations, different openings):
 {used_hooks}
 
@@ -167,6 +178,10 @@ def validate(data, *, words_min: int, words_max: int, need_queries: bool = True)
         errors.append("no mention of Reddit, subreddits, OP, upvotes or karma")
     if hook.count("?"):
         errors.append("the hook must not be a question")
+    dark = sorted({m.group(0).lower() for m in DARK_WORDS.finditer(f"{title} {body}")})
+    if dark:
+        errors.append("kid-safe channel: rewrite without anything creepy, scary, hacked, scammed or banned "
+                      f"(found: {', '.join(dark)})")
     q = [str(x).strip() for x in (data.get("broll_queries") or []) if str(x).strip()]
     if need_queries and len(q) < 2:
         errors.append("broll_queries needs at least 2 searches")
