@@ -724,5 +724,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44156325925"
+  },
+  {
+    "date": "2026-11-18",
+    "kind": "shorts",
+    "topic": "3 shorts: creepy_servers, sibling_rivalry, roleplay_drama",
+    "video_id": "rwyOrhv05as",
+    "stories": [
+      {
+        "video_id": "rwyOrhv05as",
+        "title": "The Only Other Player Knew Dinner Was Ready #roblox #Shorts",
+        "category": "creepy_servers",
+        "persona": "horror",
+        "hook": "\"Your mom just said dinner's ready, Kyle,\" the only other player typed, and my mom hadn't said it yet.",
+        "words": 138,
+        "seconds": 62,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_017.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "vtHaiH-Lk1A",
+        "title": "I Sold My Little Brother's Pet For A Dragon #roblox #Shorts",
+        "category": "sibling_rivalry",
+        "persona": "confession",
+        "hook": "Dani said I could have her Frost Dragon if I let her trade away Eli's pet, and I said okay before she finished.",
+        "words": 150,
+        "seconds": 59,
+        "publish_at": "2026-11-19T03:00:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_001.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "rzviPyuzN1s",
+        "title": "The Mayor Fined Me for Walking on Grass #roblox #Shorts",
+        "category": "roleplay_drama",
+        "persona": "sarcastic",
+        "hook": "Mayor Dex fined me forty town dollars for walking on the grass outside City Hall.",
+        "words": 140,
+        "seconds": 55,
+        "publish_at": "2026-11-19T11:00:37Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_020.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "pocket narrator.wav",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44374527257"
   }
 ]
