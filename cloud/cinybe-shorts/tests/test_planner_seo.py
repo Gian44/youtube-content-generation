@@ -87,7 +87,8 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
     with pytest.raises(planner.PlanError, match="must not name the film"):
         planner.validate_scripts(_scripts(acts, title="Inception Explained: The Dream Heist Nobody Understood"), acts, film=FILM,
                                  target_words=300, shorts_per_film=3, short_max_words=80)
-    with pytest.raises(planner.PlanError, match="outside"):
+    # too short: the message says how many words each section had and how many are missing, so the retry can close it
+    with pytest.raises(planner.PlanError, match=r"outside 210-390.*Your sections had \d+(, \d+)* words\. Write at least \d+ more words"):
         planner.validate_scripts(_scripts(acts, words_per=10), acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     named = _scripts(acts)
     named["long_form"]["sections"][2]["beats"][0]["text"] = "Inception begins when Cobb " + "word " * 15

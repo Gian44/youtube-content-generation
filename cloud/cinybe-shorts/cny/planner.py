@@ -384,8 +384,16 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
     total = sum(len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict))
     lo_w, hi_w = int(LONG_FORM_TOLERANCE[0] * target_words), int(LONG_FORM_TOLERANCE[1] * target_words)
     if not (lo_w <= total <= hi_w):
-        errors.append(f"long_form total words {total} outside {lo_w}-{hi_w} (target {target_words}); aim for about "
-                      f"{target_words // max(1, len(acts))} words per section")
+        msg = (f"long_form total words {total} outside {lo_w}-{hi_w} (target {target_words}); aim for about "
+               f"{target_words // max(1, len(acts))} words per section")
+        if total < lo_w:
+            # "aim for about N per section" alone did not move the writer: 6 short drafts in a row on a quiet film
+            # (runs 43881226616 and 43943386071, 2026-11-16). Say how far off each section is and how to close it.
+            counts = [len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict)]
+            msg += (f". Your sections had {', '.join(map(str, counts))} words. Write at least {lo_w - total} more words "
+                    "in total: add beats for the scenes in each act's dialogue that you skipped, in screen order; "
+                    "do not pad or repeat")
+        errors.append(msg)
     seen_sections: set[int] = set()
     for s in sections:
         if not isinstance(s, dict):
