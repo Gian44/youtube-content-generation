@@ -41,6 +41,11 @@ class Config:
     footage_budget: float = 90.0
     photos_per_story: int = 4
     brand: str = "Block Quest Daily"
+    # Roblox channel (Gian 2026-11-17/18): stories over Creative Commons Roblox gameplay listed in gameplay.yml.
+    # "stock" brings back Pexels/Pixabay b-roll; it is also what a run falls back to when the manifest lists no clip.
+    background: str = "gameplay"
+    gameplay_path: str = "gameplay.yml"
+    gameplay_avoid_recent: int = 30     # clips used in the last N Shorts are not drawn again
     upload_check_seconds: int = 240
     sof: SofConfig = field(default_factory=SofConfig)
 

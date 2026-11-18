@@ -56,4 +56,66 @@ def test_run_is_a_noop_when_today_is_in_the_ledger(tmp_path):
 
 def test_categories_in_topics_yml_are_wired():
     cats, personas = stories.load_topics(str(Path(__file__).resolve().parents[1] / "topics.yml"))
-    assert len(cats) == 13 and all(c.persona in personas for c in cats) and sum(c.weight for c in cats) == 100
+    assert len(cats) == 10 and all(c.persona in personas for c in cats) and sum(c.weight for c in cats) == 100
+    from bqd import seo
+    assert all(c.key in seo.CATEGORY_LABELS for c in cats)                    # every Roblox category has a label
+
+
+# ---- Roblox gameplay backgrounds
+
+def _manifest(tmp_path, n=6, credit=True):
+    import yaml
+    src = {"channel": "Some Channel", "url": "https://www.youtube.com/watch?v=abc", "licence": "CC BY"} if credit else {"url": "x"}
+    data = {"base_url": "https://example.test/dl/", "sources": {"abc": src},
+            "clips": [{"file": f"abc_{i:03d}.mp4", "source": "abc", "seconds": 75 if i else 20} for i in range(n)]}
+    p = tmp_path / "gameplay.yml"
+    p.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return str(p)
+
+
+def test_gameplay_manifest_pick_and_credit(tmp_path):
+    from bqd import gameplay
+    clips = gameplay.load(_manifest(tmp_path))
+    assert len(clips) == 6 and clips[1].download_url == "https://example.test/dl/abc_001.mp4"
+    assert clips[0].credit == "Gameplay: Some Channel (CC BY) https://www.youtube.com/watch?v=abc"
+    a = gameplay.pick(clips, count=3, seed="2026-11-19", avoid=[], min_seconds=60)
+    assert len({c.file for c in a}) == 3 and all(c.seconds >= 60 for c in a)             # long enough, all different
+    assert [c.file for c in a] == [c.file for c in gameplay.pick(clips, count=3, seed="2026-11-19", avoid=[], min_seconds=60)]
+    b = gameplay.pick(clips, count=2, seed="2026-11-19", avoid=[c.file for c in a], min_seconds=60)
+    assert not {c.file for c in b} & {c.file for c in a}                                 # clips used lately are skipped
+    assert len(gameplay.pick(clips, count=3, seed="x", avoid=[c.file for c in clips])) == 3   # unless nothing else is left
+    assert gameplay.recent_files([{"stories": [{"gameplay": "a.mp4"}, {}]}, {"stories": [{"gameplay": "b.mp4"}]}], limit=1) == ["b.mp4"]
+
+
+def test_gameplay_clip_without_a_credit_is_never_used(tmp_path):
+    from bqd import gameplay
+    assert gameplay.load(_manifest(tmp_path, credit=False)) == [] and gameplay.load(str(tmp_path / "missing.yml")) == []
+
+
+def test_real_gameplay_manifest_is_complete():
+    from bqd import gameplay
+    clips = gameplay.load(str(Path(__file__).resolve().parents[1] / "gameplay.yml"))
+    assert len(clips) >= 30 and all(c.licence == "CC BY" and c.url.startswith("https://www.youtube.com/watch?v=") for c in clips)
+    assert len({c.file for c in clips}) == len(clips)
+
+
+def test_roblox_seo_credits_the_gameplay_and_is_gaming():
+    from bqd import seo
+    credit = "Gameplay: Some Channel (CC BY) https://www.youtube.com/watch?v=abc"
+    d = seo.short_description(hook="I lost my best pet.", category="trade_scams", tags=["trade", "pet"], credit=credit)
+    assert credit in d and "Not affiliated with or endorsed by Roblox Corporation" in d and "Pexels" not in d
+    assert "#roblox" in d and "github" not in d.lower()
+    assert seo.short_title("The trade I should not have accepted", "trade_scams", roblox=True).endswith("#roblox #Shorts")
+    assert len(seo.short_title("x" * 120, "trade_scams", roblox=True)) <= 100
+    assert seo.short_tags("trade_scams", ["pet"], roblox=True)[0] == "roblox"
+    assert seo.video_body(title="t", description="d", tags=[], privacy="public", gaming=True)["snippet"]["categoryId"] == "20"
+    assert "Pexels" in seo.short_description(hook="h", category="aita", tags=[])           # the stock path is unchanged
+
+
+def test_story_validation_needs_no_stock_searches_over_gameplay():
+    import pytest
+    a = _answer(1)
+    a["broll_queries"] = []
+    assert stories.validate(dict(a), words_min=20, words_max=150, need_queries=False)["body"]
+    with pytest.raises(stories.StoryError):
+        stories.validate(dict(a), words_min=20, words_max=150)

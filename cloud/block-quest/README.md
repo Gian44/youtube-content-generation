@@ -54,3 +54,11 @@ publish_at}], voice, run}`. The cron does nothing twice in one UTC day; `smoke` 
 | `bqd/stories.py` | topics.yml, the category draw, the writer, validation, no-slop |
 | `bqd/seo.py` | titles, descriptions, tags, publish times |
 | `bqd/pipeline.py` | orchestration, resumable `work/<date>/`, ledger |
+
+## Roblox stories over gameplay (2026-11-18)
+
+The channel is a Roblox channel: `topics.yml` holds ten Roblox story categories, the writer prompt in `bqd/stories.py`
+keeps every story clean for young listeners, and each Short plays over one continuous clip of Creative Commons Roblox
+gameplay (`gameplay.yml`, `bqd/gameplay.py`, `cc.segments.build_background_short`). The clip's maker is credited by
+name and link in the description; uploads go to the Gaming category with `#roblox`. `background: "stock"` in
+`bqd/config.py` brings back the Pexels/Pixabay path.

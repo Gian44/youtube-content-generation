@@ -1,0 +1,111 @@
+# Background gameplay for the Roblox stories (bqd/gameplay.py). Every clip is a 1080x1920, silent, roughly 75-second
+# cut of a video its maker published on YouTube under the Creative Commons Attribution licence; the licence line
+# and each maker's own terms ("free to use, credit this channel in the description") were read on the video pages
+# on 2026-11-18. Each Short credits the maker by name and link in its description. A clip whose source has no
+# channel, url and licence here is never used.
+#
+# The clips are release assets (tag bqd-gameplay-v1); they were cut on the PC with
+# cloud/clip-channel/work/bqd-gameplay/get.bat. To add footage: check the licence on the video page, cut it the same
+# way, upload the clips to the release, list them here.
+base_url: https://github.com/Gian44/youtube-content-generation/releases/download/bqd-gameplay-v1
+
+sources:
+  wQ7WgNBpufo:
+    channel: "OrbitalNCG +"
+    title: "ROBLOX Parkour Gameplay No Copyright (Vertical) 1 HOUR"
+    url: https://www.youtube.com/watch?v=wQ7WgNBpufo
+    licence: CC BY
+  oeT-HdpkHYM:
+    channel: "Dope Gameplays"
+    title: "ROBLOX Mega Obby Parkour, 300 Stages"
+    url: https://www.youtube.com/watch?v=oeT-HdpkHYM
+    licence: CC BY
+
+clips:
+  - {file: wQ7WgNBpufo_000.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_001.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_002.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_003.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_004.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_005.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_006.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_007.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_008.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_009.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_010.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_011.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_012.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_013.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_014.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_015.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_016.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_017.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_018.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_019.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_020.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_021.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_022.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_023.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_024.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_025.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_026.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_027.mp4, source: wQ7WgNBpufo, seconds: 73}
+  - {file: wQ7WgNBpufo_028.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_029.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_030.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_031.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_032.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_033.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_034.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_035.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_036.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_037.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_038.mp4, source: wQ7WgNBpufo, seconds: 75}
+  - {file: wQ7WgNBpufo_039.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_040.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_041.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_042.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_043.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_044.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_045.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_046.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_047.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_048.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_049.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_050.mp4, source: wQ7WgNBpufo, seconds: 76}
+  - {file: wQ7WgNBpufo_051.mp4, source: wQ7WgNBpufo, seconds: 74}
+  - {file: wQ7WgNBpufo_052.mp4, source: wQ7WgNBpufo, seconds: 60}
+  - {file: oeT-HdpkHYM_000.mp4, source: oeT-HdpkHYM, seconds: 77}
+  - {file: oeT-HdpkHYM_001.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_002.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_003.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_004.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_005.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_006.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_007.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_008.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_009.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_010.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_011.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_012.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_013.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_014.mp4, source: oeT-HdpkHYM, seconds: 73}
+  - {file: oeT-HdpkHYM_015.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_016.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_017.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_018.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_019.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_020.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_021.mp4, source: oeT-HdpkHYM, seconds: 73}
+  - {file: oeT-HdpkHYM_022.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_023.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_024.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_025.mp4, source: oeT-HdpkHYM, seconds: 74}
+  - {file: oeT-HdpkHYM_026.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_027.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_028.mp4, source: oeT-HdpkHYM, seconds: 76}
+  - {file: oeT-HdpkHYM_029.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_030.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_031.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_032.mp4, source: oeT-HdpkHYM, seconds: 75}
+  - {file: oeT-HdpkHYM_033.mp4, source: oeT-HdpkHYM, seconds: 61}

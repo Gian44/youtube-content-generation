@@ -18,7 +18,7 @@ from sof import ledger, tts, upload, vision
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from bqd import seo, stories
+from bqd import gameplay, seo, stories
 from bqd.config import Config
 
 log = logging.getLogger("bqd.pipeline")
@@ -48,7 +48,8 @@ def write_stories(cfg: Config, llm, rows: list[dict], *, today: str, work: Path)
         try:
             s = stories.write_story(llm, cat, persona_note=personas.get(cat.persona, ""), used_hooks=used + [x.hook for x in out],
                                     words_min=cfg.words_min, words_max=cfg.words_max, words_target=cfg.words_target,
-                                    noslop_rounds=cfg.noslop_rounds, fast_model=cfg.sof.fast_model)
+                                    noslop_rounds=cfg.noslop_rounds, fast_model=cfg.sof.fast_model,
+                                    need_queries=cfg.background != "gameplay")
         except stories.StoryError as exc:
             print(f"! {cat.key}: {exc}", flush=True)
             continue
@@ -106,10 +107,34 @@ def run(cfg: Config) -> int:
         audio.append(str(out))
         print(f"short {k + 1}: {tts.duration_seconds(str(out)):.0f} s of narration", flush=True)
 
+    # Roblox gameplay under every story when the manifest lists clips; stock footage otherwise
+    library = gameplay.load(cfg.gameplay_path) if cfg.background == "gameplay" else []
+    if cfg.background == "gameplay" and not library:
+        print(f"! {cfg.gameplay_path} lists no gameplay clip; nothing is made (a Roblox channel does not post stock footage)", flush=True)
+        return EXIT_FAIL
+    backs: list[gameplay.Clip | None] = [None] * len(tales)
+    if library:
+        _stage("gameplay")
+        longest = max(tts.duration_seconds(a) for a in audio)
+        spare = gameplay.pick(library, count=len(tales) + 2, seed=today, min_seconds=longest,
+                              avoid=gameplay.recent_files(rows, limit=cfg.gameplay_avoid_recent))
+        for k in range(len(tales)):
+            for c in [spare[k]] + spare[len(tales):] if k < len(spare) else spare[len(tales):]:
+                try:
+                    c.local = gameplay.fetch(c, str(work / "gameplay"))
+                    backs[k] = c
+                    print(f"short {k + 1}: gameplay {c.file} · {c.channel}", flush=True)
+                    break
+                except Exception as exc:  # noqa: BLE001 — try a spare clip before giving the Short up
+                    print(f"! gameplay {c.file} not downloaded ({exc})", flush=True)
+
     _stage("footage")
     visuals: list[dict] = []
     seen: set[str] = set()
     for k, s in enumerate(tales):
+        if library:
+            visuals.append({"clips": [], "photos": []})
+            continue
         d = work / f"s{k}" / "footage"
         clips = broll.footage_for(queries=s.broll_queries, summary=s.hook + " " + s.body[len(s.hook):len(s.hook) + 200],
                                   out_dir=str(d), vis=vis, pexels_key=cfg.sof.pexels_api_key, pixabay_key=cfg.sof.pixabay_api_key,
@@ -127,6 +152,19 @@ def run(cfg: Config) -> int:
     for k, (s, a, v) in enumerate(zip(tales, audio, visuals)):
         name = f"short{k + 1}"
         out = work / f"{name}.mp4"
+        if library and backs[k] is None:
+            print(f"! short {k + 1} has no gameplay clip; skipped", flush=True)
+            files.append("")
+            continue
+        if library and not out.exists():
+            try:
+                segments.build_background_short(work=work, name=name, text=s.body, audio=a, background=backs[k].local,
+                                                width=cfg.width, height=cfg.height, fps=cfg.fps)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("short %d failed", k + 1)
+                print(f"! short {k + 1} render failed ({exc})", flush=True)
+                files.append("")
+                continue
         if not out.exists():
             card = None
             if not v["clips"] and not v["photos"]:
@@ -162,9 +200,12 @@ def run(cfg: Config) -> int:
         if not path:
             continue
         at = seo.publish_at(k_live, spacing_hours=cfg.spacing_hours, now=now) if cfg.privacy == "public" and not cfg.smoke else None
-        body = seo.video_body(title=seo.short_title(s.title, s.category),
-                              description=seo.short_description(hook=s.hook, category=s.category, tags=s.tags),
-                              tags=seo.short_tags(s.category, s.tags), privacy=cfg.privacy, publish_at=at)
+        back = backs[k]
+        body = seo.video_body(title=seo.short_title(s.title, s.category, roblox=bool(back)),
+                              description=seo.short_description(hook=s.hook, category=s.category, tags=s.tags,
+                                                                credit=back.credit if back else ""),
+                              tags=seo.short_tags(s.category, s.tags, roblox=bool(back)), privacy=cfg.privacy, publish_at=at,
+                              gaming=bool(back))
         try:
             vid = upload.upload_video(yt, path, body, None)
             state, reason = upload.wait_until_accepted(yt, vid, timeout=cfg.upload_check_seconds) if k_live == 0 else ("unchecked", "")
@@ -177,7 +218,7 @@ def run(cfg: Config) -> int:
             continue
         entries.append({"video_id": vid, "title": body["snippet"]["title"], "category": s.category, "persona": s.persona, "hook": s.hook,
                         "words": s.words, "seconds": round(tts.duration_seconds(audio[k])), "publish_at": at,
-                        "slop": s.slop or None})
+                        "slop": s.slop or None, **({"gameplay": back.file, "gameplay_credit": back.credit} if back else {})})
         print(f"short {k + 1} uploaded https://youtu.be/{vid}" + (f" · live at {at}" if at else f" · {cfg.privacy}"), flush=True)
         k_live += 1
     if not entries:

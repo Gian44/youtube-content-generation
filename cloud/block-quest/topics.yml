@@ -1,20 +1,19 @@
-# Story categories for Block Quest Daily (the StoryFactory fiction defaults, content_defaults.py, 2026-06).
+# Story categories for Block Quest Daily. Since 2026-11-18 the channel tells Roblox stories over Roblox gameplay
+# (Gian: "Block Quest Daily is supposed to be a Roblox channel"); the 13 Reddit-style categories it started with
+# (aita, cheating, workplace drama, ...) are gone: the audience is young, so no dating, affairs or workplace themes.
 # weight = how often a category is drawn; hints = what the writer is pointed at. A day's stories are drawn from
 # distinct categories, avoiding the ones used in the last two days.
 categories:
-  aita:                   {weight: 15, hints: "moral dilemmas, family conflicts, social etiquette, boundary-setting", persona: confession}
-  relationships:          {weight: 12, hints: "dating drama, long-term relationship issues, breakups, trust", persona: calm}
-  cheating:               {weight: 10, hints: "infidelity discovery, betrayal, confrontation, aftermath", persona: dramatic}
-  revenge:                {weight: 12, hints: "creative revenge, karma, justice served, petty retribution", persona: sarcastic}
-  workplace_drama:        {weight: 10, hints: "toxic bosses, coworker conflicts, unfair policies, quitting stories", persona: sarcastic}
-  entitled_parents:       {weight: 8,  hints: "outrageous parenting, public meltdowns, unreasonable demands", persona: dramatic}
-  family_drama:           {weight: 8,  hints: "inheritance disputes, favoritism, toxic relatives, holiday disasters", persona: calm}
-  confessions:            {weight: 5,  hints: "secret reveals, guilty consciences, hidden truths, cathartic admissions", persona: confession}
-  scary_stories:          {weight: 5,  hints: "supernatural encounters, unexplained events, eerie discoveries", persona: horror}
-  creepy_encounters:      {weight: 3,  hints: "stalkers, strange strangers, unsettling experiences", persona: horror}
-  wholesome:              {weight: 5,  hints: "kindness from strangers, heartwarming surprises, found family", persona: warm}
-  mysteries:              {weight: 3,  hints: "unexplained disappearances, cold cases, strange coincidences", persona: calm}
-  customer_service_drama: {weight: 4,  hints: "Karens, impossible demands, retail horror stories", persona: sarcastic}
+  trade_scams:          {weight: 15, hints: "a trade that goes wrong or surprisingly right, a trust trade, a scammer who gets outplayed, losing or winning back a rare pet or item", persona: dramatic}
+  friends_and_betrayal: {weight: 12, hints: "a best friend on the friend list, a group that kicks someone out, a friend who takes the credit or the loot, making up afterwards", persona: calm}
+  obby_rage:            {weight: 10, hints: "a tower or obby run, falling at the last stage, a stranger who helps or trolls at the checkpoint, the one jump nobody makes", persona: sarcastic}
+  banned_or_hacked:     {weight: 10, hints: "an account hacked after a free-Robux link, a wrong ban, a forgotten password, getting the account back or not", persona: dramatic}
+  robux_and_parents:    {weight: 10, hints: "Robux bought without asking, a parent finding the receipt, a gift card, earning it back with chores", persona: confession}
+  wholesome:            {weight: 10, hints: "a stranger's gift, a rich player giving items away, the first friend in a new server, a veteran teaching a noob", persona: warm}
+  revenge_on_trolls:    {weight: 10, hints: "a troll or bully in a server who gets what is coming, patient harmless payback, the whole lobby joining in", persona: sarcastic}
+  roleplay_drama:       {weight: 8,  hints: "a family or town roleplay that gets taken far too seriously, an adopted-kid storyline, a strict server owner", persona: sarcastic}
+  sibling_rivalry:      {weight: 8,  hints: "a little brother on the narrator's account, a sister with better items, sharing one tablet, a deal over the save file", persona: confession}
+  creepy_servers:       {weight: 7,  hints: "an empty server, a player who knows too much, a game that is gone the next day; spooky, never graphic", persona: horror}
 
 # How each persona tells it (writing style only; one narrator voice reads them all)
 personas:

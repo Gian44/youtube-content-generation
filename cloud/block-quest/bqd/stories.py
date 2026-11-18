@@ -106,12 +106,16 @@ def draw_categories(cats: list[Category], *, count: int, avoid: set[str], seed: 
 
 # ---------------------------------------------------------------- the writer
 
-SYSTEM = ("You write original short fiction read aloud as YouTube Shorts: first-person stories in the style of an "
-          "anonymous online confession or advice post. Completely original; never claim it is real; never mention any "
-          "website, forum or app. Output strict JSON.")
+SYSTEM = ("You write original short fiction read aloud as YouTube Shorts over Roblox gameplay: first-person stories "
+          "told by a Roblox player about something that happened in a game, the way players tell them to each other. "
+          "Completely original; never claim it is real; never mention any forum or social app. The listeners are "
+          "mostly 10 to 16 years old, so everything is clean. Output strict JSON.")
 
-PROMPT = """Write an original first-person short story for the category "{category}" ({hints}).
+PROMPT = """Write an original first-person Roblox story for the category "{category}" ({hints}).
 Narrator style: {persona} — {persona_note}.
+The narrator is a Roblox player; the story happens in or around a Roblox game (a server, a trade, an obby, a roleplay,
+a friend list, Robux, an account). Use the words players use (server, obby, trade, Robux, noob, AFK, lobby), and say
+what kind of game it is. A real, well-known Roblox game may be named when it fits; invent the player usernames.
 
 Requirements:
 - {words_min}-{words_max} words in total, target {words_target}; about 55 seconds read aloud.
@@ -120,8 +124,10 @@ Requirements:
   PAYOFF (a twist, a consequence or a quiet landing), then ONE closing question to the audience as the last
   sentence (e.g. "Would you have told her?").
 - Specific, physical details: names, places, objects, amounts. Plain words. Contractions are fine.
-- Nothing that identifies a real person, brand or company. No violence against children, no sexual content,
-  no slurs.
+- Clean for young listeners: no romance or online dating, no cheating partners, no sexual content, no swearing,
+  no slurs, no gore; nothing scarier than a spooky server. No real person, no real username, no real YouTuber.
+- A scam, hack or exploit may happen in the story, but never explain how to do one, and it never pays off.
+- Nobody shares a password, address, phone number or real name, except as the mistake the story warns about.
 - Avoid these recent hooks (different situations, different openings):
 {used_hooks}
 
@@ -137,7 +143,7 @@ EDIT_SYSTEM = ("You are a line editor for spoken first-person fiction. You chang
 STYLE_BLOCK = noslop.style_block("fiction")
 
 
-def validate(data, *, words_min: int, words_max: int) -> dict:
+def validate(data, *, words_min: int, words_max: int, need_queries: bool = True) -> dict:
     errors: list[str] = []
     if not isinstance(data, dict):
         raise StoryError("story must be a JSON object")
@@ -162,7 +168,7 @@ def validate(data, *, words_min: int, words_max: int) -> dict:
     if hook.count("?"):
         errors.append("the hook must not be a question")
     q = [str(x).strip() for x in (data.get("broll_queries") or []) if str(x).strip()]
-    if len(q) < 2:
+    if need_queries and len(q) < 2:
         errors.append("broll_queries needs at least 2 searches")
     if errors:
         raise StoryError("; ".join(errors))
@@ -181,13 +187,14 @@ def _call(llm: LLM, prompt: str, validate_fn, *, temperature: float) -> dict:
 
 
 def write_story(llm: LLM, cat: Category, *, persona_note: str, used_hooks: list[str], words_min: int, words_max: int,
-                words_target: int, noslop_rounds: int = 1, fast_model: str | None = None) -> Story:
+                words_target: int, noslop_rounds: int = 1, fast_model: str | None = None, need_queries: bool = True) -> Story:
     prompt = PROMPT.format(category=cat.key.replace("_", " "), hints=cat.hints, persona=cat.persona, persona_note=persona_note,
                            words_min=words_min, words_max=words_max, words_target=words_target,
                            used_hooks="\n".join(f"- {h}" for h in used_hooks) or "- (none yet)")
     prompt = noslop.inject(prompt, STYLE_BLOCK, before="Return JSON")
     try:
-        data = _call(llm, prompt, lambda d: validate(d, words_min=words_min, words_max=words_max), temperature=0.9)
+        data = _call(llm, prompt, lambda d: validate(d, words_min=words_min, words_max=words_max, need_queries=need_queries),
+                     temperature=0.9)
     except LLMError as exc:
         raise StoryError(f"writer call failed: {exc}") from exc
     story = Story(category=cat.key, persona=cat.persona, title=data["title"], hook=data["hook"], body=data["body"],

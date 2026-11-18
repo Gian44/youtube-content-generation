@@ -174,6 +174,26 @@ def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand:
     return out
 
 
+def build_background_short(*, work: Path, name: str, text: str, audio: str, background: str, width: int = 1080,
+                           height: int = 1920, fps: int = 30, offset: float = 0.0) -> str:
+    """A vertical Short over ONE continuous background clip (already ``width`` x ``height``, e.g. gameplay): the clip
+    from ``offset`` for exactly the narration's length (looped when it is shorter), captions on top →
+    ``work/<name>.mp4``."""
+    tmp = work / f"{name}_tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    duration = tts.duration_seconds(audio)
+    if duration <= 0:
+        raise RuntimeError("short narration has no duration")
+    reel = str(tmp / "reel.mp4")
+    sof_render.run(clip_window_cmd(background, reel, offset=offset, seconds=duration, fps=fps), 900)
+    cues = sof_shorts.caption_cues(text, duration)
+    pngs = [sof_shorts.caption_png(t, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, t) in enumerate(cues)]
+    out = str(work / f"{name}.mp4")
+    sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=None, credit_png_path=None,
+                                          duration=duration, fps=fps), 900)
+    return out
+
+
 def concat_videos(paths: list[str], out: str, list_file: str) -> str:
     with open(list_file, "w", encoding="utf-8") as f:
         for p in paths:

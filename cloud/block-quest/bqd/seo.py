@@ -1,4 +1,5 @@
-"""Titles, descriptions, tags and publish times for the story Shorts. Category: Entertainment (24)."""
+"""Titles, descriptions, tags and publish times for the story Shorts. Category: Gaming (20) for the Roblox
+stories over gameplay, Entertainment (24) for the older stories over stock footage."""
 
 from __future__ import annotations
 
@@ -9,37 +10,51 @@ from sof import seo as sof_seo
 from sof import upload as sof_upload
 
 CATEGORY_ENTERTAINMENT = "24"
+CATEGORY_GAMING = "20"
 _BAD = re.compile(r"[!#@\"“”]|\b(shocking|insane|unbelievable|you won't believe)\b", re.I)
 CATEGORY_LABELS = {"aita": "Am I Wrong?", "relationships": "Relationship Stories", "cheating": "Betrayal Stories",
                    "revenge": "Revenge Stories", "workplace_drama": "Workplace Stories", "entitled_parents": "Entitled Parents",
                    "family_drama": "Family Drama", "confessions": "Confessions", "scary_stories": "Scary Stories",
                    "creepy_encounters": "Creepy Encounters", "wholesome": "Wholesome Stories", "mysteries": "Mysteries",
-                   "customer_service_drama": "Customer Service Stories"}
+                   "customer_service_drama": "Customer Service Stories",
+                   "trade_scams": "Roblox Trade Stories", "obby_rage": "Roblox Obby Stories",
+                   "friends_and_betrayal": "Roblox Friend Stories", "banned_or_hacked": "Roblox Account Stories",
+                   "robux_and_parents": "Robux Stories", "wholesome": "Wholesome Roblox Stories",
+                   "revenge_on_trolls": "Roblox Troll Stories", "roleplay_drama": "Roblox Roleplay Stories",
+                   "creepy_servers": "Creepy Roblox Stories", "sibling_rivalry": "Roblox Sibling Stories"}
 
 
 def _clean(s: str) -> str:
     return re.sub(r"\s+", " ", _BAD.sub("", str(s or ""))).strip(" -–—:|.")
 
 
-def short_title(title: str, category: str) -> str:
+def short_title(title: str, category: str, *, roblox: bool = False) -> str:
     t = _clean(title)
     t = t[:1].upper() + t[1:]
-    out = f"{t} #Shorts"
+    tail = "#roblox #Shorts" if roblox else "#Shorts"
+    out = f"{t} {tail}"
     if len(out) > 100:
-        out = f"{t[:85].rstrip()} #Shorts"
+        out = f"{t[:99 - len(tail)].rstrip()} {tail}"
     return out
 
 
-def short_description(*, hook: str, category: str, tags: list[str]) -> str:
+def short_description(*, hook: str, category: str, tags: list[str], credit: str = "") -> str:
     label = CATEGORY_LABELS.get(category, category.replace("_", " ").title())
-    hashtags = " ".join("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (["shorts", "storytime", category] + tags[:4]) if t)
+    lead = ["shorts", "roblox", "robloxstory", "storytime"] if credit else ["shorts", "storytime", category]
+    hashtags = " ".join(dict.fromkeys("#" + re.sub(r"[^a-z0-9]", "", t.lower()) for t in (lead + tags[:4]) if t))
+    if credit:      # Roblox stories over Creative Commons gameplay: the maker of the gameplay is credited by name and link
+        return (f"{hook.strip()}\n\n{label} — a new Roblox story every day on Block Quest Daily.\n\n"
+                "Original fiction written for this channel; any resemblance to real players or events is coincidental. "
+                "Not affiliated with or endorsed by Roblox Corporation.\n"
+                f"{credit}\n\n" + hashtags)[:4900]
     return (f"{hook.strip()}\n\n{label} — a new story every day on Block Quest Daily.\n\n"
             "Original fiction written for this channel; any resemblance to real people or events is coincidental. "
             "Footage: Pexels and Pixabay.\n\n" + hashtags)[:4900]
 
 
-def short_tags(category: str, tags: list[str]) -> list[str]:
-    base = ["story", "storytime", "short story", category.replace("_", " "), CATEGORY_LABELS.get(category, ""), "block quest daily"] + list(tags)
+def short_tags(category: str, tags: list[str], *, roblox: bool = False) -> list[str]:
+    base = ((["roblox", "roblox story", "roblox storytime", "roblox shorts"] if roblox else [])
+            + ["story", "storytime", "short story", category.replace("_", " "), CATEGORY_LABELS.get(category, ""), "block quest daily"] + list(tags))
     out, seen, size = [], set(), 0
     for t in base:
         t = re.sub(r"[<>\"]", "", str(t)).strip()[:60]
@@ -51,9 +66,10 @@ def short_tags(category: str, tags: list[str]) -> list[str]:
     return out
 
 
-def video_body(*, title: str, description: str, tags: list[str], privacy: str, publish_at: str | None = None) -> dict:
+def video_body(*, title: str, description: str, tags: list[str], privacy: str, publish_at: str | None = None,
+               gaming: bool = False) -> dict:
     body = sof_upload.video_body(title=title, description=description, tags=tags, privacy=privacy, publish_at=publish_at)
-    body["snippet"]["categoryId"] = CATEGORY_ENTERTAINMENT
+    body["snippet"]["categoryId"] = CATEGORY_GAMING if gaming else CATEGORY_ENTERTAINMENT
     return body
 
 

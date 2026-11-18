@@ -2,6 +2,7 @@ name: block-quest daily
 
 on:
   schedule:
+    # Roblox stories over Creative Commons Roblox gameplay since 2026-11-18 (cloud/block-quest/gameplay.yml).
     # Daily at 10:17 UTC (18:17 Manila): three story Shorts a day, the first live at once, the others 8 h and
     # 16 h later (Gian, 2026-11-07). After the sleep (08:23) and cinybe (09:41) runs so none queue together.
     - cron: "17 10 * * *"
