@@ -528,5 +528,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44058127291"
+  },
+  {
+    "date": "2026-11-18",
+    "kind": "video",
+    "film": "D.O.A.",
+    "year": 1950,
+    "theme": "Public domain classics",
+    "topic": "D.O.A. (1950)",
+    "video_id": "uwixhenjUw0",
+    "title": "Dying Accountant Has One Week To Find The Person Who Poisoned Him And Why",
+    "privacy": "public",
+    "uploaded_at": "2026-11-18T09:56:37+00:00",
+    "duration_seconds": 874,
+    "words": 3474,
+    "acts": 17,
+    "transcript": "whisper",
+    "cues": 1129,
+    "plot_reference": true,
+    "beats": 127,
+    "shots": 362,
+    "film_file": "archive.org/doa-1950_202506/DOA 1950.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "b7G8xgyJM1U",
+        "title": "Healthy Man Learns He Was Poisoned and Has One Week Left #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-18T10:56:37Z",
+        "act_index": 4
+      },
+      {
+        "video_id": "phDG0vCuYxY",
+        "title": "He Knows Too Much, So a Crime Boss Orders His Killing #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-19T10:56:37Z",
+        "act_index": 11
+      },
+      {
+        "video_id": "nAD2MKufsCA",
+        "title": "Dying Man Corners the Widow and Learns Who Poisoned Him #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-20T10:56:37Z",
+        "act_index": 14
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 12,
+        "after": 6,
+        "rewritten": 6
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44272543035"
   }
 ]
