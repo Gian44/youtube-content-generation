@@ -394,9 +394,10 @@ def twitch_meta(plan: dict, login: str, days: int) -> tuple[str, list]:
     name = plan["items"][0]["creator"]
     lines = "\n".join(f"{it['rank']}. {it['source_url']}" + (f" (clipped by {it['clipper']})" if it.get("clipper") else "")
                       for it in plan["items"])
-    desc = (f"{name}'s most viewed Twitch clips of the last {days} days, ranked by views.\n{lines}\n\n"
+    game = plan.get("game") or ""
+    desc = (f"{name}'s most viewed {game + ' ' if game else ''}Twitch clips of the last {days} days, ranked by views.\n{lines}\n\n"
             f"All credit to {name}: https://www.twitch.tv/{login}. Contact sylusnix@gmail.com for removal requests.\n\n#shorts")
-    return desc, [name, "twitch clips", "top clips", "ranking", "top 5", "shorts"]
+    return desc, [name] + ([game] if game else []) + ["twitch clips", "top clips", "ranking", "top 5", "shorts"]
 
 
 def cmd_twitch(a) -> int:
@@ -410,7 +411,13 @@ def cmd_twitch(a) -> int:
         streamers = [s for s in listed if want in (s["login"].lower(), s["name"].lower())] or [{"name": a.streamer, "login": want}]
     else:
         streamers = [s for s in listed if s.get("verified") or a.include_unverified]
-    last = {r["login"]: r["date"] for r in ledger.get("rankings") or []}
+    # the name used in titles, tags and the ledger: --game-label, or the first --game spelling
+    game = (a.game_label or (twitch.game_names(a.game) or [""])[0]).strip() if a.game else ""
+    if a.game:
+        print(f"[twitch] game filter: {a.game} (shown as {game})" + (f", clips from {a.since} on" if a.since else "")
+              + (", by category id from the API" if all(twitch.creds()) else ", read from each clip's page (no API keys)"))
+    # a game's rankings are counted apart from the streamer's general ones, so the two do not hold each other back
+    last = {r["login"]: r["date"] for r in ledger.get("rankings") or [] if (r.get("game") or "") == game}
     streamers.sort(key=lambda s: last.get(s["login"], ""))            # least recently ranked first
     for s in streamers:
         login, name = s["login"], s["name"]
@@ -420,7 +427,7 @@ def cmd_twitch(a) -> int:
         plan, words, days = None, {}, 0
         for days in (7, 30):
             try:
-                clips, how = twitch.top_clips(login, days)
+                clips, how = twitch.top_clips(login, days, game=a.game, since=a.since)
             except Exception as exc:
                 print(f"[skip] {name}: {str(exc)[-160:]}")
                 break
@@ -441,13 +448,13 @@ def cmd_twitch(a) -> int:
                     print(f"[skip] clip {c['id']}: {str(exc)[-160:]}")
             used = {**ledger["clips"], **ledger["blocked"]}
             partial = len(ready) >= 5 and any(c["id"] in used and c["views"] > ready[4]["views"] for c in clips)
-            plan = twitch.plan_ranking(name, login, days, ready, words, partial=partial) if len(ready) >= 5 else None
+            plan = twitch.plan_ranking(name, login, days, ready, words, partial=partial, game=game) if len(ready) >= 5 else None
             if plan:
                 break
             print(f"[skip] {name}: fewer than 5 clips with a usable label in the last {days} days")
         if not plan:
             continue
-        out = find.OUT / today.isoformat() / f"twitch-{slug(login)}-{days}d"
+        out = find.OUT / today.isoformat() / f"twitch-{slug(login)}-{days}d{'-' + slug(game) if game else ''}"
         plan["captions"] = s.get("captions", True) is not False
         render.make_ranking(out, plan, {k: [{**w, "w": twitch.mask(w["w"])} for w in v] for k, v in words.items()}, cfg)
         print(f"[done] {out}  {plan['upload_title']}")
@@ -462,6 +469,7 @@ def cmd_twitch(a) -> int:
             for it in plan["items"]:
                 ledger["clips"][it["video_id"]] = {"date": today.isoformat(), "login": login, "video": vid}
             ledger.setdefault("rankings", []).append({"date": today.isoformat(), "login": login, "days": days, "video": vid,
+                                                      **({"game": game} if game else {}),
                                                       "title": plan["upload_title"],
                                                       "clips": [it["video_id"] for it in plan["items"]]})
             twitch.save_ledger(ledger)
@@ -548,6 +556,9 @@ def main() -> int:
     tw.add_argument("--min-views", type=int, default=10000,
                     help="ignore clips with fewer views (a streamer's min_views in watchlist.yml overrides it)")
     tw.add_argument("--include-unverified", action="store_true")
+    tw.add_argument("--game", default="", help="only clips made in this Twitch category (several spellings separated by commas)")
+    tw.add_argument("--game-label", default="", help="with --game: the name used in titles and tags (default: the first spelling)")
+    tw.add_argument("--since", default="", help="with --game: ignore clips made before this day (YYYY-MM-DD, UTC)")
     tw.add_argument("--force", action="store_true", help="ignore the days-between rule")
     tw.add_argument("--upload", action="store_true")
     tw.add_argument("--privacy", default="public", choices=["public", "unlisted", "private"])

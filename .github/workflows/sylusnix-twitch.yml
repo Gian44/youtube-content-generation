@@ -3,9 +3,18 @@ name: sylusnix twitch
 # One ranking Short from a streamer's most-viewed Twitch clips. Twitch serves clips to GitHub's runners (YouTube does
 # not), so this lane of the sylusnix channel runs here; the YouTube-sourced lane runs on the PC.
 on:
-  # schedule: added once Gian has seen the smoke result (unlisted video jZcIdEX-CDo, run 43609704078)
+  # Daily from the GTA 6 release (2026-11-19): one ranking of a verified streamer's GTA 6 clips. A scheduled run uses
+  # the GAME/SINCE defaults below and makes nothing on a day with fewer than 5 usable clips.
+  schedule:
+    - cron: "7 15 * * *"
   workflow_dispatch:
     inputs:
+      game:
+        description: "Twitch category to rank (blank = any game; 'default' = the scheduled run's game)"
+        default: ""
+      since:
+        description: "With a game: ignore clips made before this day (YYYY-MM-DD)"
+        default: ""
       streamer:
         description: "Twitch login (blank = the verified streamer ranked least recently)"
         default: ""
@@ -32,6 +41,10 @@ jobs:
         working-directory: cloud/clip-channel
     env:
       SMOKE: ${{ github.event.inputs.smoke || 'false' }}
+      # every spelling Twitch might use for the category; the label is what titles and tags say
+      GAME_DEFAULT: "Grand Theft Auto VI,Grand Theft Auto 6,GTA VI,GTA 6"
+      GAME_LABEL_DEFAULT: "GTA 6"
+      SINCE_DEFAULT: "2026-11-19"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,6 +73,9 @@ jobs:
           TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
           IN_STREAMER: ${{ github.event.inputs.streamer || '' }}
           IN_FORCE: ${{ github.event.inputs.force || 'false' }}
+          IN_GAME: ${{ github.event.inputs.game || '' }}
+          IN_SINCE: ${{ github.event.inputs.since || '' }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -e
           umask 077
@@ -68,7 +84,16 @@ jobs:
           if [ "$SMOKE" = "true" ]; then ARGS="$ARGS --privacy unlisted --force"; fi
           if [ "$IN_FORCE" = "true" ] && [ "$SMOKE" != "true" ]; then ARGS="$ARGS --force"; fi
           if [ -n "$IN_STREAMER" ]; then ARGS="$ARGS --streamer $IN_STREAMER"; fi
-          python -u run.py twitch $ARGS
+          GAME="$IN_GAME"; SINCE="$IN_SINCE"; LABEL=""
+          if [ "$EVENT" = "schedule" ] || [ "$IN_GAME" = "default" ]; then
+            GAME="$GAME_DEFAULT"; LABEL="$GAME_LABEL_DEFAULT"; SINCE="${IN_SINCE:-$SINCE_DEFAULT}"
+            ARGS="$ARGS --every 1"        # a game ranking a day; used clips are never ranked twice
+          fi
+          if [ -n "$GAME" ]; then
+            python -u run.py twitch $ARGS --game "$GAME" ${LABEL:+--game-label "$LABEL"} ${SINCE:+--since "$SINCE"}
+          else
+            python -u run.py twitch $ARGS
+          fi
           rm -f .env
       - name: Frame sheet of the result (smoke runs only, for checking the look)
         if: ${{ success() && env.SMOKE == 'true' }}

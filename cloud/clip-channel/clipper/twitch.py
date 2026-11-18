@@ -4,7 +4,10 @@ Lists a streamer's most-viewed clips, downloads them, and makes word timings fro
 captions). Unlike YouTube, Twitch serves all of this to cloud servers: checked on a GitHub runner on 2026-11-14.
 
 Listing uses Twitch's official API when TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are set (environment or .env),
-and the public clips page (through yt-dlp) when they are not. Downloads always go through yt-dlp."""
+and the public clips page (through yt-dlp) when they are not. Downloads always go through yt-dlp.
+
+A ranking can be limited to one game (Twitch category). With the API keys the category id on each clip decides;
+without them the clips page does not say the game, so each of the most viewed clips is looked up on its own page."""
 from __future__ import annotations
 
 import json
@@ -71,13 +74,82 @@ def _epoch(iso: str) -> float:
         return 0.0
 
 
-def clips_api(login: str, days: int, limit: int = 60) -> list[dict]:
+def _norm(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+
+
+def game_names(names: str) -> list[str]:
+    return [n.strip() for n in (names or "").split(",") if n.strip()]
+
+
+def game_ids(names: str) -> dict[str, str]:
+    """Twitch category ids for one or more game names separated by commas (exact names first, then a category
+    search matched without regard to case). Returns {id: name as Twitch writes it}. Needs the API keys."""
+    if not all(creds()):
+        raise RuntimeError("category ids need TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET")
+    found: dict[str, str] = {}
+    for name in game_names(names):
+        rows = _get("games", {"name": name}).get("data") or []
+        if not rows:
+            rows = [g for g in _get("search/categories", {"query": name, "first": 20}).get("data") or []
+                    if _norm(g.get("name")) == _norm(name)]
+        for g in rows:
+            found[str(g["id"])] = g.get("name") or name
+    if not found:
+        raise RuntimeError(f"no Twitch category named {names}")
+    return found
+
+
+def window_start(now: datetime, days: int, since: str = "") -> datetime:
+    """Start of the listing window: `days` back, but never before `since` (YYYY-MM-DD, UTC), so a game's ranking
+    cannot reach back before its release day."""
+    start = now - timedelta(days=days)
+    if since:
+        start = max(start, datetime.fromisoformat(since).replace(tzinfo=timezone.utc))
+    return start
+
+
+def clip_page(url: str) -> dict:
+    """What a clip's own page says about it (through yt-dlp, no keys): the game it was made in and when."""
+    r = sh(YTDLP + ["-J", "--no-playlist", url], timeout=120)
+    if r.returncode != 0 or not (r.stdout or "").strip():
+        raise RuntimeError(f"could not read {url}: {(r.stderr or '')[-160:]}")
+    info = json.loads(r.stdout)
+    return {"game": ((info.get("categories") or [""])[0] or ""), "created": float(info.get("timestamp") or 0),
+            "clipper": info.get("uploader") or ""}
+
+
+def clips_in_game(login: str, days: int, names: str, since: str = "", limit: int = 60, look: int = 40) -> list[dict]:
+    """Without the API keys: the clips page lists by views but not by game, so the `look` most viewed clips are each
+    read on their own page and kept when the category is one of `names`. A clip whose game or date cannot be read
+    is left out (when in doubt, not a clip of this game)."""
+    want = {_norm(n) for n in game_names(names)}
+    start = window_start(datetime.now(timezone.utc), days, since).timestamp()
+    out, seen = [], {}
+    for c in clips_page(login, days, 100)[:look]:
+        if c["created"] and c["created"] < start:
+            continue
+        try:
+            page = clip_page(c["url"])
+        except Exception as exc:
+            print(f"[skip] clip {c['id']}: {str(exc)[-120:]}")
+            continue
+        seen[page["game"] or "(none)"] = seen.get(page["game"] or "(none)", 0) + 1
+        made = c["created"] or page["created"]
+        if _norm(page["game"]) in want and made >= start:
+            out.append({**c, "created": made, "clipper": c["clipper"] or page["clipper"], "game": page["game"]})
+    print(f"[twitch] {login}: categories of the most viewed clips in {days} days: "
+          + (", ".join(f"{g} x{n}" for g, n in sorted(seen.items(), key=lambda kv: -kv[1])) or "none read"))
+    return out[:limit]
+
+
+def clips_api(login: str, days: int, limit: int = 60, since: str = "") -> list[dict]:
     users = _get("users", {"login": login}).get("data") or []
     if not users:
         raise RuntimeError(f"no Twitch user named {login}")
     now = datetime.now(timezone.utc)
     params = {"broadcaster_id": users[0]["id"], "first": 100,
-              "started_at": (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "started_at": window_start(now, days, since).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "ended_at": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
     out: list[dict] = []
     for _ in range(3):
@@ -87,7 +159,7 @@ def clips_api(login: str, days: int, limit: int = 60) -> list[dict]:
                         "views": int(c.get("view_count") or 0), "duration": float(c.get("duration") or 0),
                         "created": _epoch(c.get("created_at") or ""), "vod": c.get("video_id") or "",
                         "vod_offset": c.get("vod_offset"), "clipper": c.get("creator_name") or "",
-                        "streamer": users[0].get("display_name") or login})
+                        "game_id": str(c.get("game_id") or ""), "streamer": users[0].get("display_name") or login})
         cursor = (data.get("pagination") or {}).get("cursor")
         if not cursor:
             break
@@ -114,8 +186,17 @@ def clips_page(login: str, days: int, limit: int = 60) -> list[dict]:
     return out
 
 
-def top_clips(login: str, days: int, limit: int = 60) -> tuple[list[dict], str]:
-    """Most-viewed clips first. Returns (clips, where the list came from)."""
+def top_clips(login: str, days: int, limit: int = 60, game: str = "", since: str = "") -> tuple[list[dict], str]:
+    """Most-viewed clips first. Returns (clips, where the list came from). With `game` (one or more category names
+    separated by commas) only clips made in that game are returned, and none from before `since`."""
+    if game:
+        if all(creds()):
+            try:
+                ids = game_ids(game)
+                return [c for c in clips_api(login, days, 300, since) if c["game_id"] in ids][:limit], "api"
+            except Exception as exc:
+                print(f"[twitch] API game listing failed ({str(exc)[-120:]}); reading each clip's page")
+        return clips_in_game(login, days, game, since, limit), "clip pages"
     if all(creds()):
         try:
             return clips_api(login, days, limit), "api"
@@ -234,6 +315,14 @@ def ask_claude_look(prompt: str, images: list[Path], model: str = "sonnet", time
     return json.loads(text[a:b + 1]) if a >= 0 and b > a else {}
 
 
+GAME_NOTE = """Every clip below was made while {name} was playing {game}. Say so in the titles ("{name}'s" and
+"top {game} clips", upload title for example "{name}'s top 5 {game} moments"), and keep labels about what {name}
+does or how they react. Also mark "skip": true for a clip that is mostly a story cutscene, shows an ending, a
+mission's outcome or another story reveal, or shows an in-game TV show, radio or comedy act on its own: the
+publisher takes those down, and they spoil the game.
+
+"""
+
 LOOK_NOTE = """First look at the image files clip1.jpg to clip{n}.jpg in this folder with the Read tool, one per clip below.
 Each shows six frames from that clip in time order (left to right, then the second row), spread evenly from its
 start to near its end.
@@ -269,7 +358,7 @@ Also write:
 The Short shows only the five most viewed clips that you did not mark weak or skip, in the order given. So a title
 may say "top 5" but no other count, and "number 1" means the first clip you kept.
 
-Return JSON only: {{"title_plain": "", "title_accent": "", "upload_title": "", "clips": [{{"n": 1, "label": "", "start": 0.0, "end": 0.0, "weak": false, "skip": false}}]}}"""
+{game_note}Return JSON only: {{"title_plain": "", "title_accent": "", "upload_title": "", "clips": [{{"n": 1, "label": "", "start": 0.0, "end": 0.0, "weak": false, "skip": false}}]}}"""
 
 
 def _span(clip: dict, words: list[dict], s, e) -> tuple[float, float, bool]:
@@ -294,7 +383,7 @@ def _span(clip: dict, words: list[dict], s, e) -> tuple[float, float, bool]:
 
 
 def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_id: dict, count: int = 5,
-                 partial: bool = False) -> dict | None:
+                 partial: bool = False, game: str = "") -> dict | None:
     """Labels, cut points and titles for the `count` most-viewed usable clips. `cands` is already in view order.
     partial = a clip with more views was left out before this call (held back, or used before)."""
     blocks = []
@@ -303,7 +392,9 @@ def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_i
         said = "\n".join(f"[{a:.1f}-{b:.1f}] {t}" for a, b, t in sents) or "(no speech picked up)"
         blocks.append(f"Clip {n}: {c['views']:,} views, {c['duration']:.0f} s, title \"{c['title']}\"\n{said}")
     period = "week" if days <= 7 else "month" if days <= 31 else "year"
-    prompt = PLAN_PROMPT.format(name=name, days=days, period=period, blocks="\n\n".join(blocks))
+    prompt = PLAN_PROMPT.format(name=name, days=days, period=period, blocks="\n\n".join(blocks),
+                                game_note=GAME_NOTE.format(name=name, game=game) if game else "")
+    kind = f"{game} clips" if game else "clips"
     try:
         sheets = [frame_sheet(Path(c["file"]), c["duration"], Path(c["file"]).with_suffix(".sheet.jpg")) for c in cands]
         data = ask_claude_look(LOOK_NOTE.format(n=len(cands)) + prompt, sheets)
@@ -339,12 +430,13 @@ def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_i
                       "refined": r["refined"], "creator": name, "views": c["views"], "clip_title": c["title"],
                       "clipper": c["clipper"], "source_url": c["url"], "src_file": c["file"]})
     plain = str(data.get("title_plain") or f"{name}'s").strip()
-    accent = str(data.get("title_accent") or f"top clips this {period}").strip()
-    upload_title = str(data.get("upload_title") or f"{name}'s {count} most viewed clips this {period}").strip()[:95]
+    accent = str(data.get("title_accent") or f"top {kind} this {period}").strip()
+    upload_title = str(data.get("upload_title") or f"{name}'s {count} most viewed {kind} this {period}").strip()[:95]
     if partial or any(r["weak"] for r in rows[:rows.index(strong[count - 1])]):
         # a clip with more views is missing, so "top 5" and "number 1" would not be true
-        upload_title = f"{count} of {name}'s most viewed Twitch clips this {period}"
+        upload_title = f"{count} of {name}'s most viewed {'Twitch ' if not game else ''}{kind} this {period}"
     # the model sees every candidate and once wrote "Top 9" over a five-clip video
     upload_title = re.sub(r"(?i)\b(top|best)\s+\d+\b", lambda m: f"{m.group(1)} {count}", upload_title)
-    return {"theme": f"twitch:{login}:top:{days}d", "title_plain": plain, "title_accent": accent,
+    return {"theme": f"twitch:{login}:top:{days}d" + (f":{game}" if game else ""), "game": game,
+            "title_plain": plain, "title_accent": accent,
             "upload_title": upload_title, "items": items}
