@@ -126,9 +126,11 @@ def clips_in_game(login: str, days: int, names: str, since: str = "", limit: int
     want = {_norm(n) for n in game_names(names)}
     start = window_start(datetime.now(timezone.utc), days, since).timestamp()
     out, seen = [], {}
-    for c in clips_page(login, days, 100)[:look]:
-        if c["created"] and c["created"] < start:
-            continue
+    listed = clips_page(login, days, 100)
+    # old clips are dropped before the `look` cut, so launch-hype clips from before `since` cannot crowd new ones out
+    inside = [c for c in listed if not c["created"] or c["created"] >= start]
+    print(f"[twitch] {login}: the clips page listed {len(listed)} clips for {days} days, {len(inside)} inside the window")
+    for c in inside[:look]:
         try:
             page = clip_page(c["url"])
         except Exception as exc:

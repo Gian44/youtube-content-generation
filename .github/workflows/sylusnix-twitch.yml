@@ -45,6 +45,9 @@ jobs:
       GAME_DEFAULT: "Grand Theft Auto VI,Grand Theft Auto 6,GTA VI,GTA 6"
       GAME_LABEL_DEFAULT: "GTA 6"
       SINCE_DEFAULT: "2026-11-19"
+      # a day of one game has far fewer views per clip than a month of everything: Kai Cenat's first GTA 6 day
+      # (2026-11-18) topped out at 5,001 views, so the lane's usual 10,000 floor would never make a game ranking
+      GAME_MIN_VIEWS_DEFAULT: "1000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -87,7 +90,7 @@ jobs:
           GAME="$IN_GAME"; SINCE="$IN_SINCE"; LABEL=""
           if [ "$EVENT" = "schedule" ] || [ "$IN_GAME" = "default" ]; then
             GAME="$GAME_DEFAULT"; LABEL="$GAME_LABEL_DEFAULT"; SINCE="${IN_SINCE:-$SINCE_DEFAULT}"
-            ARGS="$ARGS --every 1"        # a game ranking a day; used clips are never ranked twice
+            ARGS="$ARGS --every 1 --min-views $GAME_MIN_VIEWS_DEFAULT"   # a game ranking a day; used clips are never ranked twice
           fi
           if [ -n "$GAME" ]; then
             python -u run.py twitch $ARGS --game "$GAME" ${LABEL:+--game-label "$LABEL"} ${SINCE:+--since "$SINCE"}

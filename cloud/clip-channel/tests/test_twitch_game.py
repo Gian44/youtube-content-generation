@@ -129,3 +129,14 @@ def test_api_failure_falls_back_to_the_clip_pages(monkeypatch):
         raise RuntimeError("401")
     monkeypatch.setattr(twitch, "_get", boom)
     assert twitch.top_clips("kai", 7, game="GTA 6")[1] == "clip pages"
+
+
+def test_without_keys_old_clips_do_not_use_up_the_look(monkeypatch):
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(days=2)).timestamp()
+    gta = {"game": "Grand Theft Auto VI", "clipper": "", "created": now.timestamp() + 60}
+    # 50 well-viewed clips from before the release day, then two new ones with fewer views
+    listing = [page_clip(i, 5000 - i, old) for i in range(50)] + [page_clip(100, 90), page_clip(101, 80)]
+    no_keys(monkeypatch, listing, {"c100": gta, "c101": gta})
+    got = twitch.top_clips("kai", 7, game="Grand Theft Auto VI", since=now.strftime("%Y-%m-%d"))[0]
+    assert [c["id"] for c in got] == ["c100", "c101"]
