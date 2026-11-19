@@ -57,16 +57,11 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version || echo "claude CLI unavailable; OpenAI/Gemini will write"
       - name: Unit tests (this channel, then the shared cloud/common helpers)
         run: python -m pytest -q && (cd ../common && python -m pytest -q)
-      - name: Kokoro voice model (fallback voice; cached between runs)
+      - name: Kokoro voice model (the channel voice af_heart since 2026-11-19, bqd/voice.py; cached between runs)
         uses: actions/cache@v4
         with:
           path: ~/.cache/kokoro
           key: kokoro-v1.0
-      - name: Pocket TTS model (voice F; gated on Hugging Face, cached between runs)
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/huggingface/hub
-          key: pocket-tts-4.0.1
       - name: Download the Kokoro model if the cache is empty
         working-directory: .
         run: |
@@ -102,8 +97,8 @@ jobs:
           YT_CLIENT_ID_BLOCKQUEST: ${{ secrets.YT_CLIENT_ID_BLOCKQUEST }}
           YT_CLIENT_SECRET_BLOCKQUEST: ${{ secrets.YT_CLIENT_SECRET_BLOCKQUEST }}
           YT_REFRESH_TOKEN_BLOCKQUEST: ${{ secrets.YT_REFRESH_TOKEN_BLOCKQUEST }}
-          # voice F (Pocket TTS on the runner). Set to "gemini" once GEMINI_API_KEY_BLOCKQUEST exists (Charon, free tier).
-          TTS_BACKEND: pocket
+          # The channel voice is fixed in bqd/voice.py (Kokoro af_heart, 2026-11-19); this env no longer moves it.
+          TTS_BACKEND: kokoro
           IN_COUNT: ${{ github.event.inputs.count || '3' }}
           IN_CATEGORY: ${{ github.event.inputs.category || '' }}
           IN_FORMAT: ${{ github.event.inputs.format || '' }}

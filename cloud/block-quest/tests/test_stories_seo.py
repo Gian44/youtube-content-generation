@@ -109,5 +109,14 @@ def test_config_env(monkeypatch):
     monkeypatch.delenv("TTS_BACKEND", raising=False)
     monkeypatch.setenv("YT_REFRESH_TOKEN_BLOCKQUEST", "rt-bq")
     cfg = config.Config.from_env(count=3, smoke=True)
-    assert cfg.privacy == "unlisted" and cfg.sof.tts_backend == "pocket" and cfg.sof.yt_refresh_token == "rt-bq"
+    assert cfg.privacy == "unlisted" and cfg.sof.yt_refresh_token == "rt-bq"
+    assert (cfg.sof.tts_backend, cfg.sof.kokoro_voice, cfg.sof.kokoro_lang) == ("kokoro", "af_heart", "en-us")
     assert cfg.sof.shorts_brand == "Block Quest Daily"
+    monkeypatch.setenv("TTS_BACKEND", "gemini")                  # the shared env never moves this channel's voice
+    assert config.Config.from_env(count=1).sof.tts_backend == "kokoro"
+
+
+def test_the_voice_says_roblox_and_robux_right_and_captions_keep_the_spelling():
+    from bqd import voice
+    assert voice.for_tts("Roblox players love Robux, ROBLOX's best.") == "Roeblox players love Roebucks, Roeblox's best."
+    assert voice.for_tts("Brookhaven obby") == "Brookhaven obby"

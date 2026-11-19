@@ -9,6 +9,10 @@ games from a fixed kid-safe list, 3 clues each, the name never in a clue) and **
 door: one, two or three, then all three open). Each spoken line is voiced on its own and joined with countdown
 ticks, so the panel always matches the voice. Ledger rows carry `format` for the two-week comparison.
 
+**Voice (2026-11-19, `bqd/voice.py`)**: Kokoro **af_heart**, US English, speed 1.05 (about 180 words a minute), on
+the runner, free, no quota; fixed for this channel whatever `TTS_BACKEND` says. "Roblox" and "Robux" are respelled
+for the voice only (Kokoro says RAH-blocks otherwise). Voice F (Pocket) is no longer used here.
+
 ```bash
 gh workflow run block-quest-daily.yml -f count=3 -f smoke=true                         # today's mix, unlisted
 gh workflow run block-quest-daily.yml -f count=1 -f smoke=true -f format=pick_one      # one format, unlisted

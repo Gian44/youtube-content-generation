@@ -19,7 +19,7 @@ from sof import ledger, tts, upload, vision
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 
-from bqd import gameplay, interactive, seo, stories
+from bqd import gameplay, interactive, seo, stories, voice
 from bqd.config import Config
 
 log = logging.getLogger("bqd.pipeline")
@@ -120,7 +120,7 @@ def run(cfg: Config) -> int:
             audio.append(interactive.voice(s, work, cfg, index=k, hold=cfg.hold_seconds))
             print(f"short {k + 1}: {tts.duration_seconds(audio[-1]):.0f} s ({s.format})", flush=True)
             continue
-        raw = tts.speak([s.body], str(work / f"s{k}" / "tts"), cfg.sof, short=True)[0]
+        raw = tts.speak([voice.for_tts(s.body)], str(work / f"s{k}" / "tts"), cfg.sof, short=True)[0]
         out = work / f"short{k + 1}.mp3"
         if not out.exists():
             sof_render.run(sof_shorts.loudnorm_cmd(raw, str(out), tts.post_filter(cfg.sof)), 600)

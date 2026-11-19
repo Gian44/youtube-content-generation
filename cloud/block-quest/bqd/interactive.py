@@ -15,7 +15,6 @@ validation, beats, the timeline, the ffmpeg commands, the panel drawing) are uni
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import logging
@@ -29,6 +28,7 @@ from sof import shorts as sof_shorts
 from sof import tts
 from sof.llm import LLMError
 
+from bqd import voice as narrator
 from bqd.stories import DARK_WORDS, Story, StoryError
 
 log = logging.getLogger("bqd.interactive")
@@ -399,11 +399,8 @@ def voice(story: Story, work: Path, cfg, *, index: int, hold: int = 3) -> str:
     if out.exists() and tl_path.exists():
         return str(out)
     beats = make_beats(story.format, story.script, hold=hold)
-    scfg = cfg.sof
-    if scfg.tts_backend == "gemini":         # dozens of tiny lines would spend the free daily Gemini requests
-        scfg = copy.copy(scfg)
-        scfg.tts_backend = "pocket"
-    raw = tts.speak([b.say for b in beats], str(d / "tts"), scfg, short=True)
+    scfg = cfg.sof                           # the channel voice (bqd/voice.py), set in Config.from_env
+    raw = tts.speak([narrator.for_tts(b.say) for b in beats], str(d / "tts"), scfg, short=True)
     pieces_dir = d / "pieces"
     pieces_dir.mkdir(parents=True, exist_ok=True)
     gap = str(pieces_dir / "gap.wav")

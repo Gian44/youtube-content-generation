@@ -9,8 +9,9 @@ from dataclasses import dataclass, field
 
 from sof.config import Config as SofConfig
 
-WORDS_PER_MINUTE = 135          # voice F (Pocket TTS) pace
-DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F; TTS_BACKEND=gemini + GEMINI_API_KEY_BLOCKQUEST flips it
+from bqd import voice
+
+WORDS_PER_MINUTE = 180          # Kokoro af_heart at speed 1.05 (voice F was ~130)
 
 
 @dataclass
@@ -66,8 +67,10 @@ class Config:
         for name in ("YT_CLIENT_ID", "YT_CLIENT_SECRET", "YT_REFRESH_TOKEN", "GEMINI_API_KEY"):
             if os.environ.get(f"{name}_BLOCKQUEST"):
                 os.environ[name] = os.environ[f"{name}_BLOCKQUEST"]
-        os.environ.setdefault("TTS_BACKEND", DEFAULT_TTS_BACKEND)
         cfg.sof = SofConfig.from_env(minutes=150, skip_upload=cfg.skip_upload, work_dir=cfg.work_dir)
+        # 2026-11-19 (Gian: "Use a more suitable voice. You decide."): Kokoro af_heart, whatever TTS_BACKEND says —
+        # the shared env must not hand this channel Sleep On Facts' Gemini quota or the old bedtime voice F.
+        voice.apply(cfg.sof)
         cfg.sof.shorts_brand = cfg.brand
         cfg.sof.images_vision_check = True
         if cfg.smoke:

@@ -188,3 +188,25 @@ def test_story_writer_rejects_creepy_and_scam_stories():
     cats, personas = stories.load_topics(str(Path(__file__).resolve().parents[1] / "topics.yml"))
     assert not {"creepy_servers", "trade_scams", "banned_or_hacked", "revenge_on_trolls", "friends_and_betrayal"} & {c.key for c in cats}
     assert "horror" not in personas
+
+
+def test_voice_speaks_every_beat_respelled_and_writes_the_timeline(tmp_path, monkeypatch):
+    """interactive.voice end to end without ffmpeg or a model: what the narrator is given, and the cues."""
+    from bqd import interactive as it
+    spoken = []
+
+    def fake_speak(chunks, out_dir, cfg, short=False):
+        spoken.extend(chunks)
+        return [f"{out_dir}/{i:04d}.mp3" for i in range(len(chunks))]
+
+    monkeypatch.setattr(it.tts, "speak", fake_speak)
+    monkeypatch.setattr(it.tts, "duration_seconds", lambda p: 2.0)
+    monkeypatch.setattr(it.sof_render, "run", lambda cmd, timeout: None)
+    wyr = json.loads(json.dumps(WYR))
+    wyr["rounds"][1]["b"] = "get one thousand Robux in Roblox once"
+    s = it.write(FakeLLM([wyr]), "would_you_rather", seed="x", used=[])
+    cfg = config.Config.from_env(count=1)
+    it.voice(s, tmp_path, cfg, index=0)
+    assert len(spoken) == 5 and "Roebucks in Roeblox" in spoken[1] and "Robux" in s.script["rounds"][1]["b"]
+    tl = json.loads((tmp_path / "s0" / "timeline.json").read_text())
+    assert sum(1 for c in tl["cues"] if c["count"]) == 12 and tl["total"] > 20
