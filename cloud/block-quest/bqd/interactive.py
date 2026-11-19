@@ -39,8 +39,9 @@ FORMATS: dict[str, dict] = {
     "pick_one": {"label": "Roblox Pick One", "header": "PICK ONE", "rounds": 2},
 }
 
-# Guess the Game draws only from long-running, well-known Roblox games that suit every age (no horror, no shooters).
-GAMES = ["Adopt Me!", "Brookhaven RP", "Tower of Hell", "Natural Disaster Survival", "Work at a Pizza Place", "Jailbreak",
+# Guess the Game draws only from long-running, well-known Roblox games that suit every age (no horror, no shooters,
+# no name a parent would mind hearing read out: Tower of Hell was dropped 2026-11-19).
+GAMES = ["Adopt Me!", "Brookhaven RP", "Natural Disaster Survival", "Work at a Pizza Place", "Jailbreak",
          "Bee Swarm Simulator", "Royale High", "Theme Park Tycoon 2", "Lumber Tycoon 2", "Welcome to Bloxburg",
          "Build A Boat For Treasure", "Epic Minigames", "Blox Fruits", "Dress to Impress", "Grow a Garden"]
 GENERIC_NAME_WORDS = {"simulator", "tycoon", "the", "for", "to", "a", "at"}

@@ -26,8 +26,8 @@ WYR = {"title": "Pets Edition", "tags": ["pets", "roblox"],
 GTG_OK = {"tags": ["quiz", "kidsafe"], "rounds": [
     {"game": "Adopt Me!", "clues": ["You can raise a baby or a pet here.", "Eggs hatch into pets you can trade.",
                                     "A legendary neon pet is the big dream."]},
-    {"game": "Tower of Hell", "clues": ["There are no checkpoints at all.", "The sections change every few minutes.",
-                                        "You climb as high as you can."]},
+    {"game": "Theme Park Tycoon 2", "clues": ["You build rides and roller coasters.", "Guests pay to get in.",
+                                              "You earn money as visitors have fun."]},
     {"game": "Jailbreak", "clues": ["You can play as police or a criminal.", "Players escape and rob stores.",
                                     "Cops chase cars across a big city."]}]}
 PICK = {"title": "Mystery Edition", "tags": ["pets"], "rounds": [
@@ -80,14 +80,14 @@ def test_guess_the_game_only_listed_games_and_no_name_in_the_clues():
     assert beats[1].say == "You can raise a baby or a pet here."               # no spoken "Clue one:" (the panel numbers them)
     assert beats[4].panel["answer"] == "Adopt Me!" and beats[-1].panel["kind"] == "cta"
     leak = json.loads(json.dumps(GTG_OK))
-    leak["rounds"][1]["clues"][2] = "You climb a tall tower before time ends."
+    leak["rounds"][1]["clues"][2] = "You build the best theme park around."
     with pytest.raises(stories.StoryError, match="gives the name away"):
         interactive.validate("guess_the_game", leak, p)
     unknown = json.loads(json.dumps(GTG_OK))
     unknown["rounds"][0]["game"] = "Doors"                                # horror: not on the list
     with pytest.raises(stories.StoryError, match="copied exactly"):
         interactive.validate("guess_the_game", unknown, p)
-    assert all(g in interactive.GAMES for g in p["games"])
+    assert all(g in interactive.GAMES for g in p["games"]) and not any("hell" in g.lower() for g in interactive.GAMES)
     assert "Adopt Me!" not in interactive.prompt_for("guess_the_game", seed="x", used=[], recent_games=["Adopt Me!"])[1]["games"]
 
 
