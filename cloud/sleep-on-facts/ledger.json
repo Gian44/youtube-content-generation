@@ -2342,5 +2342,85 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44358106033"
+  },
+  {
+    "date": "2026-11-19",
+    "topic": "Solar System",
+    "category": "space & astronomy",
+    "wiki_title": "Solar System",
+    "video_id": "U0s02AeEhwc",
+    "title": "The Sun Holds Almost All of the Solar System's Mass | Space Facts for Sleep",
+    "privacy": "public",
+    "publish_at": "2026-11-20T01:30:00Z",
+    "duration_seconds": 7862,
+    "words": 18776,
+    "images": 64,
+    "image_sources": {
+      "commons": 29,
+      "nasa": 21,
+      "pexels": 1,
+      "pixabay": 13
+    },
+    "story_format": "parts",
+    "title_variant": 3,
+    "timeline": {
+      "slots": 394,
+      "thing_slots": 302,
+      "cue_slots": 99,
+      "things_shown": 47,
+      "distinct_photos": 189,
+      "lag_median": 2.48
+    },
+    "short": {
+      "video_id": "ByJX6xq59eI",
+      "title": "The Sun Holds 99.86 Percent of the Mass #Shorts",
+      "seconds": 33.0,
+      "publish_at": "2026-11-20T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "ByJX6xq59eI",
+        "title": "The Sun Holds 99.86 Percent of the Mass #Shorts",
+        "seconds": 33.0,
+        "publish_at": "2026-11-20T02:30:00Z"
+      },
+      {
+        "video_id": "Sj9UA4HLVWo",
+        "title": "The Asteroid Belt Spans 2.3 to 3.3 Astronomical Units #Shorts",
+        "seconds": 29.3,
+        "publish_at": "2026-11-21T02:30:00Z"
+      },
+      {
+        "video_id": "MG7eK5EGqjY",
+        "title": "The First Centaur Was Found in 1977 #Shorts",
+        "seconds": 35.0,
+        "publish_at": "2026-11-22T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 37,
+      "after": 9,
+      "paragraphs": 286,
+      "rewritten": 27,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 8,
+        "robotic_rhythm": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 88,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 188,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44577441772"
   }
 ]
