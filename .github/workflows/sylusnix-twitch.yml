@@ -3,10 +3,13 @@ name: sylusnix twitch
 # One ranking Short from a streamer's most-viewed Twitch clips. Twitch serves clips to GitHub's runners (YouTube does
 # not), so this lane of the sylusnix channel runs here; the YouTube-sourced lane runs on the PC.
 on:
-  # Daily from the GTA 6 release (2026-11-19): one ranking of a verified streamer's GTA 6 clips. A scheduled run uses
-  # the GAME/SINCE defaults below and makes nothing on a day with fewer than 5 usable clips.
+  # sylusnix lane (Claude's pick at Gian's request, 2026-11-19): Twitch streamer rankings only, 3 a day.
+  # 15:07 = one GTA 6 ranking (GAME/SINCE defaults below); 03:07 and 09:07 = a general ranking of the verified
+  # streamer ranked least recently. Any slot makes nothing on a day with fewer than 5 usable clips.
   schedule:
     - cron: "7 15 * * *"
+    - cron: "7 3 * * *"
+    - cron: "7 9 * * *"
   workflow_dispatch:
     inputs:
       game:
@@ -79,6 +82,7 @@ jobs:
           IN_GAME: ${{ github.event.inputs.game || '' }}
           IN_SINCE: ${{ github.event.inputs.since || '' }}
           EVENT: ${{ github.event_name }}
+          SCHED: ${{ github.event.schedule || '' }}
         run: |
           set -e
           umask 077
@@ -88,9 +92,11 @@ jobs:
           if [ "$IN_FORCE" = "true" ] && [ "$SMOKE" != "true" ]; then ARGS="$ARGS --force"; fi
           if [ -n "$IN_STREAMER" ]; then ARGS="$ARGS --streamer $IN_STREAMER"; fi
           GAME="$IN_GAME"; SINCE="$IN_SINCE"; LABEL=""
-          if [ "$EVENT" = "schedule" ] || [ "$IN_GAME" = "default" ]; then
+          if [ "$SCHED" = "7 15 * * *" ] || [ "$IN_GAME" = "default" ]; then
             GAME="$GAME_DEFAULT"; LABEL="$GAME_LABEL_DEFAULT"; SINCE="${IN_SINCE:-$SINCE_DEFAULT}"
             ARGS="$ARGS --every 1 --min-views $GAME_MIN_VIEWS_DEFAULT"   # a game ranking a day; used clips are never ranked twice
+          elif [ "$EVENT" = "schedule" ]; then
+            ARGS="$ARGS --every 3"   # two general rankings a day across six streamers: each streamer at most every 3 days
           fi
           if [ -n "$GAME" ]; then
             python -u run.py twitch $ARGS --game "$GAME" ${LABEL:+--game-label "$LABEL"} ${SINCE:+--since "$SINCE"}
