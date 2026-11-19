@@ -36,3 +36,12 @@ creators:
 twitch:
   # captions: false = the stream already shows live captions, so ours are left off
   - {name: Kai Cenat,           login: kaicenat,   verified: true, captions: false}
+  # added 2026-11-19 (Gian). Campaign pages read that day on reachclipping.com, all labelled Live and all allowing
+  # YouTube Shorts: JasonTheWeen ($9,000 pool), Lacy ($12,500 GTA VI marathon pool), Clix ($5,000 GTA VI marathon
+  # pool). Marlon and Silky have no pool of their own: the $20,000 CORE pool (ends 2026-11-30) covers clips with at
+  # least two CORE members. This channel has not joined any of them; the pools are the permission signal only.
+  - {name: JasonTheWeen,        login: jasontheween, verified: true}
+  - {name: Lacy,                login: lacy,       verified: true}
+  - {name: Clix,                login: clix,       verified: true}
+  - {name: Marlon,              login: marlon,     verified: true}
+  - {name: Silky,               login: silky,      verified: true}
