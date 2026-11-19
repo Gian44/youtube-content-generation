@@ -796,5 +796,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44374527257"
+  },
+  {
+    "date": "2026-11-19",
+    "kind": "shorts",
+    "topic": "3 shorts: best_friend_duo, pick_one, guess_the_game",
+    "video_id": "M511BQlEWSM",
+    "stories": [
+      {
+        "video_id": "M511BQlEWSM",
+        "title": "Waiting at the Finish Button of the Obby #roblox #Shorts",
+        "format": "story",
+        "category": "best_friend_duo",
+        "persona": "warm",
+        "hook": "\"Stage 48 is a pancake, and it hates us,\" Juno typed, right as I fell off it for the thirtieth time.",
+        "words": 139,
+        "seconds": 43,
+        "publish_at": null,
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_006.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "GbyOHf7XGL4",
+        "title": "Roblox Pick One: Mystery Egg Edition #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick an egg: one, two, or three.",
+        "words": 58,
+        "seconds": 27,
+        "publish_at": "2026-11-20T03:07:20Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_010.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "ornrx5dQpiA",
+        "title": "Can You Guess These 3 Roblox Games #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Adopt Me!",
+          "Natural Disaster Survival",
+          "Bee Swarm Simulator"
+        ],
+        "words": 94,
+        "seconds": 41,
+        "publish_at": "2026-11-20T11:07:20Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_030.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44594070763"
   }
 ]
