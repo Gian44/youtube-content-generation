@@ -185,6 +185,11 @@ def test_story_writer_rejects_creepy_and_scam_stories():
     with pytest.raises(stories.StoryError, match="kid-safe"):
         stories.validate({"title": "Empty server", "hook": "The only other player in the creepy server knew my name.",
                           "body": body}, words_min=20, words_max=150, need_queries=False)
+    with pytest.raises(stories.StoryError, match="hell"):
+        stories.validate({"title": "The yellow bar", "hook": "We were stuck in Tower of Hell all night.",
+                          "body": "We were stuck in Tower of Hell all night. " + "We jumped again and again. " * 12 + "Would you quit?"},
+                         words_min=20, words_max=150, need_queries=False)
+    assert not stories.DARK_WORDS.search("Hello there, shell collector")
     cats, personas = stories.load_topics(str(Path(__file__).resolve().parents[1] / "topics.yml"))
     assert not {"creepy_servers", "trade_scams", "banned_or_hacked", "revenge_on_trolls", "friends_and_betrayal"} & {c.key for c in cats}
     assert "horror" not in personas

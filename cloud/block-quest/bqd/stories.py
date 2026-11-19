@@ -21,7 +21,8 @@ log = logging.getLogger("bqd.stories")
 BANNED_WORDS = re.compile(r"\b(reddit|subreddit|r/|op\b|upvote|karma)\b", re.I)
 # Gian 2026-11-19: kid-safe, all ages, nothing creepy. Stories that lean on these are rewritten, not published.
 DARK_WORDS = re.compile(r"\b(creep(y|ier|iest|ed)?|horror|haunt(ed|ing)?|stalk(er|ed|ing)?|kidnap\w*|blood\w*|gore|"
-                        r"hack(ed|er|ers|ing)?|scam(s|med|mer|mers)?|banned|password|home address|phone number)\b", re.I)
+                        r"hack(ed|er|ers|ing)?|scam(s|med|mer|mers)?|banned|password|home address|phone number|"
+                        r"hell|damn|crap|idiot|stupid)\b", re.I)    # mild swears too: the narrator reads every word
 
 
 class StoryError(RuntimeError):
@@ -136,7 +137,8 @@ Requirements:
 - Kid-safe for every age: funny, wholesome or exciting. Nothing scary at all (no creepy players, no empty or
   haunted servers, no one who knows things about the narrator's real life, no strangers asking for anything).
   No scams, hacks, exploits, bans or stolen accounts. No bullying, revenge or betrayal; a rivalry ends friendly.
-  No romance or online dating, no swearing, no slurs, no violence beyond an avatar falling off an obby.
+  No romance or online dating, no swearing (not even "hell" or "stupid"), no slurs, no violence beyond an avatar
+  falling off an obby. Don't name games with a swear in the title (no Tower of Hell).
 - No real person, no real username, no real YouTuber. Nobody shares a password, address or real name.
 - The trouble in the story is light: a fail, a race, a mix-up, a silly rule, bad luck that turns good.
 - Avoid these recent hooks (different situations, different openings):
