@@ -594,5 +594,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44272543035"
+  },
+  {
+    "date": "2026-11-19",
+    "kind": "video",
+    "film": "Detour",
+    "year": 1945,
+    "theme": "Public domain classics",
+    "topic": "Detour (1945)",
+    "video_id": "ZkFlS5Wnv0I",
+    "title": "Broke Pianist Hitchhikes to Reach His Girlfriend and Ends Up Hunted for Two Deaths",
+    "privacy": "public",
+    "uploaded_at": "2026-11-19T09:57:33+00:00",
+    "duration_seconds": 773,
+    "words": 3202,
+    "acts": 16,
+    "transcript": "archive-asr",
+    "cues": 660,
+    "plot_reference": true,
+    "beats": 141,
+    "shots": 326,
+    "film_file": "archive.org/Detour/Detour.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "56YNV_4cSWQ",
+        "title": "A Hitchhiker's Free Ride Ends With a Dead Man on the Road #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-19T10:57:33Z",
+        "act_index": 5
+      },
+      {
+        "video_id": "2LDEAgOnH8c",
+        "title": "He Helps a Tired Hitchhiker Who Knows His Deadly Secret #Shorts",
+        "seconds": 27,
+        "publish_at": "2026-11-20T10:57:33Z",
+        "act_index": 8
+      },
+      {
+        "video_id": "-V9nLlrm7I4",
+        "title": "A Blackmailer Locks Herself in With the Phone and Ends Up Dead #Shorts",
+        "seconds": 22,
+        "publish_at": "2026-11-21T10:57:33Z",
+        "act_index": 13
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 4,
+        "after": 2,
+        "rewritten": 2
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44496899026"
   }
 ]
