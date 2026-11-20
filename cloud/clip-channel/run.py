@@ -231,12 +231,14 @@ def cmd_rank(a) -> int:
         old = json.loads((out / "info.json").read_text(encoding="utf-8"))
         words_by_id = {it["video_id"]: find.cached_words(it["video_id"]) for it in old["items"]}
         keep = ("rank", "key", "video_id", "creator", "start", "end", "label")
-        items = [{k: it[k] for k in keep} for it in old["items"]]
+        # rankings made before Felix's notes (2026-11) carry longer labels and titles: shortened the same way
+        items = [{**{k: it[k] for k in keep}, "label": find.short_label(it["label"])} for it in old["items"]]
         if a.keep_cuts:      # cut points were edited by hand in info.json: render them as they are
             items = [{**it, "refined": True} for it in items]
         else:
             items = find.refine_spans(" ".join(old["title"]), items, words_by_id)
-        plan = {"theme": old["theme"], "title_plain": old["title"][0], "title_accent": old["title"][1],
+        plain, accent = find.short_title(old["title"][0], old["title"][1], ("Ranking", old["title"][1]))
+        plan = {"theme": old["theme"], "title_plain": plain, "title_accent": accent,
                 "upload_title": old["upload_title"], "items": items}
         render.make_ranking(out, plan, words_by_id, cfg)
         print(f"[redo] {out}")

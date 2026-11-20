@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .find import ROOT, YTDLP, ask_claude, sentences, sh
+from .find import ROOT, YTDLP, ask_claude, sentences, sh, short_label, short_title
 from .upload import read_env
 
 API = "https://api.twitch.tv/helix"
@@ -343,7 +343,7 @@ def ask_claude_look(prompt: str, images: list[Path], model: str = "sonnet", time
 
 
 GAME_NOTE = """Every clip below was made while {name} was playing {game}. Say so in the titles ("{name}'s" and
-"top {game} clips", upload title for example "{name}'s top 5 {game} moments"), and keep labels about what {name}
+"top {game}", upload title for example "{name}'s top 5 {game} moments"), and keep labels about what {name}
 does or how they react. Also mark "skip": true for a clip that is mostly a story cutscene, shows an ending, a
 mission's outcome or another story reveal, or shows an in-game TV show, radio or comedy act on its own: the
 publisher takes those down, and they spoil the game.
@@ -371,9 +371,9 @@ jokes.
 {blocks}
 
 For every clip write:
-- "label": 2 to 4 plain words saying what happens, the way a viewer would put it. At most 20 characters, then
-  optionally one emoji. Use only what the frames, the title and the speech show. No view counts and nothing you
-  cannot back up.
+- "label": 1 or 2 plain words for what happens, the way a viewer would blurt it out ("Rage", "Jumpscared",
+  "Wiped out"), then optionally one emoji. Never a description of the clip. Use only what the frames, the title
+  and the speech show. No view counts and nothing you cannot back up.
 - "start" and "end": the part to show, 7 to 12 seconds. Where there is speech, start at a sentence's start time and
   end at a sentence's end time, and keep the line that makes the label true plus the reaction after it. A clip of
   13 seconds or less is shown whole: start 0, end its length. If a longer clip has little or no speech, use its
@@ -384,8 +384,8 @@ For every clip write:
   against anyone, including a rumour being repeated.
 
 Also write:
-- "title_plain" and "title_accent": the on-screen title in two parts of 2 to 4 words each, for example
-  "{name}'s" and "top clips this {period}".
+- "title_plain" and "title_accent": the on-screen title in two parts, at most 5 words together, for example
+  "{name}'s" and "top clips".
 - "upload_title": a YouTube title under 70 characters, plain and true. It may say what number 1 is.
 The Short shows only the five most viewed clips that you did not mark weak or skip, in the order given. So a title
 may say "top 5" but no other count, and "number 1" means the first clip you kept.
@@ -443,7 +443,7 @@ def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_i
     rows = []
     for n, c in enumerate(cands, 1):
         row = got.get(n) or {}
-        label = str(row.get("label") or "").strip()
+        label = short_label(str(row.get("label") or ""))
         s, e, from_model = _span(c, words_by_id.get(c["id"]) or [], row.get("start"), row.get("end"))
         rows.append({"clip": c, "label": label, "start": s, "end": e, "refined": from_model,
                      "weak": bool(row.get("skip")) or not label})    # the model's own "weak" is advice only:
@@ -462,8 +462,9 @@ def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_i
         items.append({"rank": rank, "label": r["label"], "video_id": c["id"], "start": r["start"], "end": r["end"],
                       "refined": r["refined"], "creator": name, "views": c["views"], "clip_title": c["title"],
                       "clipper": c["clipper"], "source_url": c["url"], "src_file": c["file"]})
-    plain = str(data.get("title_plain") or f"{name}'s").strip()
-    accent = str(data.get("title_accent") or f"top {kind} this {period}").strip()
+    plain, accent = short_title(str(data.get("title_plain") or f"{name}'s").strip(),
+                                str(data.get("title_accent") or f"top {game or 'clips'}").strip(),
+                                (f"{name}'s", f"top {game or 'clips'}"))
     upload_title = str(data.get("upload_title") or f"{name}'s {count} most viewed {kind} this {period}").strip()[:95]
     if partial or any(r["weak"] for r in rows[:rows.index(strong[count - 1])]):
         # a clip with more views is missing, so "top 5" and "number 1" would not be true
