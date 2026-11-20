@@ -25,7 +25,7 @@ UNITS = {
     "feet": "ft", "foot": "ft", "kg": "", "kilograms": "kg", "kilogram": "kg", "tons": "", "tonnes": "",
     "pounds": "lb", "degrees": "°", "°c": "°C", "°f": "°F", "light-years": "light-years", "light": "",
     "years": "years", "year": "", "days": "days", "hours": "hours", "minutes": "min", "seconds": "s",
-    "mph": "", "km/h": "", "robux": "Robux", "dollars": "", "views": "", "times": "x",
+    "mph": "", "km/h": "", "robux": "Robux", "dollars": "", "dollar": "", "views": "",
 }
 _NUM = re.compile(r"^[$£€]?\d[\d,]*(?:\.\d+)?(?:%|st|nd|rd|th|s|k|m|bn)?$", re.I)
 _YEAR = re.compile(r"^(1[0-9]{3}|20[0-9]{2})s?$")
@@ -39,6 +39,10 @@ STOP = {
     "chat", "bro", "yo", "hey", "wait", "look", "comment", "pick", "would", "rather", "guess", "it'll", "let's",
     "don't", "they're", "we're", "you're", "can't", "won't", "didn't", "that's", "there's", "he's", "she's",
 }
+# words after a number that add nothing ("7 more", "500 later"): the number then stands alone
+NOT_NOUNS = {"more", "less", "than", "each", "per", "out", "left", "other", "others", "ago", "later", "earlier", "before",
+             "after", "again", "apiece", "total", "times", "away", "back", "down", "over", "into", "were", "was", "are",
+             "had", "has", "have", "got", "get", "did", "does", "will", "can", "could", "would", "should", "all", "too"}
 # Nationalities, creeds and groups are never the "most necessary word" of a sentence and must not be singled out on
 # screen ("Marx was not a German, he was a Jew" picked "German" and "Jew" in a 2026-11 review).
 GROUPS = {
@@ -82,11 +86,14 @@ def _number_at(words: list[Word], i: int) -> tuple[str, int] | None:
             shown, n = shown + UNITS[two], 3
         elif nxt in UNITS:
             unit = UNITS[nxt] or _bare(words[i + 1][2])
-            if nxt == "dollars" and not shown.startswith("$"):
+            if nxt in ("dollars", "dollar") and not shown.startswith("$"):
                 shown = "$" + shown                        # Felix's own example: "$14"
             else:
                 shown = shown + unit if unit in ("%", "°", "°C", "°F") else f"{shown} {unit}"
             n = 2
+        elif (not _YEAR.match(w) and not re.search(r"[,.;:!?]$", words[i][2]) and nxt.isalpha() and nxt == _bare(words[i + 1][2])
+              and len(nxt) >= 3 and nxt not in STOP and nxt not in NOT_NOUNS):
+            shown, n = f"{shown} {nxt}", 2                  # "7 survivors", "20 times": a bare count says nothing
     return shown, n
 
 

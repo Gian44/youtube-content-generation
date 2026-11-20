@@ -79,3 +79,12 @@ def test_pick_dollars_and_digit_skip():
     words = tb.words_from_cues([(0.0, 20.0, "He spent 14 dollars on rank 3 and then 500 more.")])
     out = [t for _, _, t in tb.pick(words, duration=20.0, per_minute=30, min_gap=0.5, skip={"#3"})]
     assert out == ["$14", "500"]
+
+
+def test_bare_count_takes_its_noun_but_not_filler():
+    def shown(text):
+        return [t for _, _, t in tb.pick(tb.words_from_cues([(0.0, 30.0, text)]), duration=30.0, per_minute=30,
+                                         min_gap=0.1, names=False)]
+    assert shown("They counted 7 survivors in the house.") == ["7 survivors"]
+    assert shown("Then 7 more came, in 1610, and 3 of them stayed.") == ["7", "1610", "3"]
+    assert shown("It cost 25 dollar flat.") == ["$25"]
