@@ -380,8 +380,12 @@ def test_seed_category_drives_title_and_playlist(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "ledger.json").read_text())[0]["category"] == "oceans & rivers"
 
 
-def _timeline_fakes(monkeypatch, calls, tmp_path, *, render_fails=False):
-    """Fake the planner's network/LLM edges; the planning itself (times, ranking, slots) runs for real."""
+NO_FOOTAGE = ({}, {"candidates": 0, "calm": 0, "approved": 0, "clips": 0, "sources": {}, "seconds": 0})
+
+
+def _timeline_fakes(monkeypatch, calls, tmp_path, *, render_fails=False, clips=None):
+    """Fake the planner's network/LLM edges; the planning itself (times, ranking, slots) runs for real.
+    ``clips``: {group key: [(file name, credits row)]} the footage stage "finds" (written with their footage.json)."""
     from PIL import Image
     ent_dir = tmp_path / "ent"
     ent_dir.mkdir()
@@ -408,6 +412,23 @@ def _timeline_fakes(monkeypatch, calls, tmp_path, *, render_fails=False):
         Path(tmp).mkdir(parents=True, exist_ok=True)
         f = Path(tmp) / "reel.mp4"; f.write_bytes(b"reel"); return str(f)
     monkeypatch.setattr(pipeline.timeline, "build_timeline_reel", build)
+
+    def gather_footage(groups, out_dir, **kw):
+        calls.append(f"footage:{[g['key'] for g in groups]}")
+        seen["footage_kw"] = kw
+        found = {}
+        for key, items in (clips or {}).items():
+            folder = Path(out_dir) / pipeline.footage._folder(key)
+            folder.mkdir(parents=True, exist_ok=True)
+            rows = [{"file": f, "skip": 0.0, "seconds": 14.0, "slow": 1.54, **row} for f, row in items]
+            for f, _ in items:
+                (folder / f).write_bytes(b"clip")
+            (folder / "footage.json").write_text(json.dumps(rows))
+            found[key] = [str((folder / f).resolve()) for f, _ in items]
+        n = sum(len(v) for v in found.values())
+        return found, {**NO_FOOTAGE[1], "candidates": 2 * n, "calm": n, "approved": n, "clips": n,
+                       "sources": {"commons": n}}
+    monkeypatch.setattr(pipeline.footage, "gather_footage", gather_footage)
     return titan, seen
 
 
@@ -419,7 +440,9 @@ def test_photos_follow_the_narration(tmp_path, monkeypatch):
     assert "mentions" in calls and "entity-photos:1" in calls and "timeline-render" in calls and "render" not in calls
     assert len(seen["slots"]) == 6 and seen["total"] == 120.0          # 120 s of narration / 20 s slots
     assert set(titan) & set(seen["slots"])                               # Titan's photos are on screen
-    assert seen["captions"] == {titan[0]: "Photo: NASA/JPL · CC BY 2.0 · Wikimedia Commons"}
+    assert seen["captions"] == {}                                        # its credit fits in the description (Felix 2026-11)
+    assert "NASA/JPL (CC BY 2.0)" in pipeline._UPLOADS[0]["snippet"]["description"]
+    assert "footage:['titan', 'subject']" in calls                       # Titan searched by its own name, then the subject
     work = next((tmp_path / "work").iterdir())
     tl = json.loads((work / "timeline.json").read_text())
     assert tl["slots"] == seen["slots"] and tl["entities"][0]["photos"] == 2 and tl["stats"]["slots"] == 6
@@ -488,7 +511,7 @@ def test_credits_page_replaces_on_screen_credits(tmp_path, monkeypatch, capsys):
     assert seen["captions"] == {}                                         # nothing burned into the frame
     desc = pipeline._UPLOADS[0]["snippet"]["description"]
     url = "https://sleep-on-facts-credits.gian.workers.dev/2026-"
-    assert "Photo credits (authors and licences): " + url in desc and "on screen" not in desc and "Ann" not in desc
+    assert "Photo and footage credits (authors and licences): " + url in desc and "on screen" not in desc and "Ann" not in desc
     assert seen["short_credits_url"].startswith(url)
     rows = json.loads((tmp_path / "ledger.json").read_text())
     assert rows[0]["credits_url"].startswith(url) and rows[0]["credits_url"].endswith("-whales")
@@ -507,18 +530,79 @@ def test_credits_page_failure_names_the_authors_in_the_description(tmp_path, mon
     assert pipeline.run(_cfg(tmp_path)) == 0
     assert "! credits page unavailable (kv down); credits go in the description" in capsys.readouterr().out
     desc = pipeline._UPLOADS[0]["snippet"]["description"]
-    assert "Photo credits (Wikimedia Commons): Author 0 (CC BY 4.0); Author 1 (CC BY 4.0); Author 2 (CC BY 4.0)." in desc
+    assert "Credits (Wikimedia Commons): Author 0 (CC BY 4.0); Author 1 (CC BY 4.0); Author 2 (CC BY 4.0)." in desc
     assert "workers.dev" not in desc and "on screen" not in desc
     assert seen["captions"] == {} and seen["short_credits_url"] == ""   # the Short lists its own authors
     assert "credits_url" not in json.loads((tmp_path / "ledger.json").read_text())[0]
 
 
-def test_no_cloudflare_secrets_keeps_the_on_screen_credits(tmp_path, monkeypatch, capsys):
+def test_no_cloudflare_secrets_puts_the_credits_in_the_description(tmp_path, monkeypatch, capsys):
     calls = []
     seen = _with_credits(monkeypatch, calls, None)
     monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"), [
         {"url": f"u{i}", "credit": "c", "source": "commons", "artist": "Ann", "license": "CC BY 4.0"} for i in range(2)])[1])
     assert pipeline.run(_cfg(tmp_path)) == 0
-    assert "photo credits: on screen (no CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)" in capsys.readouterr().out
-    assert len(seen["captions"]) == 2 and all(v.startswith("Photo: Ann · CC BY 4.0") for v in seen["captions"].values())
-    assert "author and licence on screen" in pipeline._UPLOADS[0]["snippet"]["description"]
+    out = capsys.readouterr().out
+    assert "photo credits: in the description, on screen only where they do not fit (no CLOUDFLARE_API_TOKEN" in out
+    assert seen["captions"] == {}                                         # Felix 2026-11: no text burned in
+    desc = pipeline._UPLOADS[0]["snippet"]["description"]
+    assert "Credits (Wikimedia Commons): Ann (CC BY 4.0). Licences: https://creativecommons.org/licenses/" in desc
+    assert "on screen" not in desc
+
+
+def test_credits_that_do_not_fit_in_the_description_stay_on_screen(tmp_path, monkeypatch, capsys):
+    calls = []
+    seen = _with_credits(monkeypatch, calls, None, image_count=120)
+    authors = [f"Photographer With A Rather Long Name Number {i}" for i in range(120)]
+    monkeypatch.setattr(pipeline.images, "gather_urls", lambda **kw: (calls.append("images"), [
+        {"url": f"u{i}", "credit": "c", "source": "commons", "artist": a, "license": "CC BY-SA 4.0"}
+        for i, a in enumerate(authors)])[1])
+    sources = "Sources:\n" + "\n".join(f"- Article {i} https://en.wikipedia.org/wiki/Article_{i}" for i in range(15))
+
+    def gen(llm, **kw):
+        return Script(title="T", description="D", tags=["t"], body="word " * 300, word_count=300, movements=2,
+                      image_queries=["q"], footer=sources)
+    monkeypatch.setattr(pipeline.script, "generate_script", gen)
+    cfg = _cfg(tmp_path)
+    cfg.images_target = 200
+    monkeypatch.setattr(pipeline.tts, "duration_seconds", lambda p: 3600.0)
+    assert pipeline.run(cfg) == 0
+    desc = pipeline._UPLOADS[0]["snippet"]["description"]
+    assert len(desc.encode("utf-8")) <= 4900 and "- Article 14 https://en.wikipedia.org/wiki/Article_14" in desc
+    assert "; the rest are credited on screen. Licences:" in desc
+    in_desc = {a for a in authors if f"{a} (CC BY-SA 4.0)" in desc}
+    on_screen = {c.removeprefix("Photo: ").split(" · ")[0] for c in seen["captions"].values()}
+    assert in_desc and on_screen and not in_desc & on_screen                  # each credit in one place...
+    assert in_desc | on_screen == set(authors)                                # ...and every licence honoured
+    assert f"on-screen credits: {len(on_screen)} of 120 photos" in capsys.readouterr().out
+
+
+def test_footage_fills_slots_is_credited_and_reaches_the_shorts(tmp_path, monkeypatch, capsys):
+    calls = []
+    clip_rows = [("c1.mp4", {"source": "commons", "artist": "Clip Author", "license": "CC BY-SA 4.0", "title": "Spin",
+                             "page": "https://commons.wikimedia.org/wiki/File:Spin.webm"}),
+                 ("c2.mp4", {"source": "nasa", "artist": "NASA/GSFC", "license": "NASA (public domain)", "title": "Rings",
+                             "page": "https://images.nasa.gov/details/x"})]
+    site = _Site()
+    _with_credits(monkeypatch, calls, site)
+    titan, seen = _timeline_fakes(monkeypatch, calls, tmp_path, clips={"subject": clip_rows})
+    got = {}
+    orig = pipeline.shorts.make_all
+    monkeypatch.setattr(pipeline.shorts, "make_all", lambda cfg, **kw: (got.update(clips=kw.get("clips")), orig(cfg, **kw))[1])
+    assert pipeline.run(_cfg(tmp_path, photo_timeline=True)) == 0
+    clips = [s for s in seen["slots"] if s.endswith(".mp4")]
+    assert clips and seen["slots"][0].endswith(".jpg")                    # the opening stays the subject photo
+    assert all(not (a.endswith(".mp4") and b.endswith(".mp4")) for a, b in zip(seen["slots"], seen["slots"][1:]))
+    out = capsys.readouterr().out
+    assert f"footage: 2 clips (2 of Whales, 0 of 0 named things) from 4 candidates (2 calm, 2 approved) · {len(clips)} of 6 slots" in out
+    work = next((tmp_path / "work").iterdir())
+    tl = json.loads((work / "timeline.json").read_text())
+    assert tl["stats"]["footage_slots"] == len(clips) and any(str(r["why"]).startswith("footage") for r in tl["plan"])
+    row = json.loads((tmp_path / "ledger.json").read_text())[0]
+    assert row["timeline"]["footage_slots"] == len(clips) and row["timeline"]["footage_clips"] == 2
+    assert {Path(c).name for c in clips} == {"c1.mp4", "c2.mp4"}
+    page = site.pages[0][1]                                                # both clips credited on the page
+    assert "Spin</span> (video)" in page and "Clip Author" in page and "1 video clip from the" in page
+    assert sorted(Path(c).name for c in got["clips"]) == ["c1.mp4", "c2.mp4"]
+    kw = seen["footage_kw"]
+    assert kw["need"] * kw["max_slow"] >= 21.5 and kw["slot"] == 21.5    # a calm window fills a 20 + 1.5 s slot

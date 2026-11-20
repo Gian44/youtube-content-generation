@@ -99,24 +99,46 @@ def test_config_and_cli_flags():
     assert parse_args(["--no-shorts"]).no_shorts and not parse_args([]).no_shorts
 
 
+def _frame(path, t, w, h):
+    import numpy as np
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.2f}", "-i", path, "-frames:v", "1", "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    return np.frombuffer(raw, np.uint8).reshape(h, w, 3).astype(int)
+
+
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
-def test_build_video_renders_a_vertical_captioned_short(tmp_path):
+def test_build_video_fills_the_frame_with_panned_photos_and_a_clip_and_no_credit_block(tmp_path):
+    """Felix 2026-11: every frame filled (no small photo on a blurred letterbox), footage mixed in, no credits on the
+    frame; only the emphasis words."""
+    import numpy as np
     from PIL import Image
-    photos = []
-    for i, size in enumerate(((1600, 900), (800, 1200), (1200, 1200))):
-        p = tmp_path / f"p{i}.jpg"; Image.new("RGB", size, (40 * i + 60, 80, 120)).save(p); photos.append(str(p))
+    colours = [(200, 60, 60), (60, 160, 60), (60, 60, 200)]
+    media = []
+    for i, size in enumerate(((1600, 900), (800, 1400), (1200, 1200))):
+        p = tmp_path / f"p{i}.jpg"; Image.new("RGB", size, colours[i]).save(p); media.append(str(p))
+    clips = tmp_path / "footage"; clips.mkdir()
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=854x480:r=25:d=6", "-c:v", "libx264",
+                    "-pix_fmt", "yuv420p", str(clips / "c.mp4")], check=True)
+    (clips / "footage.json").write_text(json.dumps([{"file": "c.mp4", "skip": 0.0, "seconds": 6.0, "slow": 1.5}]))
+    media.insert(1, str(clips / "c.mp4"))
     audio = tmp_path / "short.mp3"
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=220:duration=4", "-ac", "1", str(audio)], check=True)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=220:duration=8", "-ac", "1", str(audio)], check=True)
     narration = "Venice rests on 10 million wooden posts. Millions of them. " + shorts.CTA_LINE
-    out = shorts.build_video(photos=photos, narration=narration, audio=str(audio), work=tmp_path, title="Venice Stands on Logs",
-                             brand="Sleep On Facts", credits={photos[1]: "Photo: Ann · CC BY 4.0 · Wikimedia Commons"},
-                             width=540, height=960, fps=24)
+    out = shorts.build_video(photos=media, narration=narration, audio=str(audio), work=tmp_path, title="Venice Stands on Logs",
+                             brand="Sleep On Facts", width=270, height=480, fps=24)
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,duration",
                             "-of", "json", out], capture_output=True, text=True, check=True)
     st = json.loads(probe.stdout)["streams"][0]
-    assert (st["width"], st["height"]) == (540, 960) and abs(float(st["duration"]) - 4.0) < 0.3
-    assert (tmp_path / "short_tmp" / "credit.png").exists() and (tmp_path / "short_tmp" / "word_000.png").exists()
+    assert (st["width"], st["height"]) == (270, 480) and abs(float(st["duration"]) - 8.0) < 0.3
+    assert not (tmp_path / "short_tmp" / "credit.png").exists() and (tmp_path / "short_tmp" / "word_000.png").exists()
     assert not list((tmp_path / "short_tmp").glob("cue_*.png"))          # no full captions (Felix 2026-11)
+    per = (8.0 + 0.5 * 3) / 4
+    for k, col in ((0, colours[0]), (2, colours[1]), (3, colours[2])):   # each photo covers the whole frame
+        f = _frame(out, per * k + per / 2 - 0.25 * k, 270, 480)
+        for band in (f[10:60], f[200:280], f[420:470]):                 # top, middle and bottom: the photo itself
+            assert np.abs(band.reshape(-1, 3).mean(axis=0) - col).max() < 30, (k, band.reshape(-1, 3).mean(axis=0))
+    a, b = _frame(out, per + 0.6, 270, 480), _frame(out, per + 1.4, 270, 480)
+    assert np.abs(a - b).mean() > 3                                      # the clip slot moves
 
 
 def test_make_is_resumable_and_uses_cached_files(tmp_path, monkeypatch):
@@ -127,7 +149,7 @@ def test_make_is_resumable_and_uses_cached_files(tmp_path, monkeypatch):
     p = tmp_path / "x.jpg"; p.write_bytes(b"j")
     monkeypatch.setattr(shorts.tts, "duration_seconds", lambda path: 48.0)
     monkeypatch.setattr(shorts.tts, "synthesize", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no TTS when cached")))
-    meta = shorts.make(cfg, llm=None, work=tmp_path, topic="T", sections=SECTIONS, plan=None, reel=[str(p)], labels={}, credits={})
+    meta = shorts.make(cfg, llm=None, work=tmp_path, topic="T", sections=SECTIONS, plan=None, reel=[str(p)], labels={})
     assert meta["path"].endswith("short.mp4") and meta["seconds"] == 48.0 and meta["photos"] == [str(p)]
 
 
@@ -156,7 +178,7 @@ def test_upload_short_schedules_after_the_long_video():
 def test_short_description_links_the_credits_page_instead_of_naming_authors():
     d = shorts.short_description(long_video_id="L", topic="Venice", category="cities", hours=3,
                                  credit_lines=["Ann · CC BY-SA 4.0 · Wikimedia Commons"], credits_url="https://c.workers.dev/2026-11-07-venice")
-    assert "Photo credits (authors and licences): https://c.workers.dev/2026-11-07-venice" in d and "Ann" not in d
+    assert "Photo and footage credits (authors and licences): https://c.workers.dev/2026-11-07-venice" in d and "Ann" not in d
     assert d.rstrip().endswith("#sleep #geography #Venice") or "#Shorts" in d
 
 
@@ -230,7 +252,7 @@ def test_make_all_writes_once_and_renders_each_short_under_its_own_name(tmp_path
     monkeypatch.setattr(shorts, "build_video", fake_build)
     cfg.shorts_photos = 2
     metas = shorts.make_all(cfg, llm=llm, work=tmp_path, topic="Venice", sections=THREE, plan=None, reel=photos,
-                            labels={}, credits={}, count=3)
+                            labels={}, count=3)
     assert [m["index"] for m in metas] == [0, 1, 2] and [n for n, _ in built] == ["short", "short2", "short3"]
     assert [Path(m["path"]).name for m in metas] == ["short.mp4", "short2.mp4", "short3.mp4"]
     assert len({p for _, ps in built for p in ps}) == 6                   # no photo repeated across the three
@@ -238,7 +260,7 @@ def test_make_all_writes_once_and_renders_each_short_under_its_own_name(tmp_path
     # rerun: nothing is written or rendered again
     llm.calls.clear(); built.clear()
     again = shorts.make_all(cfg, llm=llm, work=tmp_path, topic="Venice", sections=THREE, plan=None, reel=photos,
-                            labels={}, credits={}, count=3)
+                            labels={}, count=3)
     assert llm.calls == [] and built == [] and [m["hook_title"] for m in again] == [m["hook_title"] for m in metas]
 
 
@@ -251,31 +273,58 @@ def test_make_all_skips_a_failing_short(tmp_path, monkeypatch):
         return {**item, "index": index, "photos": [f"p{index}"], "path": f"s{index}.mp4", "seconds": 40.0}
     monkeypatch.setattr(shorts, "make", make)
     metas = shorts.make_all(cfg, llm=None, work=tmp_path, topic="V", sections=THREE, plan=None, reel=[], labels={},
-                            credits={}, count=3)
+                            count=3)
     assert [m["index"] for m in metas] == [0, 2]
 
 
-def test_credit_text_is_compact():
-    assert shorts.credit_text(["Photo: Ann · CC BY 4.0 · Wikimedia Commons", "Photo: Bo · CC BY-SA 3.0 · Wikimedia Commons"]) == \
-        "Photos via Wikimedia Commons: Ann (CC BY 4.0), Bo (CC BY-SA 3.0)"
-    assert shorts.credit_text(["Photo: Cy · CC0"]) == "Photos: Cy · CC0"
-    assert shorts.credit_text(["Photo: Ann · CC BY 4.0 · Wikimedia Commons", "Photo: Ann · CC BY 4.0 · Wikimedia Commons",
-                               "Photo: Bo · x · CC BY-SA 3.0 · Wikimedia Commons"]) == \
-        "Photos via Wikimedia Commons: Ann (CC BY 4.0), Bo · x (CC BY-SA 3.0)"
-    assert shorts.credit_text([]) == ""
+def _clip_dir(tmp_path, names):
+    d = tmp_path / "footage"; d.mkdir(exist_ok=True)
+    rows = []
+    for n in names:
+        (d / n).write_bytes(b"v"); rows.append({"file": n, "skip": 0.0, "seconds": 12.0, "slow": 1.5})
+    (d / "footage.json").write_text(json.dumps(rows))
+    return [str(d / n) for n in names]
 
 
-def test_credit_png_wraps_inside_the_frame(tmp_path):
+def test_choose_photos_mixes_in_the_chapters_clips_and_the_subjects_clips(tmp_path):
+    files = {}
+    for n in "abcdef":
+        f = tmp_path / f"{n}.jpg"; f.write_bytes(b"x"); files[n] = str(f)
+    thing_clip, placed_clip, own1, own2 = _clip_dir(tmp_path, ["t.mp4", "s.mp4", "o1.mp4", "o2.mp4"])
+    stray = tmp_path / "cue.mp4"; stray.write_bytes(b"v")                       # an unchecked clip: never in a Short
+    plan = [{"section": 1, "entity": "logs", "image": files["a"]}, {"section": 1, "entity": "logs", "image": thing_clip},
+            {"section": 1, "entity": None, "image": placed_clip}, {"section": 1, "entity": None, "image": str(stray)},
+            {"section": 0, "entity": None, "image": own2}]
+    reel = [files[n] for n in "bcdef"]
+    out = shorts.choose_photos(section=1, plan=plan, reel=reel, labels={}, want=6, clips=[own1, own2])
+    assert out == [thing_clip, files["a"], placed_clip, files["b"], own1, files["c"]]     # a clip first, then alternating
+    assert shorts.choose_photos(section=1, plan=plan, reel=reel[:1], labels={}, want=6, clips=[own1]) == [
+        thing_clip, files["a"], placed_clip, files["b"], own1]                   # few photos: more clips fill in
+    assert str(stray) not in shorts.choose_photos(section=1, plan=plan, reel=[], labels={}, want=9)
+    later = shorts.choose_photos(section=1, plan=plan, reel=reel, labels={}, want=4, clips=[own1],
+                                 avoid={thing_clip, files["a"]})
+    assert later[0] == placed_clip and thing_clip not in later
+
+
+def test_fill_vertical_covers_the_frame_with_room_to_pan(tmp_path):
     from PIL import Image
-    text = shorts.credit_text([f"Photo: Photographer Number {i} · CC BY-SA 4.0 · Wikimedia Commons" for i in range(6)])
-    out = shorts.credit_png(text, str(tmp_path / "c.png"), width=1080, height=1920)
-    with Image.open(out) as im:
-        box = im.getbbox()
-    assert box is not None and box[2] <= 1080 * 0.96 and box[3] < 1920 * 0.93      # wrapped, not run off the edge
-    long = shorts.credit_text([f"Photo: {'Very Long Name ' * 4}{i} · CC BY-SA 4.0 · Wikimedia Commons" for i in range(12)])
-    out2 = shorts.credit_png(long, str(tmp_path / "c2.png"), width=1080, height=1920)
-    with Image.open(out2) as im:
-        assert im.getbbox()[3] < 1920 * 0.93
+    for size, across in (((1600, 900), True), ((800, 2400), False), ((1000, 1000), True), ((540, 960), True)):
+        src = tmp_path / f"{size[0]}x{size[1]}.jpg"; Image.new("RGB", size, (200, 100, 50)).save(src)
+        out = shorts.fill_vertical(str(src), str(tmp_path / "c.jpg"), width=540, height=960, scale=2.0)
+        with Image.open(out) as im:
+            w, h = im.size
+            assert w >= 1080 and h >= 1920
+            long_, frame = (w, 1080) if across else (h, 1920)
+            assert (h == 1920) if across else (w == 1080), size
+            assert frame * (1 + shorts.PAN_ROOM) - 2 <= long_ <= frame * (1 + shorts.PAN) + 2, size
+            assert im.getpixel((w // 2, 5))[0] > 150 and im.getpixel((5, h - 5))[0] > 150       # no letterbox anywhere
+
+
+def test_pan_cmd_glides_a_frame_sized_window():
+    cmd = " ".join(shorts.pan_cmd("c.jpg", "o.mp4", seconds=4, width=540, height=960, fps=25))
+    assert "crop=1080:1920:x='(iw-ow)*n/99':y='(ih-oh)*n/99'" in cmd and "scale=540:960" in cmd and "-frames:v 100" in cmd
+    back = " ".join(shorts.pan_cmd("c.jpg", "o.mp4", seconds=4, width=540, height=960, fps=25, forward=False))
+    assert "x='(iw-ow)*(1-n/99)'" in back
 
 
 def test_cover_vertical_keeps_portrait_photos_below_the_title(tmp_path):
@@ -352,12 +401,12 @@ def test_caption_png_is_small_and_has_no_box_behind_the_words(tmp_path):
 def test_build_video_draws_no_title_band_by_default(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(shorts.tts, "duration_seconds", lambda a: 4.0)
-    monkeypatch.setattr(shorts, "cover_vertical", lambda p, o, **k: o)
+    monkeypatch.setattr(shorts, "fill_vertical", lambda p, o, **k: o)
     monkeypatch.setattr(shorts, "title_png", lambda *a, **k: seen.setdefault("title", "title.png"))
     monkeypatch.setattr(shorts.render, "run", lambda cmd, timeout=0: seen.__setitem__("cmd", cmd))
     shorts.build_video(photos=["a.jpg"], narration="One fact.", audio="a.wav", work=tmp_path, title="A Hook", brand="B",
-                       credits={}, width=1080, height=1920, fps=30)
+                       width=1080, height=1920, fps=30)
     assert "title" not in seen and "title.png" not in " ".join(seen["cmd"])
     shorts.build_video(photos=["a.jpg"], narration="One fact.", audio="a.wav", work=tmp_path, title="A Hook", brand="B",
-                       credits={}, width=1080, height=1920, fps=30, title_band=True)
+                       width=1080, height=1920, fps=30, title_band=True)
     assert "title.png" in " ".join(seen["cmd"])

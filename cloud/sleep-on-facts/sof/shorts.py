@@ -3,16 +3,21 @@
 Why: a week-old channel gets almost no impressions on 3-hour long-form — YouTube has no watch history
 to recommend it on. Shorts are the one surface where a new channel is shown to strangers, so every long
 video now ships with a teaser: the single most surprising concrete fact from its own script, read by the
-same narrator (a touch brighter), over 4–6 of the run's own photos, with big burned-in captions (Shorts
-are often watched muted) and a spoken + written pointer to the full video.
+same narrator (a touch brighter), over 4–6 of the run's own photos and footage clips, with a spoken + written
+pointer to the full video.
 
 2026-10-19: the one Short per video out-reached the long videos ~6× (Rice Short 1.3K views vs 39 on the
 long video), so each video now ships ``shorts_count`` (3) Shorts, each a different fact from a different
 chapter, published ``shorts_spacing_hours`` (24 h) apart so the channel posts every day.
 
-Pipeline: pick fact (fast model, JSON) → TTS (~750 chars, ≈ $0.01) → captions timed by character share
-→ 1080×1920 clips on a blurred fill (whole photo visible) with a slow push-in → xfade → caption/credit/
-title overlays → mux → upload (public, scheduled ``shorts_delay_minutes`` after the long video is live).
+Felix (Puello Media) 2026-11: footage instead of stills, every frame filled, much less text. So the 9:16 frame
+is always filled — a footage clip cover-cropped and slowed, or a photo cover-cropped with a slow pan across it
+(no small photo on a blurred letterbox any more) — the clips and photos alternate, the only words on screen are
+a few emphasis words (``emphasis_overlays``), and the credits live in the Short's description, not on the frame.
+
+Pipeline: pick fact (fast model, JSON) → TTS (~750 chars, ≈ $0.01) → emphasis words timed by character share
+→ 1080×1920 pieces (clips, panned photos) → xfade → word overlays → mux → upload (public, scheduled
+``shorts_delay_minutes`` after the long video is live).
 Every step is best-effort from the pipeline's point of view: a failed Short never fails the long video.
 """
 
@@ -27,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sof import captions as cap_mod
-from sof import noslop, render, seo, tts
+from sof import footage, noslop, render, seo, tts
 from sof.llm import LLM
 
 log = logging.getLogger("sof.shorts")
@@ -197,29 +202,48 @@ def write_shorts(llm: LLM, *, topic: str, sections: list[dict], words: int, mode
 # ---------------------------------------------------------------- 2. photos
 
 def choose_photos(*, section: int, plan: list[dict] | None, reel: list[str], labels: dict[str, str],
-                  want: int = 6, avoid: set[str] | frozenset = frozenset()) -> list[str]:
-    """Photos for the Short, best first: the timeline's named-thing photos from the fact's chapter,
-    then that chapter's other photos, then subject-labelled reel photos. Distinct files, ``want`` at most.
-    Photos in ``avoid`` (used by the video's earlier Shorts) only fill in when nothing else is left."""
+                  want: int = 6, avoid: set[str] | frozenset = frozenset(), clips: list[str] | tuple = ()) -> list[str]:
+    """Photos and footage clips for the Short, best first: the timeline's named-thing photos from the fact's
+    chapter, then that chapter's other photos, then subject-labelled reel photos. Distinct files, ``want`` at most.
+    Photos in ``avoid`` (used by the video's earlier Shorts) only fill in when nothing else is left.
+
+    Footage (Felix 2026-11): the checked clips the timeline placed in that chapter, then the subject's own
+    ``clips``; up to half the Short, alternating with the photos and opening on a clip."""
     out: list[str] = []
+    vids: list[str] = []
 
     def add(p):
-        if p and os.path.isfile(p) and p not in out and not str(p).lower().endswith((".mp4", ".mov", ".webm", ".m4v")):
+        if p and os.path.isfile(p) and p not in out and not footage.is_video(p):
             out.append(p)
+
+    def add_clip(p):
+        if p and footage.is_video(p) and p not in vids and os.path.isfile(p) and footage.window(p):
+            vids.append(p)
 
     for r in plan or []:
         if int(r.get("section", -1)) == section and r.get("entity"):
             add(r.get("image"))
+            add_clip(r.get("image"))
     for r in plan or []:
         if int(r.get("section", -1)) == section:
             add(r.get("image"))
+            add_clip(r.get("image"))
     for p in reel:
         if labels.get(p) == "subject":
             add(p)
     for p in reel:
         add(p)
-    fresh = [p for p in out if p not in avoid]
-    return (fresh + [p for p in out if p in avoid])[:want]
+    for p in clips:
+        add_clip(p)
+    photos = [p for p in out if p not in avoid] + [p for p in out if p in avoid]
+    vids = [p for p in vids if p not in avoid] + [p for p in vids if p in avoid]
+    n_clips = min(len(vids), max(want // 2, want - len(photos)))
+    pics = photos[:want - n_clips]
+    mixed: list[str] = []
+    for i in range(max(n_clips, len(pics))):
+        mixed += vids[i:i + 1] if i < n_clips else []
+        mixed += pics[i:i + 1]
+    return mixed[:want]
 
 
 # ---------------------------------------------------------------- 3. captions (timed by character share)
@@ -362,56 +386,6 @@ def title_png(title: str, brand: str, out: str, *, width: int, height: int) -> s
     return out
 
 
-_CREDIT_LINE = re.compile(r"^Photo: (.+) · (.+?) · Wikimedia Commons$")
-
-
-def credit_text(lines: list[str]) -> str:
-    """The Short's photo credits as one compact run of text: ``Photos via Wikimedia Commons: Ann (CC BY 4.0),
-    Bo (CC BY-SA 3.0)`` — the per-photo ``Photo: … · Wikimedia Commons`` captions repeated the source."""
-    parts, all_commons = [], True
-    for line in lines:
-        m = _CREDIT_LINE.match(line.strip())
-        if m:
-            part = f"{m.group(1)} ({m.group(2)})"
-        else:
-            all_commons = False
-            part = line.strip().removeprefix("Photo: ")
-        if part not in parts:                    # two photos by the same author under the same licence
-            parts.append(part)
-    if not parts:
-        return ""
-    return ("Photos via Wikimedia Commons: " if all_commons else "Photos: ") + ", ".join(parts)
-
-
-def credit_png(text: str, out: str, *, width: int, height: int, max_lines: int = 3) -> str:
-    """Small credit block above the bottom Shorts UI, wrapped to the frame (2026-10-19: one long line ran off
-    the right edge); the font shrinks a step before the block is cut, and a cut block ends with "…" (the
-    Short's description carries every credit in full)."""
-    from PIL import Image, ImageDraw
-
-    im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    max_w = int(width * 0.90)
-    for frac in (0.014, 0.0125, 0.011):
-        size = max(18, round(height * frac))
-        font = _font(size, bold=False)
-        lines = _wrap(d, text, font, max_w)
-        if len(lines) <= max_lines:
-            break
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-        last = lines[-1]
-        while last and d.textlength(last + " …", font=font) > max_w:
-            last = last.rsplit(" ", 1)[0] if " " in last else last[:-1]
-        lines[-1] = last.rstrip(" ,;") + " …"
-    x, y, lh = round(width * 0.05), round(height * 0.865), round(size * 1.25)
-    for i, line in enumerate(lines):
-        d.text((x + 1, y + i * lh + 1), line, font=font, fill=(0, 0, 0, 160))
-        d.text((x, y + i * lh), line, font=font, fill=(255, 255, 255, 150))
-    im.save(out, "PNG")
-    return out
-
-
 # ---------------------------------------------------------------- 4. video (pure command builders + orchestration)
 
 def cover_vertical(src: str, dst: str, *, width: int, height: int, scale: float = 2.0) -> str:
@@ -429,6 +403,45 @@ def cover_vertical(src: str, dst: str, *, width: int, height: int, scale: float 
         bg.paste(fg, ((tw - fg.width) // 2, int(th * 0.50) - fg.height // 2))
         bg.save(dst, "JPEG", quality=92, subsampling=0)
     return dst
+
+
+PAN = 0.35          # a photo pans across at most 35 % of the frame while it is on screen (≈ 1.4 px a frame at 1080)
+PAN_ROOM = 0.12     # and at least 12 %: a photo shaped like the frame is enlarged a little to make room
+
+
+def fill_vertical(src: str, dst: str, *, width: int, height: int, scale: float = 2.0) -> str:
+    """The photo covering the whole frame, on a canvas ``scale``× the frame, longer than the frame along one axis
+    (between ``PAN_ROOM`` and ``PAN``) for ``pan_cmd`` — Felix 2026-11: every frame filled, no small photo on a
+    blurred letterbox. A landscape photo pans sideways across its middle, a tall one downwards. (``cover_vertical``,
+    the letterbox, stays for the other channels' Shorts, cloud/common/cc/segments.py.)"""
+    from PIL import Image, ImageOps
+
+    tw, th = round(width * scale), round(height * scale)
+    with Image.open(src) as im:
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        k = max(tw / im.width, th / im.height)
+        across = im.width * k - tw >= im.height * k - th
+        long_side, frame_side = (im.width * k, tw) if across else (im.height * k, th)
+        k *= max(1.0, frame_side * (1 + PAN_ROOM) / long_side)
+        w, h = max(tw, round(im.width * k)), max(th, round(im.height * k))
+        cw, ch = (min(w, round(tw * (1 + PAN))), th) if across else (tw, min(h, round(th * (1 + PAN))))
+        big = im.resize((w, h), Image.LANCZOS)
+        left, top = (w - cw) // 2, (h - ch) // 2
+        big.crop((left, top, left + cw, top + ch)).save(dst, "JPEG", quality=92, subsampling=0)
+    return dst
+
+
+def pan_cmd(canvas: str, out: str, *, seconds: float, width: int, height: int, fps: int, scale: float = 2.0,
+            forward: bool = True) -> list[str]:
+    """A frame-sized window gliding at constant speed across the ``fill_vertical`` canvas (``forward``: left to
+    right / top to bottom). Cropped in 4:4:4 on the 2× canvas, so each step is half an output pixel."""
+    frames = max(1, int(round(seconds * fps)))
+    tw, th = round(width * scale), round(height * scale)
+    share = f"n/{max(1, frames - 1)}" if forward else f"(1-n/{max(1, frames - 1)})"
+    vf = (f"loop=loop=-1:size=1,fps={fps},format=yuv444p,crop={tw}:{th}:x='(iw-ow)*{share}':y='(ih-oh)*{share}',"
+          f"scale={width}:{height}:flags=bicubic,setsar=1,format=yuv420p")
+    return ["ffmpeg", "-y", "-v", "error", "-i", canvas, "-vf", vf, "-frames:v", str(frames), "-r", str(fps),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", "-map_metadata", "-1", out]
 
 
 def clip_cmd(image: str, out: str, *, seconds: float, width: int, height: int, fps: int, zoom_end: float = 1.08) -> list[str]:
@@ -471,11 +484,13 @@ def loudnorm_cmd(inp: str, out: str, pre: str = "") -> list[str]:
 
 
 def build_video(*, photos: list[str], narration: str, audio: str, work: Path, title: str, brand: str,
-                credits: dict[str, str], width: int, height: int, fps: int, crossfade: float = 0.5,
-                name: str = "short", title_band: bool = False) -> str:
-    """``work/<name>.mp4``: clips of equal length over the audio, crossfaded, captions and overlays burned in. The
-    hook title + channel name over the top of the picture only with ``title_band`` (off since 2026-11-16, Gian: "It
-    is covering the entire short")."""
+                width: int, height: int, fps: int, crossfade: float = 0.5, name: str = "short",
+                title_band: bool = False) -> str:
+    """``work/<name>.mp4``: pieces of equal length over the audio — a footage clip (``.mp4``/``.webm`` in
+    ``photos``) cut to its calm window and slowed, or a photo panned across — crossfaded, the emphasis words
+    burned in. No credits on the frame (Felix 2026-11; they are in the Short's description). The hook title +
+    channel name over the top of the picture only with ``title_band`` (off since 2026-11-16, Gian: "It is
+    covering the entire short")."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -485,9 +500,14 @@ def build_video(*, photos: list[str], narration: str, audio: str, work: Path, ti
     per = (duration + crossfade * (n - 1)) / n
     clips = []
     for i, p in enumerate(photos):
-        covered = cover_vertical(p, str(tmp / f"cover_{i:02d}.jpg"), width=width, height=height)
         clip = str(tmp / f"clip_{i:02d}.mp4")
-        render.run(clip_cmd(covered, clip, seconds=per, width=width, height=height, fps=fps), 300)
+        if footage.is_video(p):
+            skip, seconds, slow = footage.window(p) or (0.0, per, 1.0)
+            render.run(render.cover_clip_cmd(p, clip, width=width, height=height, fps=fps, slow=max(slow, per / seconds),
+                                             skip=skip, max_seconds=per), 600)
+        else:
+            canvas = fill_vertical(p, str(tmp / f"cover_{i:02d}.jpg"), width=width, height=height)
+            render.run(pan_cmd(canvas, clip, seconds=per, width=width, height=height, fps=fps, forward=i % 2 == 0), 300)
         clips.append(clip)
     if len(clips) == 1:
         reel = clips[0]
@@ -496,10 +516,8 @@ def build_video(*, photos: list[str], narration: str, audio: str, work: Path, ti
         render.run(render.xfade_chain_cmd(clips, [per] * len(clips), reel, crossfade=crossfade, fps=fps), 900)
     cues, pngs = emphasis_overlays(caption_cues(narration, duration), tmp, width=width, height=height, duration=duration)
     tpng = title_png(title, brand, str(tmp / "title.png"), width=width, height=height) if title_band else None
-    lines = sorted({credits[p] for p in photos if credits.get(p)})
-    cpng = credit_png(credit_text(lines), str(tmp / "credit.png"), width=width, height=height) if lines else None
     out = str(work / f"{name}.mp4")
-    render.run(overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=cpng,
+    render.run(overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=None,
                            duration=duration, fps=fps), 900)
     return out
 
@@ -522,9 +540,9 @@ def short_description(*, long_video_id: str, topic: str, category: str, hours: i
              f"https://youtu.be/{long_video_id}", "",
              "Sleep On Facts: long, gentle, true narrations to drift off to. New long video several nights a week."]
     if credits_url:
-        lines += ["", f"Photo credits (authors and licences): {credits_url}"]
-    elif credit_lines:
-        lines += ["", "Photos: " + "; ".join(credit_lines)[:600] + ". Licences: https://creativecommons.org/licenses/"]
+        lines += ["", f"Photo and footage credits (authors and licences): {credits_url}"]
+    elif credit_lines:                 # the frame carries no credits (Felix 2026-11): all of them must fit here
+        lines += ["", "Credits: " + "; ".join(credit_lines)[:3000] + ". Licences: https://creativecommons.org/licenses/"]
     lines += ["", " ".join(["#Shorts", *seo.hashtags(topic, category)])]
     return seo._clean("\n".join(lines))[:4900]
 
@@ -557,8 +575,8 @@ def file_stem(index: int) -> str:
 
 
 def make(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], plan: list[dict] | None, reel: list[str],
-         labels: dict[str, str], credits: dict[str, str], index: int = 0, item: dict | None = None,
-         avoid: set[str] | frozenset = frozenset()) -> dict:
+         labels: dict[str, str], index: int = 0, item: dict | None = None,
+         avoid: set[str] | frozenset = frozenset(), clips: list[str] | tuple = ()) -> dict:
     """Write (unless ``item`` is given), voice and render one Short. Resumable: ``<stem>.json`` /
     ``<stem>.mp3`` / ``<stem>.mp4`` are reused when present (stem from :func:`file_stem`).
     Returns ``{"path", "narration", "hook_title", "section", "seconds", "photos", "index"}``."""
@@ -575,21 +593,20 @@ def make(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], plan: l
         parts = tts.speak([meta["narration"]], str(work / f"{stem}_tts"), cfg, short=True)
         render.run(loudnorm_cmd(parts[0], str(audio), tts.post_filter(cfg)), 300)
     photos = choose_photos(section=int(meta.get("section", 0)), plan=plan, reel=reel, labels=labels,
-                           want=cfg.shorts_photos, avoid=avoid)
+                           want=cfg.shorts_photos, avoid=avoid, clips=clips)
     if not photos:
         raise RuntimeError("no photos for the short")
     out = work / f"{stem}.mp4"
     if not out.exists():
         build_video(photos=photos, narration=meta["narration"], audio=str(audio), work=work, title=meta["hook_title"],
-                    brand=cfg.shorts_brand, credits=credits, width=cfg.shorts_width, height=cfg.shorts_height,
-                    fps=cfg.shorts_fps, name=stem)
+                    brand=cfg.shorts_brand, width=cfg.shorts_width, height=cfg.shorts_height, fps=cfg.shorts_fps, name=stem)
     seconds = tts.duration_seconds(str(audio))
     meta.update({"path": str(out), "seconds": round(seconds, 1), "photos": photos, "index": index})
     return meta
 
 
 def make_all(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], plan: list[dict] | None, reel: list[str],
-             labels: dict[str, str], credits: dict[str, str], count: int) -> list[dict]:
+             labels: dict[str, str], count: int, clips: list[str] | tuple = ()) -> list[dict]:
     """``count`` Shorts for one long video: one model call writes them all (kept in ``shorts.json`` so a
     rerun neither pays for nor changes them), then each is voiced and rendered on its own. A Short that
     fails is skipped; raises only when none rendered."""
@@ -611,7 +628,7 @@ def make_all(cfg, *, llm: LLM, work: Path, topic: str, sections: list[dict], pla
     for i, item in enumerate(items):
         try:
             meta = make(cfg, llm=llm, work=work, topic=topic, sections=sections, plan=plan, reel=reel, labels=labels,
-                        credits=credits, index=i, item=item, avoid=frozenset(used))
+                        index=i, item=item, avoid=frozenset(used), clips=clips)
         except Exception as exc:  # noqa: BLE001 — one bad Short must not cost the others
             log.exception("short %d failed", i + 1)
             print(f"! short {i + 1} skipped ({exc})", flush=True)
@@ -629,7 +646,8 @@ def upload_short(yt, cfg, *, meta: dict, long_video_id: str, long_publish_at: st
     from sof import upload
 
     title = short_title(meta["hook_title"], topic)
-    credit_lines = sorted({cap_mod.caption_text(r).removeprefix("Photo: ") for r in credit_rows if cap_mod.needs_credit(r)})
+    credit_lines = sorted({re.sub(r"^(Photo|Video): ", "", cap_mod.caption_text(r)) for r in credit_rows
+                           if cap_mod.needs_credit(r)})
     desc = short_description(long_video_id=long_video_id, topic=topic, category=category, hours=hours, credit_lines=credit_lines,
                              credits_url=credits_url)
     publish_at = (short_publish_at(long_publish_at, delay_minutes=cfg.shorts_delay_minutes, index=index,

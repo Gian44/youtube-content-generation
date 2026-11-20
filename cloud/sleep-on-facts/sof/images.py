@@ -612,15 +612,20 @@ def _b64_small(path: str, max_side: int = 512) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
+# Felix (Puello Media) 2026-11: much less on-screen text, and maps/graphics without labels that repeat what is
+# already said — so anything mostly text or crowded with labels is rejected; a clean map may stay (it gets the
+# same slow push-in as every photo). The same prompt checks the frames of footage clips (sof/footage.py).
 CLASSIFY_PROMPT = (
     "These {n} images are candidates for a calm, documentary-style video about: {subject}. Label each image:\n"
     '- "subject": it clearly shows {subject} itself, or a part, artifact, building, creature or close view that '
     "unmistakably belongs to it (photos, artworks and scientific renderings are fine).\n"
     '- "setting": it shows the real place or environment where {subject} is found, with no other main subject.\n'
     '- "reject": anything else — a different thing of the same kind (another planet, another ruin, another species), '
-    "a vehicle, rocket or product merely named after it, people posing, text or document pages, maps, diagrams, "
-    "charts, logos, multi-panel scientific figures, side-by-side comparisons, flat map projections, "
-    "or unrelated scenes. This is a calm, beautiful video: prefer clear, natural-looking views.\n"
+    "a vehicle, rocket or product merely named after it, people posing, logos, multi-panel scientific figures, "
+    "side-by-side comparisons, flat map projections, unrelated scenes, and anything that is mostly text or crowded "
+    "with labels: posters, document or book pages, title cards, captions, infographics, charts, labelled diagrams, "
+    "maps covered in names. A clean photo, artwork or rendering is fine, and so is a clean map with few or no labels. "
+    "This is a calm, beautiful video: prefer clear, natural-looking views.\n"
     'Return JSON {{"subject": [1-based indices], "setting": [...], "reject": [...]}} and nothing else.'
 )
 

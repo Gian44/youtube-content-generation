@@ -1,12 +1,14 @@
-"""Photo credits: on screen, on the credits page, or in the description.
+"""Photo and footage credits: on the credits page, in the description, or on screen.
 
-Wikimedia Commons photos under CC BY / CC BY-SA (and the Commons "Attribution" licence) must credit
-their author. Since 2026-11-07 the credit lives on the video's own page (sof/credits_site.py, on
-Cloudflare — nothing there leads to the code, which was the 2026-10-11 objection to a credits page) and
-the description carries one line with the link; the frame stays clean. Without that page (secrets
-missing, or Cloudflare down for the run) the older forms still apply: a small, dim caption while the
-photo is on screen when the video is yet to be rendered, else the author list in the description.
-Public-domain, CC0, NASA, Pexels and Pixabay photos need no credit.
+Wikimedia Commons photos and clips under CC BY / CC BY-SA (and the Commons "Attribution" licence) must credit
+their author. Since 2026-11-07 the credit lives on the video's own page (sof/credits_site.py, on Cloudflare —
+nothing there leads to the code, which was the 2026-10-11 objection to a credits page) and the description
+carries one line with the link; the frame stays clean. Without that page (secrets missing) the credits go in
+the description (Felix, Puello Media 2026-11: much less text on screen), and only the ones that do not fit
+there keep a small, dim caption while their photo or clip is on screen (``credit_line``) — every licence is
+still honoured. With the page configured but Cloudflare down for the run, the video is already clean, so the
+authors are listed in the description as far as they fit. Public-domain, CC0, NASA, Pexels and Pixabay material
+needs no credit.
 """
 
 from __future__ import annotations
@@ -16,43 +18,59 @@ from pathlib import Path
 
 _ATTRIBUTION = re.compile(r"\bCC[ -]?BY\b|^Attribution\b", re.I)
 
-SOURCES = "Photos: Wikimedia Commons contributors, NASA, Pexels and Pixabay; footage: Pexels and Pixabay."
+# 2026-11: the footage now comes from NASA and Wikimedia Commons too (sof/footage.py), not only stock sites.
+SOURCES = "Photos and footage: Wikimedia Commons contributors, NASA, Pexels and Pixabay."
 LICENCES = "Licences: https://creativecommons.org/licenses/"
-DESCRIPTION_LINE = f"{SOURCES} Photos that need a credit show their author and licence on screen. {LICENCES}"
+DESCRIPTION_LINE = f"{SOURCES} {LICENCES}"
+ON_SCREEN = "; the rest are credited on screen"      # the credits that did not fit in the description
+AND_OTHERS = "; and others"
 
 
 def description_line(urls: list[str] | str | None = None) -> str:
-    """The description's photo line: with credits-page URL(s) it points there; without, the on-screen form."""
+    """The description's credits line: with credits-page URL(s) it points there; without, the sources alone."""
     urls = [u for u in ([urls] if isinstance(urls, str) else (urls or [])) if u]
     if not urls:
         return DESCRIPTION_LINE
     if len(urls) == 1:
-        return f"{SOURCES} Photo credits (authors and licences): {urls[0]}"
-    return f"{SOURCES} Photo credits for each part: " + " · ".join(urls)
+        return f"{SOURCES} Photo and footage credits (authors and licences): {urls[0]}"
+    return f"{SOURCES} Photo and footage credits for each part: " + " · ".join(urls)
+
+
+def credit_part(row: dict) -> str:
+    """One description entry: ``Author (licence)``."""
+    return f"{_short(_clean(row.get('artist')), 60) or 'Unknown author'} ({str(row.get('license') or '').strip()})"
+
+
+def credit_line(rows: list[dict], *, budget: int, rest: str = AND_OTHERS) -> tuple[str, set[str]]:
+    """``(line, parts in it)``: the description line naming every author that must be credited (one entry per
+    author + licence, ``credit_part``), within ``budget`` UTF-8 bytes. When not all fit it ends with ``rest``
+    rather than a cut name; the caller shows the left-out ones on screen (``ON_SCREEN``) or accepts the loss."""
+    parts: list[str] = []
+    for r in rows:
+        if needs_credit(r) and credit_part(r) not in parts:
+            parts.append(credit_part(r))
+    if not parts:
+        return DESCRIPTION_LINE, set()
+    head, tail = f"{SOURCES} Credits (Wikimedia Commons): ", f". {LICENCES}"
+    body, kept = "", []
+
+    def size(text: str) -> int:
+        return len(text.encode("utf-8"))
+
+    for p in parts:
+        trial = body + ("; " if body else "") + p
+        if size(head + trial + rest + tail) > budget:
+            break
+        body = trial
+        kept.append(p)
+    if len(kept) < len(parts):
+        body = body + rest if body else rest.removeprefix("; ")
+    return head + body + tail, set(kept)
 
 
 def inline_credits(rows: list[dict], *, budget: int = 1800) -> str:
-    """Fallback description line naming every author that must be credited, within ``budget``
-    characters (one entry per author + licence; cut with "and others" rather than mid-name)."""
-    parts: list[str] = []
-    for r in rows:
-        if not needs_credit(r):
-            continue
-        part = f"{_short(_clean(r.get('artist')), 60) or 'Unknown author'} ({str(r.get('license') or '').strip()})"
-        if part not in parts:
-            parts.append(part)
-    if not parts:
-        return DESCRIPTION_LINE.replace(" Photos that need a credit show their author and licence on screen.", "")
-    head, tail = f"{SOURCES} Photo credits (Wikimedia Commons): ", f". {LICENCES}"
-    body, kept = "", 0
-    for p in parts:
-        trial = body + ("; " if body else "") + p
-        if len(head) + len(trial) + len(tail) + len("; and others") > budget:
-            break
-        body, kept = trial, kept + 1
-    if kept < len(parts):
-        body += "; and others"
-    return head + body + tail
+    """The description line naming every author that must be credited, cut with "and others" past ``budget``."""
+    return credit_line(rows, budget=budget)[0]
 
 
 def needs_credit(row: dict) -> bool:
@@ -99,9 +117,10 @@ def _drawable(s: str) -> str:
 
 
 def caption_text(row: dict) -> str:
-    """One short line: ``Photo: <author> · <licence> · Wikimedia Commons``."""
+    """One short line: ``Photo: <author> · <licence> · Wikimedia Commons`` (``Video:`` for a footage clip)."""
     artist = _short(_drawable(_clean(row.get("artist"))), 60) or "Unknown author"
-    return f"Photo: {artist} · {str(row.get('license') or '').strip()} · Wikimedia Commons"
+    kind = "Video" if row.get("kind") == "clip" else "Photo"
+    return f"{kind}: {artist} · {str(row.get('license') or '').strip()} · Wikimedia Commons"
 
 
 def captions_for(paths: list[str], rows: list[dict]) -> dict[str, str]:

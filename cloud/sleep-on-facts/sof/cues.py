@@ -12,7 +12,7 @@ from the words (Gian, 2026-10-27). Here every passage of the script gets its own
 3. ``time_cues`` — each passage's first words are found in the TTS chunks (``visuals.mention_times``),
    giving the second it starts; it runs until the next passage of its section starts.
 4. ``fetch_cue_media`` — for the passages that cover slots without a named thing: Pixabay + Pexels
-   photos, Pixabay clips and a Commons file search, all shown on ONE contact sheet to the vision model
+   photos and a Commons file search, all shown on ONE contact sheet to the vision model
    with the passage text; only tiles it says fit the words survive (at most ``per_cue``).
 5. ``apply_cues`` (pure) — those slots show the passage's approved pictures. Slots that answer a
    mention are never touched; a named thing still held long after it was named gives way to the
@@ -253,7 +253,9 @@ def fetch_cue_media(cues: list[dict], out_dir: str, *, topic: str, vis, pexels_k
         if clock() > stop_at:
             return []
         cue = cues[i]
-        cands = candidates_for(cue, pexels_key=pexels_key, pixabay_key=pixabay_key, transport=transport)
+        # No stock clips for a passage any more (Gian 2026-11: Pexels/Pixabay footage only when it names the subject,
+        # and only after the calm check; sof/footage.py puts checked subject clips into these slots instead).
+        cands = candidates_for(cue, pexels_key=pexels_key, pixabay_key=pixabay_key, transport=transport, clips=0)
         with lock:
             cands = [x for x in cands if x["url"] not in taken]
             taken.update(x["url"] for x in cands)

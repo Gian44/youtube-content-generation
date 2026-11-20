@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from sof import render
+from sof import footage, render
 
 log = logging.getLogger("sof.timeline")
 
@@ -314,10 +314,14 @@ def _cover_all(images: list[str], tmp: Path, *, width: int, height: int, canvas:
             st = os.stat(src)
             key = (os.path.abspath(src), st.st_size, st.st_mtime_ns, width, height, canvas, dim)
             if _is_clip(src):
-                dst = tmp / f"clip_{_digest(key + (fps, clip_slow))}.mp4"
+                # A checked clip (sof/footage.py) plays its own calm window at its own slow-down; other clips
+                # start 0.5 s in at ``clip_slow``.
+                skip, seconds, slow = footage.window(src) or (0.5, 45.0 / clip_slow, clip_slow)
+                dst = tmp / f"clip_{_digest(key + (fps, skip, seconds, slow))}.mp4"
                 if not dst.exists():
                     part = _part(dst)
-                    render.cover_clip(src, str(part), width=width, height=height, fps=fps, dim=dim, slow=clip_slow)
+                    render.cover_clip(src, str(part), width=width, height=height, fps=fps, dim=dim, slow=slow, skip=skip,
+                                      max_seconds=min(45.0, seconds * slow))
                     frames, _, _ = probe(str(part))
                     if not frames or frames < fps:
                         raise RuntimeError(f"clip too short after cutting ({frames} frames)")

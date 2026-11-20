@@ -84,3 +84,22 @@ def test_prepare_codex_home_refuses_a_login_about_to_expire(tmp_path):
     assert data["last_refresh"].startswith("2026-10-25T12:00:00") and data["tokens"]["refresh_token"] == "r"
     assert vision.codex_login_problem(str(tmp_path / "h"), now=now) is None
     assert "left" in vision.codex_login_problem(str(tmp_path / "h"), now=now + timedelta(days=5))
+
+
+def test_clip_tiles_carry_the_footage_note_and_the_text_rule(tmp_path):
+    """Felix 2026-11: footage frames get the two-frames note; text-heavy pictures (title cards, posters, labelled
+    maps) are rejected while a clean map may stay."""
+    from sof import footage
+    seen = []
+
+    def runner(cmd, *, cwd, timeout, stdin=None):
+        seen.append(stdin)
+        return _done(stdout=json.dumps({"result": '{"subject": [1], "reject": [2]}'}))
+
+    paths = _imgs(tmp_path, 2)
+    v = vision.Vision(("claude",), runner=runner, check_available=False)
+    assert v.classify(paths, subject="Saturn", note=footage.CLIP_NOTE) == {paths[0]: "subject", paths[1]: "reject"}
+    assert "two frames (top and bottom) from ONE short video clip" in seen[0] and "title card" in seen[0]
+    assert "mostly text or crowded with labels" in seen[0] and "clean map with few or no labels" in seen[0]
+    v.classify(paths, subject="Saturn")
+    assert "ONE short video clip" not in seen[1]

@@ -93,13 +93,22 @@ def _dedupe(rows: list[dict]) -> list[dict]:
     return out
 
 
+def _amount(rows: list[dict], noun: str, adj: str = "") -> str:
+    """"3 photos", "1 photo and 2 video clips", "2 video clips" for the rows of one source."""
+    clips = sum(1 for r in rows if r.get("kind") == "clip")
+    stills, a = len(rows) - clips, f"{adj} " if adj else ""
+    words = [f"{stills} {a}{noun}{'s' if stills != 1 else ''}"] if stills else []
+    words += [f"{clips} {a}video clip{'s' if clips != 1 else ''}"] if clips else []
+    return " and ".join(words)
+
+
 def render_page(rows: list[dict], *, title: str, date: str = "", video_url: str = "", shorts: int = 0) -> str:
-    """One self-contained HTML page: the credited photos first (author, licence, Commons file page), then
+    """One self-contained HTML page: the credited photos and clips first (author, licence, Commons file page), then
     the sources that need no credit, then what was changed (the CC licences ask for that too)."""
     rows = _dedupe([r for r in rows if isinstance(r, dict)])
     credited = [r for r in rows if captions.needs_credit(r)]
     commons_free = [r for r in rows if r.get("source") == "commons" and r not in credited]
-    counts = {s: sum(1 for r in rows if r.get("source") == s) for s in ("nasa", "pexels", "pixabay")}
+    by_source = {s: [r for r in rows if r.get("source") == s] for s in ("nasa", "pexels", "pixabay")}
 
     def item(r: dict) -> str:
         name = _esc(str(r.get("title") or r.get("file") or "Photo").strip()[:120])
@@ -108,33 +117,35 @@ def render_page(rows: list[dict], *, title: str, date: str = "", video_url: str 
         lic = str(r.get("license") or "").strip()
         lic_html = f'<a href="{_esc(licence_url(lic))}">{_esc(lic)}</a>' if licence_url(lic) else _esc(lic)
         link = f' — <a href="{_esc(page)}">file page</a>' if page.startswith("http") else ""
-        return f"<li><span class=t>{name}</span><br>{author} · {lic_html} · Wikimedia Commons{link}</li>"
+        kind = " (video)" if r.get("kind") == "clip" else ""
+        return f"<li><span class=t>{name}</span>{kind}<br>{author} · {lic_html} · Wikimedia Commons{link}</li>"
 
     parts = [f"<h1>Photo credits</h1>", f"<p class=sub>{_esc(title)}" + (f" · {_esc(date)}" if date else "") + "</p>"]
     if video_url:
         parts.append(f'<p><a href="{_esc(video_url)}">Watch the video</a>' + (f" (and its {shorts} Shorts)" if shorts else "") + "</p>")
+    noun = "Photos and footage" if any(r.get("kind") == "clip" for r in credited) else "Photos"
     if credited:
-        parts.append(f"<h2>Photos that require attribution ({len(credited)})</h2><ol>" + "".join(item(r) for r in credited) + "</ol>")
+        parts.append(f"<h2>{noun} that require attribution ({len(credited)})</h2><ol>" + "".join(item(r) for r in credited) + "</ol>")
     else:
-        parts.append("<h2>Photos that require attribution</h2><p>None in this video.</p>")
+        parts.append("<h2>Photos and footage that require attribution</h2><p>None in this video.</p>")
     rest = []
     if commons_free:
-        rest.append(f"{len(commons_free)} public-domain or CC0 photo{'s' if len(commons_free) != 1 else ''} via "
+        rest.append(f"{_amount(commons_free, 'photo', 'public-domain or CC0')} via "
                     '<a href="https://commons.wikimedia.org/">Wikimedia Commons</a>')
-    if counts["nasa"]:
-        rest.append(f'{counts["nasa"]} image{"s" if counts["nasa"] != 1 else ""} from the '
+    if by_source["nasa"]:
+        rest.append(f'{_amount(by_source["nasa"], "image")} from the '
                     '<a href="https://images.nasa.gov/">NASA Image and Video Library</a> (public domain)')
-    if counts["pexels"]:
-        rest.append(f'{counts["pexels"]} photo{"s" if counts["pexels"] != 1 else ""} from <a href="https://www.pexels.com/license/">Pexels</a>')
-    if counts["pixabay"]:
-        rest.append(f'{counts["pixabay"]} photo{"s" if counts["pixabay"] != 1 else ""} from '
+    if by_source["pexels"]:
+        rest.append(f'{_amount(by_source["pexels"], "photo")} from <a href="https://www.pexels.com/license/">Pexels</a>')
+    if by_source["pixabay"]:
+        rest.append(f'{_amount(by_source["pixabay"], "photo")} from '
                     '<a href="https://pixabay.com/service/license-summary/">Pixabay</a>')
-    rest.append('Footage clips, where used, come from <a href="https://www.pexels.com/license/">Pexels</a> and '
-                '<a href="https://pixabay.com/service/license-summary/">Pixabay</a> under their own licences')
-    parts.append("<h2>Also used</h2><ul>" + "".join(f"<li>{x}.</li>" for x in rest) + "</ul>")
+    if rest:
+        parts.append("<h2>Also used</h2><ul>" + "".join(f"<li>{x}.</li>" for x in rest) + "</ul>")
     parts.append("<h2>Changes</h2><p>Photos are shown cropped, resized and dimmed, with a slow zoom and a blurred "
-                 "copy of the photo as background; some carry narration captions. The licence links above lead to the "
-                 "full licence texts.</p>")
+                 "copy of the photo as background; video clips are cut to one calm stretch, cropped, slowed down and "
+                 "dimmed. The Shorts show them cropped to a vertical frame, with a slow pan across the photos and a "
+                 "few words of the narration. The licence links above lead to the full licence texts.</p>")
     parts.append("<p class=foot>Sleep On Facts</p>")
     css = ("body{margin:0;padding:24px 16px 48px;background:#0f1117;color:#e6e6e6;font:16px/1.5 system-ui,-apple-system,"
            "Segoe UI,Roboto,sans-serif;max-width:720px;margin:0 auto}h1{font-size:28px;margin:0 0 4px}h2{font-size:18px;"
@@ -305,7 +316,8 @@ def publish_credits(site: "Site | None", *, key: str, rows: list[dict], title: s
     try:
         url = site.publish(key, render_page(rows, title=title, date=date, video_url=video_url, shorts=shorts))
         if not quiet:
-            print(f"credits page: {url} · {sum(1 for r in rows if captions.needs_credit(r))} credited of {len(rows)} photos",
+            print(f"credits page: {url} · {sum(1 for r in rows if captions.needs_credit(r))} credited of {len(rows)} "
+                  f"photos and clips",
                   flush=True)
         return url
     except (SiteError, httpx.HTTPError, KeyError, ValueError) as exc:

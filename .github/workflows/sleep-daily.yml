@@ -56,7 +56,7 @@ jobs:
       - name: Claude Code CLI (scripts run on Gian's Claude subscription via CLAUDE_CODE_OAUTH_TOKEN)
         run: npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 && claude --version || echo "claude CLI unavailable; OpenAI/Gemini will write"
       - name: Unit tests
-        run: python -m pytest -q
+        run: python -m pytest -q && (cd ../common && python -m pytest -q)
       - name: Kokoro voice model (free, open-weights; cached between runs)
         uses: actions/cache@v4
         with:
@@ -129,6 +129,15 @@ jobs:
             cloud/sleep-on-facts/work/**/short*.mp4
           if-no-files-found: ignore
           retention-days: 30
+      - name: Keep a smoke run's video for checking frames by eye
+        if: always() && fromJSON(github.event.inputs.minutes || '150') <= 10
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ github.run_id }}
+          path: cloud/sleep-on-facts/work/**/final.mp4
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 7
       - name: Keep the finished video for the weekly marathon (sof/marathon.py)
         if: success() && fromJSON(github.event.inputs.minutes || '150') > 10 && (github.event.inputs.skip_upload || 'false') == 'false'
         uses: actions/upload-artifact@v4

@@ -74,3 +74,16 @@ def test_commons_talk_contribs_suffix_is_dropped():
     assert captions.caption_text(row) == "Photo: Waugsberg · CC BY-SA 3.0 · Wikimedia Commons"
     row["artist"] = "Jane Doe (photographer)"
     assert captions.caption_text(row) == "Photo: Jane Doe (photographer) · CC BY-SA 3.0 · Wikimedia Commons"
+
+
+def test_clip_captions_and_the_description_line_with_overflow():
+    assert captions.caption_text(_row(kind="clip")) == "Video: Prof Ranga Sai · CC BY-SA 4.0 · Wikimedia Commons"
+    rows = [_row(artist=f"Author {i}") for i in range(30)] + [_row(license="Public domain"), _row(source="nasa")]
+    line, kept = captions.credit_line(rows, budget=500, rest=captions.ON_SCREEN)
+    assert len(line.encode()) <= 500 and line.endswith(f"; the rest are credited on screen. {captions.LICENCES}")
+    assert kept and kept == {p for p in (captions.credit_part(r) for r in rows[:30]) if p in line}
+    full, every = captions.credit_line(rows, budget=4000)
+    assert len(every) == 30 and "and others" not in full and "on screen" not in full
+    assert captions.credit_line([_row(license="CC0")], budget=500) == (captions.DESCRIPTION_LINE, set())
+    tiny, none = captions.credit_line(rows, budget=50, rest=captions.ON_SCREEN)
+    assert not none and "Credits (Wikimedia Commons): the rest are credited on screen." in tiny
