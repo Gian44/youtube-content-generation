@@ -273,23 +273,25 @@ def _wrap(d, text: str, font, max_w: int) -> list[str]:
 
 
 CAPTION_SCALE = 0.026     # caption font size as a share of the frame height (50 px at 1920)
+EMPHASIS_SCALE = 0.04     # an emphasis word (cc.textbudget) is one to three words, so it can be a little bigger
+EMPHASIS_Y = 0.74         # its centre, as a share of the height: above the Shorts UI, clear of the subject
 
 
-def caption_png(text: str, out: str, *, width: int, height: int) -> str:
-    """Centred captions over the picture (around 79 % down, above YouTube's Shorts bottom UI): white with a black
-    outline and a soft drop shadow, nothing behind the words. Gian 2026-11-16, every channel's Shorts: "make the font
-    of the subtitles smaller" (0.034 → 0.026 of the height) and "remove the transparent background the text is
+def caption_png(text: str, out: str, *, width: int, height: int, scale: float = CAPTION_SCALE, y: float = 0.79) -> str:
+    """Centred captions over the picture (around ``y`` = 79 % down, above YouTube's Shorts bottom UI): white with a
+    black outline and a soft drop shadow, nothing behind the words. Gian 2026-11-16, every channel's Shorts: "make the
+    font of the subtitles smaller" (0.034 → 0.026 of the height) and "remove the transparent background the text is
     hovering over" (the dark pill) — the outline alone has to carry it over bright footage, so it is thicker."""
     from PIL import Image, ImageDraw
 
-    size = max(30, round(height * CAPTION_SCALE))
+    size = max(30, round(height * scale))
     font = _font(size)
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     lines = _wrap(d, text, font, int(width * 0.82))
     lh = round(size * 1.25)
     block_h = lh * len(lines)
-    y0 = round(height * 0.79) - block_h // 2
+    y0 = round(height * y) - block_h // 2
     stroke, drop = max(3, round(size * 0.1)), max(2, round(size * 0.06))
     for i, line in enumerate(lines):
         x = (width - d.textlength(line, font=font)) / 2
@@ -298,6 +300,24 @@ def caption_png(text: str, out: str, *, width: int, height: int) -> str:
         d.text((x, y), line, font=font, fill=(255, 255, 255, 255), stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
     im.save(out, "PNG")
     return out
+
+
+def emphasis_overlays(cues: list[tuple[float, float, str]], tmp: Path, *, width: int, height: int,
+                      duration: float | None = None, skip: set[str] | frozenset = frozenset(),
+                      per_minute: float = 6.0) -> tuple[list[tuple[float, float, str]], list[str]]:
+    """The few words a Short shows instead of full captions (Felix, Puello Media, 2026-11: "much less on-screen text,
+    never repeat what the narrator is saying" — show "$14", not "Classic Cuban sandwich $14"). ``cues`` are the timed
+    narration cues (``caption_cues`` or per-beat cues); returns ``(overlays, pngs)`` for ``overlay_cmd``: the key
+    numbers and first-mentioned names picked by ``cc.textbudget``, one PNG each."""
+    from cc import textbudget
+
+    picked = textbudget.pick(textbudget.words_from_cues(cues), duration=duration, per_minute=per_minute, skip=skip)
+    tmp.mkdir(parents=True, exist_ok=True)
+    pngs = [caption_png(t, str(tmp / f"word_{i:03d}.png"), width=width, height=height, scale=EMPHASIS_SCALE, y=EMPHASIS_Y)
+            for i, (_, _, t) in enumerate(picked)]
+    log.info("on-screen words: %d overlays, %d words (%s)", len(picked), textbudget.shown_words(picked),
+             ", ".join(t for _, _, t in picked) or "none")
+    return picked, pngs
 
 
 def title_lines(d, title: str, *, width: int, height: int, max_lines: int = 3) -> tuple[list[str], int]:
@@ -474,8 +494,7 @@ def build_video(*, photos: list[str], narration: str, audio: str, work: Path, ti
     else:
         reel = str(tmp / "reel.mp4")
         render.run(render.xfade_chain_cmd(clips, [per] * len(clips), reel, crossfade=crossfade, fps=fps), 900)
-    cues = caption_cues(narration, duration)
-    pngs = [caption_png(text, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, text) in enumerate(cues)]
+    cues, pngs = emphasis_overlays(caption_cues(narration, duration), tmp, width=width, height=height, duration=duration)
     tpng = title_png(title, brand, str(tmp / "title.png"), width=width, height=height) if title_band else None
     lines = sorted({credits[p] for p in photos if credits.get(p)})
     cpng = credit_png(credit_text(lines), str(tmp / "credit.png"), width=width, height=height) if lines else None

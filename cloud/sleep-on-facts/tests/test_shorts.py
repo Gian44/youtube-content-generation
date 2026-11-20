@@ -107,7 +107,7 @@ def test_build_video_renders_a_vertical_captioned_short(tmp_path):
         p = tmp_path / f"p{i}.jpg"; Image.new("RGB", size, (40 * i + 60, 80, 120)).save(p); photos.append(str(p))
     audio = tmp_path / "short.mp3"
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=220:duration=4", "-ac", "1", str(audio)], check=True)
-    narration = "Venice rests on wooden posts. Millions of them. " + shorts.CTA_LINE
+    narration = "Venice rests on 10 million wooden posts. Millions of them. " + shorts.CTA_LINE
     out = shorts.build_video(photos=photos, narration=narration, audio=str(audio), work=tmp_path, title="Venice Stands on Logs",
                              brand="Sleep On Facts", credits={photos[1]: "Photo: Ann · CC BY 4.0 · Wikimedia Commons"},
                              width=540, height=960, fps=24)
@@ -115,7 +115,8 @@ def test_build_video_renders_a_vertical_captioned_short(tmp_path):
                             "-of", "json", out], capture_output=True, text=True, check=True)
     st = json.loads(probe.stdout)["streams"][0]
     assert (st["width"], st["height"]) == (540, 960) and abs(float(st["duration"]) - 4.0) < 0.3
-    assert (tmp_path / "short_tmp" / "credit.png").exists() and (tmp_path / "short_tmp" / "cue_000.png").exists()
+    assert (tmp_path / "short_tmp" / "credit.png").exists() and (tmp_path / "short_tmp" / "word_000.png").exists()
+    assert not list((tmp_path / "short_tmp").glob("cue_*.png"))          # no full captions (Felix 2026-11)
 
 
 def test_make_is_resumable_and_uses_cached_files(tmp_path, monkeypatch):
