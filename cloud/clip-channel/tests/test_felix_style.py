@@ -46,6 +46,16 @@ def test_emphasis_skips_what_is_on_screen_and_swears():
     assert render.emphasis(later, 18.0, 30.0, []) == [(pytest.approx(2.7), pytest.approx(4.3), "3 hours")]
 
 
+def test_emphasis_never_repeats_part_of_what_is_on_screen():
+    # 2026-11-21 review: a possessive or one shared word is still a repeat; the slot goes to the next pick instead
+    on_screen = ["Kai Cenat's", "top GTA 6", "Kai Cenat", "Adin Ross", "Rage"]
+    for said in ("We went to Kai's house.", "Then we saw Adin's car.", "Bro the GTA Online servers died.",
+                 "He said Rage Mode is on."):
+        assert render.emphasis(timed(said), 0.0, 10.0, on_screen) == [], said
+    got = render.emphasis(timed("We went to Kai's house with Duke today."), 0.0, 10.0, on_screen)
+    assert [t for _, _, t in got] == ["Duke"]
+
+
 def test_caption_files_hold_only_the_emphasis_lines(tmp_path):
     chunks = render.emphasis(timed(SPEECH), 0.0, 12.0, [])
     for style in "AB":

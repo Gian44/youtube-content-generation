@@ -25,6 +25,10 @@ W, H = 1080, 1920
 PANEL_H = 700                    # style A: white headline panel height; the clip fills the rest
 B_TOP, B_SIZE = 420, 1080        # style B: square clip box
 BANNER_S = 5                     # style B: seconds the banner stays up
+# ASS WrapStyle. 2026-11-21 review: 0 word-wraps a line wider than the frame where 2 ran it off both edges; the old
+# captions were capped at 18 characters, an emphasis name of up to 3 words is not ("Massachusetts Institute
+# Technology" lost its ends in Style B's 76 px capitals). A line that fits is drawn exactly as before.
+WRAP = 0
 FONTS_BOLD = [r"C:\Windows\Fonts\arialbd.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
               "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
 
@@ -99,6 +103,11 @@ def face_center_x(path: Path) -> float:
         return 0.5
 
 
+def _word_keys(text: str) -> set[str]:
+    """Lower-case words of `text` without edge punctuation or a possessive ("Kai's" -> "kai"), to compare."""
+    return {re.sub(r"['’]s$", "", w.strip(".,!?:;\"'“”‘’()")).lower() for w in text.split()} - {""}
+
+
 def emphasis(words: list[dict], start: float, end: float, on_screen: list[str]) -> list[tuple[float, float, str]]:
     """The few words of [start, end) worth putting on screen, timed from that start: the key number with its unit,
     else a first-mentioned name, 1-3 words, about 6 a minute (cc.textbudget). Felix (Puello Media) 2026-11: the
@@ -106,9 +115,17 @@ def emphasis(words: list[dict], start: float, end: float, on_screen: list[str]) 
     (`on_screen`: title, labels, names; a number counts as shown when its digits are), never a masked swear."""
     skip = {s for t in on_screen for s in (t, *(w.strip(".,!?:;\"'") for w in t.split()))}
     shown_nums = {re.sub(r"\D", "", s) for s in skip} - {""}
+    # 2026-11-21 review: cc.textbudget only skips an exact match, so "Kai's" (title "Kai Cenat's"), "Adin's" (label
+    # "Adin Ross") or "GTA Online" (title "... GTA 6") still repeated what was on screen. Any shared word drops a
+    # pick, and the pick runs again without it so the entry's one slot can go to the next number or name.
+    shown_words = set().union(*map(_word_keys, on_screen)) if on_screen else set()
     ws = [(w["t"] - start, w["e"] - start, w["w"]) for w in words if start <= w["t"] < end]
-    return [o for o in textbudget.pick(ws, duration=end - start, skip=skip)
-            if "*" not in o[2] and re.sub(r"\D", "", o[2]) not in shown_nums]
+    while True:
+        out = textbudget.pick(ws, duration=end - start, skip=skip)
+        bad = {t for _, _, t in out if "*" in t or re.sub(r"\D", "", t) in shown_nums or _word_keys(t) & shown_words}
+        if not bad:
+            return out
+        skip |= bad
 
 
 def _ts(t: float) -> str:
@@ -129,7 +146,7 @@ def write_ass(path: Path, chunks, style: str, duration: float, watermark: str, a
     else:
         cap = f"Style: Cap,Arial,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (B_TOP + B_SIZE) + 150},1"
         mark = f"Style: Mark,Arial,36,&H80FFFFFF,&H80FFFFFF,&HC0000000,&H00000000,-1,0,0,0,100,100,2,0,1,1,0,2,44,44,{H - (B_TOP + B_SIZE) + 28},1"
-    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", f"WrapStyle: {WRAP}", "ScaledBorderAndShadow: yes", "",
              "[V4+ Styles]",
              "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
              cap, mark, "", "[Events]",
@@ -309,7 +326,7 @@ def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict
 
 
 def write_ass_rank(path: Path, chunks) -> None:
-    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", f"WrapStyle: {WRAP}", "ScaledBorderAndShadow: yes", "",
              "[V4+ Styles]",
              "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
              f"Style: Cap,Arial,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (R_TOP + R_H) + 70},1",
