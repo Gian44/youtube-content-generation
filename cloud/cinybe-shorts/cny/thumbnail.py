@@ -10,8 +10,11 @@ from sof import shorts as sof_shorts
 
 
 def grab_frame(video: str, out: str, *, at: float = 2.0) -> str | None:
-    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{at:.2f}", "-i", video, "-frames:v", "1", "-q:v", "2", out],
-                       capture_output=True, text=True, timeout=120)
+    """One frame of the film as a JPEG, square-pixel (an anamorphic DVD print would come out squeezed otherwise)."""
+    from cny.cut import SQUARE_PIXELS
+
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{at:.2f}", "-i", video, "-frames:v", "1", "-vf", SQUARE_PIXELS,
+                        "-q:v", "2", out], capture_output=True, text=True, timeout=120)
     return out if r.returncode == 0 and Path(out).exists() else None
 
 

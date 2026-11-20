@@ -142,9 +142,37 @@ def test_burned_in_bars_are_detected_and_cropped_before_the_fill(tmp_path):
     assert cut.union_crop([], 1920, 1080) is None
     assert cut.union_crop([(1920, 800, 0, 140)], 1920, 1080) == "1920:800:0:140"            # scope film, letterboxed
     vf = cut.shot_vf(width=1080, height=1920, fps=30, fit="crop", crop="1440:1080:240:0")
-    assert vf.startswith("crop=1440:1080:240:0,scale=1080:1920")
+    assert vf.startswith(f"crop=1440:1080:240:0,{cut.SQUARE_PIXELS},scale=1080:1920")
     # real ffmpeg: a 4:3 picture burned into a 16:9 file with black pillars
     src = str(tmp_path / "boxed.mp4")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=480x360:rate=25:duration=12",
                     "-vf", "pad=640:360:80:0:black", "-c:v", "libx264", "-preset", "ultrafast", src], check=True)
     assert cut.detect_crop(src, 12.0, points=3) == "480:360:80:0"
+
+
+def test_anamorphic_print_keeps_its_shapes_in_recap_short_and_thumbnail(tmp_path):
+    """A DVD-style print (720x480 stored, 8:9 pixels → 4:3 shown): a square must stay square in the 16:9 recap, the
+    9:16 Short and the thumbnail frame (it came out 12.5 % too wide before the pixels were made square)."""
+    import subprocess
+
+    import numpy as np
+    from PIL import Image
+
+    from cny import thumbnail
+    src = str(tmp_path / "dvd.mp4")
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=gray:size=640x480:rate=10:duration=1",
+                    "-vf", "drawbox=x=220:y=140:w=200:h=200:color=white:t=fill,scale=720:480,setsar=8/9",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", src], check=True)
+
+    def box(path):
+        a = np.asarray(Image.open(path).convert("L"))
+        ys, xs = np.where(a > 235)
+        return (xs.max() - xs.min() + 1) / (ys.max() - ys.min() + 1)
+
+    for fit, (w, h) in (("blur", (640, 360)), ("crop", (180, 320))):      # the fill's boxblur needs ≥ 640 wide
+        out = str(tmp_path / f"{fit}.png")
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", src, "-filter_complex",
+                        f"[0:v]{cut.shot_vf(width=w, height=h, fps=10, fit=fit)}[o]", "-map", "[o]", "-frames:v", "1", out], check=True)
+        assert Image.open(out).size == (w, h) and abs(box(out) - 1.0) < 0.05, fit
+    jpg = thumbnail.grab_frame(src, str(tmp_path / "t.jpg"), at=0.3)
+    assert Image.open(jpg).size == (640, 480) and abs(box(jpg) - 1.0) < 0.05

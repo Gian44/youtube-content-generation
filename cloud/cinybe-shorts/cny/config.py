@@ -68,7 +68,8 @@ class Config:
     shorts_film_lufs: float = -22.0
     brand: str = "CinybeShorts"
     shorts_title_band: bool = False     # Gian 2026-11-16: "removing the title on top of the videos. It is covering the entire
-                                        # short" — no hook title / channel name burned over the footage; captions only
+                                        # short" — no hook title / channel name burned over the footage; since Felix
+                                        # 2026-11 no captions either, only a few emphasis words (render.emphasis_cues)
     shorts_delay_minutes: int = 60      # Short 1 an hour after the long video, then one a day
     shorts_spacing_hours: float = 24.0
     upload_check_seconds: int = 300

@@ -108,11 +108,16 @@ def detect_crop(video: str, duration: float, *, points: int = 8) -> str | None:
     return crop
 
 
+SQUARE_PIXELS = "scale=trunc(iw*sar/2)*2:ih:flags=lanczos,setsar=1"   # no-op for square pixels (sar = 1)
+
+
 def shot_vf(*, width: int, height: int, fps: int, fit: str = "blur", crop: str | None = None) -> str:
     """``fit="blur"`` keeps the whole frame and fills the rest with the same frame blurred and darkened (a 4:3 print
     in the 16:9 recap, Gian 2026-11-08); ``"pad"`` fills with black; ``"crop"`` fills the frame from the centre
-    (the 9:16 Shorts)."""
-    pre = f"crop={crop}," if crop else ""                 # bars burned into the file come off first
+    (the 9:16 Shorts). An anamorphic print (a DVD's 720x480 with non-square pixels) is first made square-pixel, or every
+    shape came out 12-16 % too wide or too narrow (``setsar=1`` at the end would otherwise lock the distortion in)."""
+    pre = f"crop={crop}," if crop else ""                 # bars burned into the file come off first (storage pixels)
+    pre += f"{SQUARE_PIXELS},"
     if fit == "crop":
         vf = f"scale={width}:{height}:force_original_aspect_ratio=increase:flags=lanczos,crop={width}:{height}"
     elif fit == "pad":

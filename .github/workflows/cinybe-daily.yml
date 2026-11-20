@@ -114,8 +114,6 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_CINYBE: ${{ secrets.GEMINI_API_KEY_CINYBE }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
           # the film files Gian supplies: a Google Drive folder shared with a service account (first choice), or an R2
           # bucket. No film in the store → nothing is posted.
