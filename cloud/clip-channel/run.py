@@ -434,7 +434,9 @@ def cmd_twitch(a) -> int:
             floor = int(s.get("min_views") or a.min_views)
             fresh = [c for c in clips if c["id"] not in ledger["clips"] and c["id"] not in ledger["blocked"]
                      and c["duration"] >= 5 and c["views"] >= floor]
-            cands = twitch.distinct(fresh)[:9]
+            # a general ranking leaves out clips of games that have a ranking of their own (GTA 6: release-day
+            # floor and cutscene rule apply there)
+            cands = twitch.distinct(fresh)[:9] if a.game else twitch.outside_games(twitch.distinct(fresh))
             print(f"[twitch] {name}: {len(clips)} clips in {days} days (from the {how}), {len(cands)} unused candidates")
             if len(cands) < 5:
                 continue

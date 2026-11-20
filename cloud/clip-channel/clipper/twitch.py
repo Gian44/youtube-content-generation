@@ -30,6 +30,10 @@ from .upload import read_env
 API = "https://api.twitch.tv/helix"
 LEDGER = ROOT / "ledger_twitch.json"      # kept apart from ledger.json: the cloud job commits this one
 WHOLE_S = 13.5                            # a clip this short is shown whole
+# Games whose clips go only into that game's own ranking (run.py twitch --game), never into a general one: the game
+# ranking has the release-day floor (--since) and the cutscene rule. 2026-11-19: a general ranking posted a GTA 6
+# story scene clipped four days before the game's release.
+GAME_ONLY = "Grand Theft Auto VI,Grand Theft Auto 6,GTA VI,GTA 6"
 _token: dict = {}
 _model = None
 
@@ -143,6 +147,27 @@ def clips_in_game(login: str, days: int, names: str, since: str = "", limit: int
     print(f"[twitch] {login}: categories of the most viewed clips in {days} days: "
           + (", ".join(f"{g} x{n}" for g, n in sorted(seen.items(), key=lambda kv: -kv[1])) or "none read"))
     return out[:limit]
+
+
+def outside_games(clips: list[dict], names: str = GAME_ONLY, want: int = 9, look: int = 25) -> list[dict]:
+    """For a general ranking: the first `want` of `clips` (given most viewed first) that were not made in one of the
+    games `names`. Each clip's own page is read for its category, at most `look` pages; a clip whose page cannot be
+    read is left out (when in doubt, it may be a clip of that game)."""
+    held = {_norm(n) for n in game_names(names)}
+    out: list[dict] = []
+    for c in clips[:look]:
+        if len(out) >= want:
+            break
+        try:
+            game = clip_page(c["url"])["game"]
+        except Exception as exc:
+            print(f"[skip] clip {c['id']}: {str(exc)[-120:]}")
+            continue
+        if _norm(game) in held:
+            print(f"[skip] clip {c['id']}: made in {game}, kept for that game's own ranking")
+            continue
+        out.append({**c, "game": game})
+    return out
 
 
 def clips_api(login: str, days: int, limit: int = 60, since: str = "") -> list[dict]:
@@ -325,6 +350,11 @@ publisher takes those down, and they spoil the game.
 
 """
 
+GENERAL_NOTE = """Also mark "skip": true for a clip that mostly shows a video game's story cutscene, a game trailer or
+other footage of a game that is not out yet, rather than {name} playing or doing something on camera.
+
+"""
+
 LOOK_NOTE = """First look at the image files clip1.jpg to clip{n}.jpg in this folder with the Read tool, one per clip below.
 Each shows six frames from that clip in time order (left to right, then the second row), spread evenly from its
 start to near its end.
@@ -395,7 +425,8 @@ def plan_ranking(name: str, login: str, days: int, cands: list[dict], words_by_i
         blocks.append(f"Clip {n}: {c['views']:,} views, {c['duration']:.0f} s, title \"{c['title']}\"\n{said}")
     period = "week" if days <= 7 else "month" if days <= 31 else "year"
     prompt = PLAN_PROMPT.format(name=name, days=days, period=period, blocks="\n\n".join(blocks),
-                                game_note=GAME_NOTE.format(name=name, game=game) if game else "")
+                                game_note=(GAME_NOTE.format(name=name, game=game) if game
+                                           else GENERAL_NOTE.format(name=name)))
     kind = f"{game} clips" if game else "clips"
     try:
         sheets = [frame_sheet(Path(c["file"]), c["duration"], Path(c["file"]).with_suffix(".sheet.jpg")) for c in cands]

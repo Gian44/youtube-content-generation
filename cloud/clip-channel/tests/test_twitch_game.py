@@ -140,3 +140,25 @@ def test_without_keys_old_clips_do_not_use_up_the_look(monkeypatch):
     no_keys(monkeypatch, listing, {"c100": gta, "c101": gta})
     got = twitch.top_clips("kai", 7, game="Grand Theft Auto VI", since=now.strftime("%Y-%m-%d"))[0]
     assert [c["id"] for c in got] == ["c100", "c101"]
+
+
+def test_general_ranking_leaves_out_game_only_clips(monkeypatch):
+    pages = {"a": "Just Chatting", "b": "Grand Theft Auto VI", "c": "grand theft auto 6", "d": "Grand Theft Auto III",
+             "f": "IRL"}
+
+    def page(url):
+        key = url[-1]
+        if key == "e":
+            raise RuntimeError("no page")
+        return {"game": pages[key], "created": 0.0, "clipper": ""}
+    monkeypatch.setattr(twitch, "clip_page", page)
+    clips = [{"id": k, "url": f"https://clips.twitch.tv/{k}"} for k in "abcdef"]
+    kept = twitch.outside_games(clips)
+    assert [c["id"] for c in kept] == ["a", "d", "f"]          # GTA 6 clips and the unreadable one are out
+    assert [c["id"] for c in twitch.outside_games(clips, want=2)] == ["a", "d"]
+    assert twitch.outside_games(clips, look=1) == [{**clips[0], "game": "Just Chatting"}]
+
+
+def test_general_prompt_has_the_cutscene_rule():
+    note = twitch.GENERAL_NOTE.format(name="Kai")
+    assert "cutscene" in note and "not out yet" in note
