@@ -868,5 +868,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44594070763"
+  },
+  {
+    "date": "2026-11-20",
+    "kind": "shorts",
+    "topic": "3 shorts: would_you_rather, fair_trades, guess_the_game",
+    "video_id": "Wk5kRkTydNU",
+    "stories": [
+      {
+        "video_id": "Wk5kRkTydNU",
+        "title": "Roblox Would You Rather: Obby Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather climb a tower obby with slippery neon stairs, or jump across a lava obby made of floating pizza slices?",
+        "words": 95,
+        "seconds": 42,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_022.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "s631J-s_V6w",
+        "title": "The Crow Trade I Said No To #roblox #Shorts",
+        "format": "story",
+        "category": "fair_trades",
+        "persona": "calm",
+        "hook": "\"Trade you my Ladybug for your Dog,\" PocketMoth9 typed in the Adopt Me park.",
+        "words": 120,
+        "seconds": 37,
+        "publish_at": "2026-11-21T02:44:09Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_041.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "mceIi9N-CA8",
+        "title": "Only Real Roblox Players Get All 3 #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Work at a Pizza Place",
+          "Build A Boat For Treasure",
+          "Royale High"
+        ],
+        "words": 91,
+        "seconds": 41,
+        "publish_at": "2026-11-21T10:44:09Z",
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_032.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44794711042"
   }
 ]
