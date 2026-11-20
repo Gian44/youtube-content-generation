@@ -220,7 +220,8 @@ def test_frame_stats_find_the_calm_window_of_a_real_clip_with_a_cut_and_a_flash(
 
 
 @pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
-def test_gather_footage_probes_checks_and_cuts_only_calm_approved_named_clips(tmp_path):
+def test_gather_footage_probes_checks_and_cuts_only_calm_approved_named_clips(tmp_path, monkeypatch):
+    monkeypatch.setattr(footage, "WIKIMEDIA_GAP", 0.0)
     low = _pan(tmp_path, "low.mp4", seconds=9, speed=1)                      # the 180p rendition that is analysed
     high = _pan(tmp_path, "high~large.mp4", seconds=9, speed=1, size=(854, 480))   # the one that is shown
     busy = _pan(tmp_path, "busy.mp4", seconds=9, speed=14)
@@ -277,6 +278,94 @@ def test_gather_footage_probes_checks_and_cuts_only_calm_approved_named_clips(tm
     assert rows[saturn]["page"].endswith("File:Saturn calm.webm") and rows[titan]["title"] == "Titan flyover"
     assert footage.kept(str(tmp_path / "footage" / footage.SUBJECT)) == [saturn]
     assert not list((tmp_path / "footage").rglob("*.probe.*"))                  # analysed renditions are deleted
+
+
+def test_gather_footage_asks_one_sheet_at_a_time_and_cuts_the_subject_first(tmp_path, monkeypatch):
+    """2026-11-21: vision stops once a group has its clips; the group with the most tiles (the subject) is checked
+    and cut first, each group's clips right after its own check."""
+    cands = {"titan": [{"id": f"t{i}", "source": "commons"} for i in range(3)],
+             footage.SUBJECT: [{"id": f"s{i}", "source": "commons"} for i in range(30)]}
+    monkeypatch.setattr(footage, "_candidates", lambda g, **kw: cands[g["key"]])
+    monkeypatch.setattr(footage, "probe_clip", lambda c, cand, folder, **kw: {**cand, "skip": 1.0, "seconds": 12.0,
+                                                                              "check": f"tile-{cand['id']}"})
+    cut_order = []
+
+    def fake_cut(cand, dst, **kw):
+        cut_order.append(cand["id"])
+        dst.write_bytes(b"x")
+        return True
+    monkeypatch.setattr(footage, "cut_window", fake_cut)
+    asked = []
+
+    def classify(tiles, subject):
+        asked.append((subject, len(tiles)))
+        return {t: "subject" for t in tiles}
+
+    groups = [{"key": "titan", "subject": "Titan", "want": 2, "limit": 12},
+              {"key": footage.SUBJECT, "subject": "Saturn", "want": 7, "limit": 80}]
+    found, stats = footage.gather_footage(groups, str(tmp_path), classify=classify, need=11.0, keep=15.0, slot=21.5,
+                                          slow=1.5, max_slow=2.0, workers=1)
+    assert sorted(asked) == [("Saturn", 12), ("Titan", 3)]   # 14 calm (2 x want): the first sheet already gives 7
+    assert cut_order == ["s0", "s1", "s2", "s3", "s4", "s5", "s6", "t0", "t1"]
+    assert [Path(p).stem for p in found[footage.SUBJECT]] == [footage._stem({"id": f"s{i}"}) for i in range(7)]
+    assert stats["clips"] == 9
+
+
+def test_cut_window_bounds_all_attempts_and_waits_out_one_wikimedia_429(tmp_path, monkeypatch):
+    monkeypatch.setattr(footage, "WIKIMEDIA_GAP", 0.0)
+    monkeypatch.setattr(footage.time, "sleep", lambda s: None)
+    calls = []
+
+    def fake_run(cmd, **kw):
+        url = cmd[cmd.index("-i") + 1]
+        calls.append((url, kw["timeout"]))
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(cmd, 1, "", "Error opening input files: Server returned 429 Too Many Requests")
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+    monkeypatch.setattr(footage.subprocess, "run", fake_run)
+    cand = {"id": "c", "url": "https://upload.wikimedia.org/a.webm", "fallback": ["https://upload.wikimedia.org/a.ogv"],
+            "skip": 1.0, "seconds": 12.0}
+    assert not footage.cut_window(cand, tmp_path / "c.mp4", timeout=100.0)
+    assert [u for u, _ in calls] == [cand["url"], cand["url"], cand["fallback"][0]]     # same URL again after the 429
+    assert all(t <= 100.0 for _, t in calls)
+
+
+def test_wikimedia_requests_are_paced_across_callers(monkeypatch):
+    waits = []
+    monkeypatch.setattr(footage.time, "sleep", waits.append)
+    monkeypatch.setattr(footage, "_pace_at", [0.0])
+    footage._pace("https://images-assets.nasa.gov/x~large.mp4", 4)            # other hosts: no wait, no turn taken
+    footage._pace("https://upload.wikimedia.org/a.webm", 4)                   # one ffmpeg cut: 4 turns
+    footage._pace("https://upload.wikimedia.org/b.mov")
+    assert len(waits) == 2 and waits[0] <= 0.0 and 7.9 <= waits[1] <= footage.WIKIMEDIA_GAP * 4
+
+
+def test_probe_download_waits_out_one_429(tmp_path, monkeypatch):
+    monkeypatch.setattr(footage, "WIKIMEDIA_GAP", 0.0)
+    slept = []
+    monkeypatch.setattr(footage.time, "sleep", slept.append)
+    hits = []
+
+    def handler(req):
+        hits.append(1)
+        if len(hits) == 1:
+            return httpx.Response(429, headers={"retry-after": "11"})
+        return httpx.Response(200, content=b"v" * 5000)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        assert footage._get(c, "https://upload.wikimedia.org/t/360p.mov", tmp_path / "p.mov", max_bytes=10_000)
+    assert len(hits) == 2 and 11.0 in slept
+
+
+@pytest.mark.skipif(not FFMPEG, reason="ffmpeg not installed")
+def test_cut_window_gives_anamorphic_film_square_pixels(tmp_path):
+    src = tmp_path / "film.mp4"                       # NASA ~orig film transfers: 720x486 at SAR 6:5 (16:9 on screen)
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=720x486:r=25:d=4", "-vf", "setsar=6/5",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(src)], check=True)
+    assert footage.cut_window({"id": "f", "url": str(src), "skip": 0.5, "seconds": 2.0}, tmp_path / "f.mp4")
+    info = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height,sample_aspect_ratio",
+                                      "-of", "json", str(tmp_path / "f.mp4")], capture_output=True, text=True).stdout)
+    st = info["streams"][0]
+    assert (st["width"], st["height"]) == (864, 486) and st.get("sample_aspect_ratio", "1:1") in ("1:1", "0:1")
 
 
 # ---------------------------------------------------------------- placement (pure)

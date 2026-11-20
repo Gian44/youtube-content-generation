@@ -77,6 +77,14 @@ FROZEN = 0.1               # mean raw change below this: a still picture or a ti
 DARK = 4.0                 # a black frame
 EDGE = 0.5                 # seconds kept clear of a cut at either end of the window
 
+# 2026-11-21, measured from Gian's PC: upload.wikimedia.org (Commons video files and transcodes) answers 429
+# "Retry-After: 11" after ~10 quick requests and at ~1 request a second, while one every 1.5-2 s ran 180+ requests
+# without one (4 probers + 3 cutters lost most Commons clips to it). Every probe download and window cut there
+# shares this pacing; one ffmpeg cut of a .webm makes ~4 ranged requests, of an .ogv original ~10 (Ogg seeking).
+WIKIMEDIA_HOST = "upload.wikimedia.org"
+WIKIMEDIA_GAP = 2.0
+CHECK_SHEET = 12           # tiles per vision ask (vision.classify's contact sheet)
+
 CLIP_NOTE = ("Each tile shows two frames (top and bottom) from ONE short video clip. Label the clip as a whole: "
              '"subject" only when both frames show the subject itself (real footage, or a clean animation or '
              'rendering of it); "reject" when either frame is a title card, captions or other text, a logo, a person '
@@ -418,25 +426,65 @@ def probe_clip(c: httpx.Client, cand: dict, folder: Path, *, need: float, keep: 
         low.unlink(missing_ok=True)
 
 
+_pace_lock = threading.Lock()
+_pace_at = [0.0]
+
+
+def _pace(url: str, requests: int = 1) -> None:
+    """Wait for ``requests`` turns at upload.wikimedia.org (``WIKIMEDIA_GAP`` apart, shared by every thread);
+    any other host goes at once."""
+    if WIKIMEDIA_HOST not in str(url):
+        return
+    with _pace_lock:
+        now = time.monotonic()
+        start = max(now, _pace_at[0])
+        _pace_at[0] = start + WIKIMEDIA_GAP * requests
+    time.sleep(start - now)
+
+
+def _retry_after(headers) -> float:
+    wait = str(headers.get("retry-after") or "")
+    return min(30.0, float(wait)) if wait.isdigit() else 11.0
+
+
+# Square pixels, at most 1080 lines, even sizes. 2026-11-21: NASA's ~orig renditions of film transfers are often
+# anamorphic (720x486 at SAR 6:5 = 16:9), and the timeline's cover-crop ignores SAR, so they came out squeezed.
+CUT_SCALE = "scale='trunc(min(1080,ih)*dar/2)*2':'trunc(min(1080,ih)/2)*2',setsar=1"
+
+
 def cut_window(cand: dict, dst: Path, *, timeout: float = 300.0) -> bool:
     """ffmpeg reads only the window (``skip``, ``seconds``) from the full-resolution URL (ranged requests),
-    scaled to at most 1080 lines, silent → ``dst``. Tries ``url`` then ``fallback``."""
+    scaled to at most 1080 lines, silent → ``dst``. Tries ``url`` then ``fallback``; ``timeout`` bounds all the
+    attempts together (2026-11-21: it was per URL, so a slow server could hold one cut for 3-5× the budget).
+    A Wikimedia 429 is waited out once (``Retry-After``, ~11 s) before the same URL is tried again."""
     part = dst.with_name(dst.stem + ".part.mp4")
+    end = time.monotonic() + timeout
     for url in [cand["url"], *(cand.get("fallback") or [])]:
-        src = ["-user_agent", images.UA, "-rw_timeout", "30000000"] if str(url).startswith("http") else []
-        cmd = ["ffmpeg", "-y", "-v", "error", *src, "-ss", f"{float(cand['skip']):.3f}", "-i", url,
-               "-t", f"{float(cand['seconds']):.3f}", "-an", "-vf", "scale=-2:'min(1080,ih)'", "-c:v", "libx264",
-               "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-map_metadata", "-1", str(part)]
-        try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
-        except subprocess.TimeoutExpired:
-            log.warning("footage cut timed out: %s", url)
-            continue
-        w, h, dur = _probe(str(part)) if r.returncode == 0 and part.exists() else (0, 0, 0.0)
-        if h >= MIN_HEIGHT and dur >= float(cand["seconds"]) - 0.3:
-            os.replace(part, dst)
-            return True
-        log.warning("footage cut of %s unusable (%s, %dx%d): %s", cand.get("id"), r.returncode, w, h, (r.stderr or "")[-200:])
+        for attempt in range(2):
+            _pace(url, 10 if str(url).split("?")[0].lower().endswith((".ogv", ".ogg")) else 4)
+            left = end - time.monotonic()
+            if left <= 0:
+                part.unlink(missing_ok=True)
+                return False
+            src = ["-user_agent", images.UA, "-rw_timeout", "30000000"] if str(url).startswith("http") else []
+            cmd = ["ffmpeg", "-y", "-v", "error", *src, "-ss", f"{float(cand['skip']):.3f}", "-i", url,
+                   "-t", f"{float(cand['seconds']):.3f}", "-an", "-vf", CUT_SCALE, "-c:v", "libx264",
+                   "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-map_metadata", "-1", str(part)]
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=left, stdin=subprocess.DEVNULL)
+            except subprocess.TimeoutExpired:
+                log.warning("footage cut timed out: %s", url)
+                break
+            w, h, dur = _probe(str(part)) if r.returncode == 0 and part.exists() else (0, 0, 0.0)
+            if h >= MIN_HEIGHT and dur >= float(cand["seconds"]) - 0.3:
+                os.replace(part, dst)
+                return True
+            if attempt == 0 and "429 Too Many Requests" in (r.stderr or ""):
+                time.sleep(11.0)
+                continue
+            log.warning("footage cut of %s unusable (%s, %dx%d): %s", cand.get("id"), r.returncode, w, h,
+                        (r.stderr or "")[-200:])
+            break
     part.unlink(missing_ok=True)
     return False
 
@@ -450,18 +498,21 @@ def _folder(key: str) -> str:
     return f"{slug}-{hashlib.sha1(key.encode('utf-8')).hexdigest()[:6]}"
 
 
-def _candidates(group: dict, *, pexels_key: str, pixabay_key: str, transport=None) -> list[dict]:
-    """NASA (when the group allows it), then Commons, then name-gated stock — the order Gian set."""
+def _candidates(group: dict, *, pexels_key: str, pixabay_key: str, transport=None, stop=lambda: False) -> list[dict]:
+    """NASA (when the group allows it), then Commons, then name-gated stock — the order Gian set. No new search
+    once ``stop()`` (2026-11-21: the searches were the one step not bounded by the stage's budget)."""
     out: list[dict] = []
     finders = ([search_nasa] if group.get("nasa") else []) + [search_commons]
     with httpx.Client(timeout=30.0, transport=transport, follow_redirects=True, headers={"User-Agent": images.UA}) as c:
         for fn in finders:
             for q in group.get("queries") or []:
+                if stop():
+                    return out
                 try:
                     out += fn(c, q, group.get("terms") or [], limit=group.get("per_query", 12))
                 except (httpx.HTTPError, ValueError) as exc:
                     log.warning("%s %r failed: %s", fn.__name__, q, exc)
-    if group.get("stock_queries") and (pexels_key or pixabay_key):
+    if group.get("stock_queries") and (pexels_key or pixabay_key) and not stop():
         out += search(group["stock_queries"], pexels_key=pexels_key, pixabay_key=pixabay_key, transport=transport,
                       terms=group.get("terms") or [], limit=group.get("limit", 80))
     return out
@@ -475,16 +526,18 @@ def gather_footage(groups: list[dict], out_dir: str, *, classify, need: float, k
     ``groups`` in priority order, each ``{"key", "subject" (for the vision check), "queries", "stock_queries",
     "terms", "nasa", "want", "limit"}``: the named things first (a clip found for both a thing and the subject
     belongs to the thing), the video's subject (key ``SUBJECT``) last. ``classify(tiles, subject) → {tile: label}``.
-    Stages share one deadline: searching and the calm checks get the first 60 % of ``budget_seconds``, the
-    vision checks run to 85 %, and cutting the keepers to the end; a group that runs out of time keeps photos.
+    Stages share one deadline: no new search after 30 % of ``budget_seconds``, calm checks to 60 %, then each
+    group is vision-checked (no new ask after 85 %) and its keepers cut (none started after 100 %) — the group
+    with the most calm clips first; a group that runs out of time keeps photos.
     Each group's folder gets ``footage.json`` (credit fields + window) for the clips it kept.
     """
     t0 = clock()
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=max(1, min(workers, len(groups) or 1))) as pool:
-        found = list(pool.map(lambda g: _safe(lambda: _candidates(g, pexels_key=pexels_key, pixabay_key=pixabay_key,
-                                                                     transport=transport), []), groups))
+        found = list(pool.map(lambda g: _safe(lambda: _candidates(
+            g, pexels_key=pexels_key, pixabay_key=pixabay_key, transport=transport,
+            stop=lambda: clock() - t0 > budget_seconds * 0.3), []), groups))
     taken: set[str] = set()
     queues: list[list[dict]] = []
     for g, cands in zip(groups, found):
@@ -521,14 +574,17 @@ def gather_footage(groups: list[dict], out_dir: str, *, classify, need: float, k
         t.join()
 
     def check(gi: int) -> list[dict]:
+        # One contact sheet per ask, stopping once the group has its clips or at 85 % of the budget (2026-11-21:
+        # the subject's five sheets went in one call that could run past the budget and leave no time to cut).
         rows = [x for _, x in sorted(calm[gi], key=lambda kx: kx[0])]
-        if not rows or clock() - t0 > budget_seconds * 0.85:
-            return []
-        labels = classify([x["check"] for x in rows], groups[gi]["subject"]) or {}
-        return [x for x in rows if labels.get(x["check"]) == "subject"][:groups[gi]["want"]]
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        keepers = list(pool.map(lambda gi: _safe(lambda: check(gi), []), range(len(groups))))
+        ok: list[dict] = []
+        for i in range(0, len(rows), CHECK_SHEET):
+            if len(ok) >= groups[gi]["want"] or clock() - t0 > budget_seconds * 0.85:
+                break
+            part = rows[i:i + CHECK_SHEET]
+            labels = classify([x["check"] for x in part], groups[gi]["subject"]) or {}
+            ok += [x for x in part if labels.get(x["check"]) == "subject"]
+        return ok[:groups[gi]["want"]]
 
     def cut(gi: int, cand: dict) -> dict | None:
         if clock() - t0 > budget_seconds:
@@ -542,22 +598,33 @@ def gather_footage(groups: list[dict], out_dir: str, *, classify, need: float, k
                 "source_skip": cand["skip"], **{k: cand.get(k, "") for k in ("id", "source", "artist", "license", "page",
                                                                               "title", "query")}}
 
-    jobs = [(gi, x) for gi, xs in enumerate(keepers) for x in xs]
+    approved = [0] * len(groups)
+
+    def check_and_cut(gi: int) -> list[dict]:
+        keep = check(gi)
+        approved[gi] = len(keep)
+        return [r for r in (_safe(lambda x=x: cut(gi, x), None) for x in keep) if r]
+
+    # 2026-11-21: a group's clips are cut as soon as it is checked, the group with the most tiles (the subject: the
+    # clips that fill most footage slots and the Shorts) first. All vision checks used to finish before the first
+    # cut, and the paced Wikimedia cuts (~8 s each) then ran out of budget with the subject's clips last in line.
     with ThreadPoolExecutor(max_workers=max(1, min(3, workers))) as pool:
-        cut_rows = list(pool.map(lambda job: _safe(lambda: cut(*job), None), jobs))
+        futs = {gi: pool.submit(_safe, lambda gi=gi: check_and_cut(gi), [])
+                for gi in sorted(range(len(groups)), key=lambda gi: -len(calm[gi]))}
+    cut_rows = [futs[gi].result() for gi in range(len(groups))]
     out: dict[str, list[str]] = {}
     for gi, g in enumerate(groups):
-        rows = [r for (gj, _), r in zip(jobs, cut_rows) if gj == gi and r]
+        rows = cut_rows[gi]
         folder = root / _folder(g["key"])
         if folder.exists() or rows:
             folder.mkdir(parents=True, exist_ok=True)
             (folder / "footage.json").write_text(json.dumps(rows, indent=1, ensure_ascii=False), encoding="utf-8")
         out[g["key"]] = [str((folder / r["file"]).resolve()) for r in rows]
         log.info("footage for %r: %d candidates, %d calm, %d approved, %d kept", g["subject"], len(queues[gi]),
-                 len(calm[gi]), len(keepers[gi]), len(rows))
-    kept_rows = [r for r in cut_rows if r]
+                 len(calm[gi]), approved[gi], len(rows))
+    kept_rows = [r for rows in cut_rows for r in rows]
     stats = {"candidates": sum(len(q) for q in queues), "calm": sum(len(x) for x in calm),
-             "approved": sum(len(x) for x in keepers), "clips": len(kept_rows),
+             "approved": sum(approved), "clips": len(kept_rows),
              "sources": {s: sum(1 for r in kept_rows if r["source"] == s) for s in ("nasa", "commons", "pexels", "pixabay")},
              "seconds": round(clock() - t0)}
     return out, stats
@@ -611,19 +678,25 @@ def credits_by_path(root: str) -> dict[str, dict]:
 
 def _get(c: httpx.Client, url: str, dest: Path, *, max_bytes: int, deadline: float = 120.0) -> bool:
     try:
-        with c.stream("GET", url) as r:
-            if r.status_code != 200 or int(r.headers.get("content-length") or 0) > max_bytes:
-                return False
-            t0, size = time.monotonic(), 0
-            with open(dest, "wb") as f:
-                for chunk in r.iter_bytes():
-                    size += len(chunk)
-                    if size > max_bytes or time.monotonic() - t0 > deadline:
-                        f.close()
-                        dest.unlink(missing_ok=True)
-                        return False
-                    f.write(chunk)
-        return dest.stat().st_size > PREVIEW_MIN_BYTES
+        for attempt in range(2):
+            _pace(url)                     # Wikimedia's rate limit (WIKIMEDIA_GAP); one 429 is waited out
+            with c.stream("GET", url) as r:
+                if r.status_code == 429 and attempt == 0:
+                    time.sleep(_retry_after(r.headers))
+                    continue
+                if r.status_code != 200 or int(r.headers.get("content-length") or 0) > max_bytes:
+                    return False
+                t0, size = time.monotonic(), 0
+                with open(dest, "wb") as f:
+                    for chunk in r.iter_bytes():
+                        size += len(chunk)
+                        if size > max_bytes or time.monotonic() - t0 > deadline:
+                            f.close()
+                            dest.unlink(missing_ok=True)
+                            return False
+                        f.write(chunk)
+            break
+        return dest.exists() and dest.stat().st_size > PREVIEW_MIN_BYTES
     except (httpx.HTTPError, OSError) as exc:
         log.warning("footage download %s failed: %s", url, exc)
         dest.unlink(missing_ok=True)

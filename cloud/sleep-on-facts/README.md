@@ -142,7 +142,9 @@ it in future changes:
    subject photo; photos keep every slot without a good clip. Every clip passes a calm check (the longest window
    with no cut, no flash, no busy motion, no black and no frozen picture, slowed 1.5-2× to fill a slot without
    looping) and the photos' vision check on two frames of that window ("subject" only; title cards, talking
-   heads, text rejected). Author and licence of every clip are credited like the photos.
+   heads, text rejected). Author and licence of every clip are credited like the photos. Commons video files
+   (upload.wikimedia.org) are rate-limited — 429 after ~10 quick requests (measured 2026-11-21) — so every
+   download and window cut there is paced 2 s a request across threads (`footage.WIKIMEDIA_GAP`); keep it.
 2. **Almost no text on screen.** The long video shows none (no chapter cards, no captions); credits go on the
    credits page, else in the description, and only those that do not fit there appear small on screen. The
    Shorts show only a few emphasis words (`shorts.emphasis_overlays` / `cc.textbudget`), never the narration
