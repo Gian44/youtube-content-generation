@@ -2422,5 +2422,88 @@
     "voice": "pocket narrator.wav",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44577441772"
+  },
+  {
+    "date": "2026-11-20",
+    "topic": "Hadrian's Wall",
+    "category": "history & ancient civilisations",
+    "wiki_title": "Hadrian's Wall",
+    "video_id": "lD1uZhe6ISQ",
+    "title": "How Hadrian's Wall Ran From Tyne to Solway | 2 Hours of History to Fall Asleep To",
+    "privacy": "public",
+    "publish_at": "2026-11-21T01:30:00Z",
+    "duration_seconds": 7287,
+    "words": 18693,
+    "images": 126,
+    "image_sources": {
+      "commons": 126,
+      "nasa": 0,
+      "pexels": 0,
+      "pixabay": 0
+    },
+    "story_format": "journey",
+    "title_variant": 0,
+    "timeline": {
+      "slots": 365,
+      "thing_slots": 228,
+      "cue_slots": 53,
+      "things_shown": 31,
+      "distinct_photos": 201,
+      "lag_median": 3.82
+    },
+    "short": {
+      "video_id": "yU1lP5ffhNo",
+      "title": "Hadrian's Wall Lost Most Stone to Local Builders #Shorts",
+      "seconds": 36.4,
+      "publish_at": "2026-11-21T02:30:00Z"
+    },
+    "shorts": [
+      {
+        "video_id": "yU1lP5ffhNo",
+        "title": "Hadrian's Wall Lost Most Stone to Local Builders #Shorts",
+        "seconds": 36.4,
+        "publish_at": "2026-11-21T02:30:00Z"
+      },
+      {
+        "video_id": "BSptaMmP7l8",
+        "title": "Hadrian's Wall Once Held Almost 10,000 Soldiers #Shorts",
+        "seconds": 29.1,
+        "publish_at": "2026-11-22T02:30:00Z"
+      },
+      {
+        "video_id": "rf5aOXHxKeM",
+        "title": "Hadrian's Broad Wall Measures 2.9 Metres Across #Shorts",
+        "seconds": 30.2,
+        "publish_at": "2026-11-23T02:30:00Z"
+      }
+    ],
+    "slop": {
+      "before": 51,
+      "after": 10,
+      "paragraphs": 275,
+      "rewritten": 38,
+      "rounds": 2,
+      "remaining": {
+        "kicker": 5,
+        "fragmentation": 2,
+        "binary_contrast": 1,
+        "robotic_rhythm": 1,
+        "metadiscourse": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 92,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 147,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "voice": "pocket narrator.wav",
+    "cost_estimate_usd": 0.11,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44779539450"
   }
 ]
