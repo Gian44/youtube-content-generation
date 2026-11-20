@@ -65,3 +65,17 @@ def test_synth_level_is_far_under_speech(tmp_path):
     sfx.synth("tick", out, seed=3, pad_to=1.0)
     assert -32.0 <= sfx.peak_db(out) <= -23.0
     assert sfx.loudness(out)["I"] < -35.0
+
+
+def test_pick_never_singles_out_groups_or_quoted_capitals():
+    words = tb.words_from_cues([(0.0, 40.0, 'He told Mary that Marx was not a German, he was a Jew. "They\'re here," '
+                                            'Johnny says, "Don\'t run." Then Johnny runs.')])
+    out = [t for _, _, t in tb.pick(words, duration=40.0, per_minute=12, min_gap=0.5)]
+    assert "German" not in out and "Jew" not in out and "They're" not in out and "Don't" not in out
+    assert out[:2] == ["Mary", "Marx"] and "Johnny" in out
+
+
+def test_pick_dollars_and_digit_skip():
+    words = tb.words_from_cues([(0.0, 20.0, "He spent 14 dollars on rank 3 and then 500 more.")])
+    out = [t for _, _, t in tb.pick(words, duration=20.0, per_minute=30, min_gap=0.5, skip={"#3"})]
+    assert out == ["$14", "500"]

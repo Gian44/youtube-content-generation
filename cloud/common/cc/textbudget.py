@@ -37,6 +37,15 @@ STOP = {
     "oh", "okay", "ok", "what", "who", "why", "how", "where", "there", "here", "one", "two", "three", "monday",
     "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "mr", "mrs", "ms", "dr", "god", "lol",
     "chat", "bro", "yo", "hey", "wait", "look", "comment", "pick", "would", "rather", "guess", "it'll", "let's",
+    "don't", "they're", "we're", "you're", "can't", "won't", "didn't", "that's", "there's", "he's", "she's",
+}
+# Nationalities, creeds and groups are never the "most necessary word" of a sentence and must not be singled out on
+# screen ("Marx was not a German, he was a Jew" picked "German" and "Jew" in a 2026-11 review).
+GROUPS = {
+    "american", "americans", "british", "english", "french", "german", "germans", "italian", "spanish", "russian",
+    "chinese", "japanese", "korean", "indian", "african", "asian", "european", "arab", "arabs", "mexican", "irish",
+    "jew", "jews", "jewish", "muslim", "muslims", "islamic", "christian", "christians", "catholic", "protestant",
+    "hindu", "buddhist", "nazi", "nazis", "communist", "communists", "black", "white", "latino", "gay", "lesbian",
 }
 
 
@@ -73,7 +82,10 @@ def _number_at(words: list[Word], i: int) -> tuple[str, int] | None:
             shown, n = shown + UNITS[two], 3
         elif nxt in UNITS:
             unit = UNITS[nxt] or _bare(words[i + 1][2])
-            shown = shown + unit if unit in ("%", "°", "°C", "°F") else f"{shown} {unit}"
+            if nxt == "dollars" and not shown.startswith("$"):
+                shown = "$" + shown                        # Felix's own example: "$14"
+            else:
+                shown = shown + unit if unit in ("%", "°", "°C", "°F") else f"{shown} {unit}"
             n = 2
     return shown, n
 
@@ -90,7 +102,7 @@ def _name_at(words: list[Word], i: int, max_words: int) -> tuple[str, int] | Non
     j = i
     while j < len(words) and len(parts) < max_words:
         w = _bare(words[j][2])
-        if len(w) < 2 or not w[:1].isupper() or w.lower() in STOP or _NUM.match(w):
+        if len(w) < 2 or not w[:1].isupper() or w.lower() in STOP or w.lower() in GROUPS or _NUM.match(w):
             break
         parts.append(w)
         if words[j][2].rstrip("\"'”’)").endswith((".", ",", "!", "?", ";", ":")):
@@ -100,6 +112,21 @@ def _name_at(words: list[Word], i: int, max_words: int) -> tuple[str, int] | Non
     if not parts or (len(parts) == 1 and len(parts[0]) < 3):
         return None
     return " ".join(parts), len(parts)
+
+
+def _in_quotes(words: list[Word]) -> list[bool]:
+    """Per word: inside quoted dialogue? A quoted line's capitals ("They're", "Don't") are not names."""
+    out, inside = [], False
+    for _, _, w in words:
+        core = w.strip(".,!?;:…()[]")
+        opens = core[:1] in "\"“"
+        closes = core[-1:] in "\"”" and (len(core) > 1 or not opens)
+        out.append(inside or opens)
+        if opens and not closes:
+            inside = True
+        elif closes:
+            inside = False
+    return out
 
 
 def pick(words: list[Word], *, per_minute: float = 6.0, min_gap: float = 3.0, max_words: int = 3, hold: float = 1.6,
@@ -113,17 +140,19 @@ def pick(words: list[Word], *, per_minute: float = 6.0, min_gap: float = 3.0, ma
     budget = max(1, int(per_minute * max(end_t, 1.0) / 60.0 + 0.5))
     cands: list[tuple[int, float, str]] = []          # (priority, time, text); 0 = number, 1 = name
     seen: set[str] = set(s.lower() for s in skip)
+    skip_digits = {re.sub(r"\D", "", s) for s in skip if re.search(r"\d", s)}   # "#3" on screen already → never "3"
+    quoted = _in_quotes(words)
     i = 0
     while i < len(words):
         num = _number_at(words, i)
         if num:
             text, n = num
-            if len(text.split()) <= max_words and text.lower() not in seen:
+            if len(text.split()) <= max_words and text.lower() not in seen and re.sub(r"\D", "", text) not in skip_digits:
                 cands.append((0, words[i][0], text))
                 seen.add(text.lower())
             i += n
             continue
-        name = _name_at(words, i, max_words) if names else None
+        name = _name_at(words, i, max_words) if names and not quoted[i] else None
         if name:
             text, n = name
             if text.lower() not in seen:

@@ -53,7 +53,9 @@ def expr(v: dict) -> str:
 def synth_cmd(kind: str, out: str, *, seed: str | int = 0, peak_db: float = PEAK_DB, pad_to: float | None = None,
               sample_rate: int = 44100, channels: int = 1) -> list[str]:
     """ffmpeg command writing one effect to ``out`` (WAV): a soft attack, a low-pass so nothing is shrill, the level
-    set to ``peak_db``, then silence up to ``pad_to`` seconds when given (a countdown second)."""
+    set to ``peak_db``, then silence up to ``pad_to`` seconds when given (a countdown second). The filters take a
+    little off: the file peaks ~1.5-6 dB under ``peak_db`` (the low thump the most; ``channels=2`` 3 dB more), so a
+    caller that needs an exact level measures the file (``peak_db()``) and corrects."""
     v = variant(kind, seed)
     gain = 10 ** (peak_db / 20.0)
     af = (f"afade=t=in:d=0.004,lowpass=f={min(6000, int(v['freq'] * 3))},highpass=f=60,"
@@ -96,15 +98,20 @@ def on_cuts(n: int, *, seed: str | int = 0, share: float = 0.34, first: bool = F
     return out
 
 
+def _window(start: float | None, seconds: float | None) -> str:
+    """An ``atrim`` that decodes from the start and keeps [start, start+seconds): an input ``-ss`` seek into MP3/AAC
+    lands a few ms late and misses a tick's attack (read -25.6 dBFS where the true peak was -18.8, 2026-11-21)."""
+    if start is None and seconds is None:
+        return ""
+    parts = [f"start={max(0.0, start or 0.0):.3f}"] + ([f"duration={seconds:.3f}"] if seconds is not None else [])
+    return f"atrim={':'.join(parts)},asetpts=PTS-STARTPTS,"
+
+
 def loudness(path: str, *, start: float | None = None, seconds: float | None = None) -> dict:
     """Integrated loudness (LUFS) and true peak (dBFS) of ``path`` (or a window of it), via ffmpeg's loudnorm
     analysis. ``{"I": float, "TP": float}``; values are -70/-99 for silence."""
-    cmd = ["ffmpeg", "-hide_banner", "-nostats"]
-    if start is not None:
-        cmd += ["-ss", f"{start:.3f}"]
-    if seconds is not None:
-        cmd += ["-t", f"{seconds:.3f}"]
-    cmd += ["-i", path, "-vn", "-af", "loudnorm=print_format=json", "-f", "null", "-"]
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vn", "-af", _window(start, seconds) + "loudnorm=print_format=json",
+           "-f", "null", "-"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", r.stderr)
     if not m:
@@ -121,12 +128,8 @@ def loudness(path: str, *, start: float | None = None, seconds: float | None = N
 
 def peak_db(path: str, *, start: float | None = None, seconds: float | None = None) -> float:
     """Sample peak (dBFS) of ``path`` or a window of it (volumedetect)."""
-    cmd = ["ffmpeg", "-hide_banner", "-nostats"]
-    if start is not None:
-        cmd += ["-ss", f"{start:.3f}"]
-    if seconds is not None:
-        cmd += ["-t", f"{seconds:.3f}"]
-    cmd += ["-i", path, "-vn", "-af", "volumedetect", "-f", "null", "-"]
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-vn", "-af", _window(start, seconds) + "volumedetect",
+           "-f", "null", "-"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     m = re.search(r"max_volume:\s*(-?[\d.]+|-inf) dB", r.stderr)
     if not m:
