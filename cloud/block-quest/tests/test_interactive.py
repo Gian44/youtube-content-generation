@@ -246,6 +246,37 @@ def test_short_label_and_icon_rules():
         assert interactive._icon(bad) == "", bad
     assert interactive.label("Hacked account", "🐉", "get a cat that flies")["text"] == "cat flies"   # kid-safe check
     assert interactive.label("Dragon 🐉", "🐉", "get a dragon")["text"] == "dragon"                  # no emoji in the words
+    assert interactive.label(["Dragon", "pet"], ["🐉"], "get a dragon pet") == {"text": "dragon pet", "icon": ""}
+    # no creed, political sign, flag, grave, romance or monster as an icon on an all-ages channel
+    for bad in ("✝️", "☪", "🕉", "☭", "🏳️‍🌈", "🏴", "🇺🇸", "🇺", "🪦", "🫦", "💏", "👹", "🕷", "🧨"):
+        assert interactive._icon(bad) == "", bad
+
+
+def test_guess_the_game_icons_never_picture_the_name_and_bad_rounds_are_rejections():
+    p = _params("guess_the_game")
+    p["games"] = list(interactive.GAMES)
+    data = json.loads(json.dumps(GTG_OK))
+    data["rounds"][0] = {"game": "Work at a Pizza Place", "clues": [
+        {"say": "You make food and deliver it to houses.", "short": "Deliver food", "icon": "🍕"},
+        {"say": "Someone rings up orders at the counter.", "short": "Counter", "icon": "🧾"},
+        {"say": "The boxes go out on a moped.", "short": "Moped", "icon": "🛵"}]}
+    labels = interactive.validate("guess_the_game", data, p)["rounds"][0]["labels"]
+    assert labels[0] == {"text": "Deliver food", "icon": ""} and labels[1]["icon"] == "🧾" and labels[2]["icon"] == "🛵"
+    for fmt, bad in (("guess_the_game", {"rounds": ["Adopt Me!", 3, None]}),
+                     ("pick_one", {"title": "Mystery", "rounds": ["egg", "chest"]})):
+        with pytest.raises(stories.StoryError):                          # not an AttributeError that ends the whole run
+            interactive.validate(fmt, bad, _params(fmt))
+
+
+def test_panel_words_are_never_cut_off():
+    """A label too long for its box shrinks; no word is dropped ("HATCH LEGENDARY EGG" lost "EGG" in a WYR card)."""
+    from PIL import Image, ImageDraw
+    d = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    for text, max_w, size, lines in (("HATCH LEGENDARY EGG", 383, 80, 2), ("LEGENDARY NEON PET", 300, 65, 1),
+                                     ("SLIGHTLY USED BANANA", 255, 46, 3), ("NATURAL DISASTER SURVIVAL", 820, 86, 2)):
+        font, rows, s = interactive._fit(d, text, max_w, size, lines=lines, min_size=round(size * 0.55))
+        assert " ".join(rows).split() == text.split() and len(rows) <= lines, (text, rows)
+        assert all(d.textlength(r, font=font) <= max_w for r in rows)
 
 
 def test_interactive_seo():

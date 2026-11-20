@@ -135,3 +135,5 @@ def test_story_shorts_show_a_few_words_never_the_channel_wide_ones():
     assert "500 Robux" in texts and not {"roblox", "robux"} & {t.lower() for t in texts}
     assert "Roblox" in [t for _, _, t in textbudget.pick(textbudget.words_from_cues(cues), duration=40.0)]   # without the skip
     assert textbudget.shown_words(picked) <= 8 and all(len(t.split()) <= 3 for t in texts)
+    poss = textbudget.words_from_cues([(0.0, 20.0, "We waited while Roblox's servers came back, then Theo typed hi.")])
+    assert [t for _, _, t in textbudget.pick(poss, duration=20.0, per_minute=30, min_gap=0.5, skip=pipeline.SKIP_WORDS)] == ["Theo"]

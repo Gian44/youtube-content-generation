@@ -26,7 +26,7 @@ log = logging.getLogger("bqd.pipeline")
 EXIT_OK, EXIT_FAIL, EXIT_PREFLIGHT, EXIT_WRITER = 0, 1, 2, 4
 # Felix (Puello Media) 2026-11: a story Short shows only a few emphasis words (cc.textbudget, via cc.segments), never
 # the narration. Words that would turn up on nearly every Short of this channel are never among them.
-SKIP_WORDS = frozenset({"roblox", "robux"})
+SKIP_WORDS = frozenset({"roblox", "robux", "roblox's", "roblox’s"})
 
 
 def _stage(name: str) -> None:

@@ -98,9 +98,11 @@ this channel, for every future change (Gian: the channel stays kid-safe, all age
    `cc.segments`: the key number with its unit, a first-mentioned name; never "Roblox"/"Robux" alone,
    `pipeline.SKIP_WORDS`). Interactive panels show each choice / clue / reward as 1-3 key words plus one emoji icon:
    the writer's `a_short`/`a_icon`, `b_short`/`b_icon` and per-clue / per-reward `short`/`icon`, checked (1-3
-   words, at most 20 characters, kid-safe, one kid-safe emoji, no word of the game's name in a clue); when one is
-   missing or invalid the spoken line's key words are shown with no icon. The spoken lines never change for this.
-   Guess the Game's answer (the game's name) is the one longer text: it is the needed word.
+   words, at most 20 characters, kid-safe, one kid-safe emoji — no weapon, grave, romance, monster, creed,
+   political sign or flag, `interactive.ICON_BLOCK` — no word of the game's name in a clue and no picture of it,
+   `interactive.NAME_ICONS`, e.g. no 🍕 for Work at a Pizza Place); when one is missing or invalid the spoken line's
+   key words are shown with no icon. The spoken lines never change for this. A label too long for its box shrinks;
+   no word is ever cut off. Guess the Game's answer (the game's name) is the one longer text: it is the needed word.
 3. **Quiet, varied sound.** No whoosh, static or sine ping. The countdown is a soft synthesised woodblock with a
    lower "tock" on the last count (`cc.sfx`), a different variant per Short (seeded by the date and the Short), one
    per countdown second so the number keeps time with the voice. `interactive.TICK_DB` (-32 dBFS) keeps every tick

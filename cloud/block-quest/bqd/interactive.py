@@ -69,8 +69,14 @@ TICK_DB = sfx.PEAK_DB - 8.0
 LABEL_WORDS, LABEL_CHARS = 3, 20
 CTA_ICON, GAME_ICON = "💬", "🎮"
 THING_ICONS = {"egg": "🥚", "chest": "📦", "door": "🚪", "gift box": "🎁", "portal": "🌀", "potion": "🧪"}
-# kid-safe channel: icons never shown (weapons, death, blood, drink, smoking, drugs, gambling, rude, gross, scary)
-ICON_BLOCK = set("🔫🔪🗡⚔🪓🏹💣💀☠⚰⚱🩸🍺🍻🍷🍸🍹🥃🍾🥂🚬💊💉🎰🍆🍑💦💋🔞🖕💩🤮🤢👻😈👿🤬🧟🧛")
+# kid-safe channel: icons never shown (weapons, explosives, death, blood, drink, smoking, drugs, gambling, rude, gross,
+# romantic, scary), nor a creed, a political sign or a flag (no group is singled out, as in cc.textbudget.GROUPS)
+ICON_BLOCK = set("🔫🔪🗡⚔🪓🏹💣🧨💀☠⚰⚱🪦🩸🍺🍻🍷🍸🍹🥃🍾🥂🚬💊💉🎰🍆🍑💦💋🫦👅👄👙🩲💏💑🔞🖕💩🤮🤢"
+                 "👻👹👺😈👿🤬🧟🧛🧌🕷🕸☢☣✝✞☦☪☬☭☯☸✡🔯🕉🕎🛐⛪🕌🕍🕋🏳🏴⚧")
+# Guess the Game: an icon that pictures a word of the game's name gives the answer away (no 🍕 for the pizza game)
+NAME_ICONS = {"Work at a Pizza Place": "🍕", "Bee Swarm Simulator": "🐝", "Build A Boat For Treasure": "⛵🚤🛶🚣🛥🚢⛴",
+              "Blox Fruits": "🍎🍏🍐🍊🍋🍌🍉🍇🍓🫐🍈🍒🥭🍍🥥🥝", "Dress to Impress": "👗", "Lumber Tycoon 2": "🪵",
+              "Grow a Garden": "🌱🪴"}
 # words the fallback label skips: articles, pronouns, helpers, generic verbs, time words
 _FILLER = {"a", "an", "the", "and", "or", "but", "to", "of", "in", "on", "at", "for", "with", "from", "by", "as", "into",
            "onto", "that", "which", "who", "it", "its", "it's", "this", "these", "those", "you", "your", "you're", "i", "my",
@@ -261,27 +267,28 @@ def short_label(spoken: str) -> str:
     return " ".join(out) or " ".join(spoken.split()[:2])
 
 
-def _icon(s) -> str:
-    """``s`` when it is exactly one kid-safe emoji (a ZWJ sequence or skin tone counts as one), else ""."""
-    s = "".join(str(s or "").split())
-    if not s or any(ch not in "\u200d\ufe0f" and (not icons.is_emoji(ch) or 0x2C00 <= ord(ch) < 0x1F000 or ch in ICON_BLOCK)
-                    for ch in s):
+def _icon(s, *, avoid: str = "") -> str:
+    """``s`` when it is exactly one kid-safe emoji (a ZWJ sequence or skin tone counts as one) and none of ``avoid``,
+    else "". Flags (regional-indicator letters) are never icons."""
+    s = "".join(str(s or "").split()) if isinstance(s, str) else ""
+    if not s or any(ch not in "\u200d\ufe0f" and (not icons.is_emoji(ch) or 0x2C00 <= ord(ch) < 0x1F000 or ch in ICON_BLOCK
+                                                   or 0x1F1E6 <= ord(ch) <= 0x1F1FF or ch in avoid) for ch in s):
         return ""
     bases = [ch for i, ch in enumerate(s) if icons.is_emoji(ch) and not 0x1F3FB <= ord(ch) <= 0x1F3FF
              and (i == 0 or s[i - 1] != "\u200d")]
     return s if len(bases) == 1 else ""
 
 
-def label(short, icon, spoken: str, *, avoid: set[str] = frozenset()) -> dict:
+def label(short, icon, spoken: str, *, avoid: set[str] = frozenset(), avoid_icons: str = "") -> dict:
     """What the panel shows for one spoken choice / clue / reward: ``{"text": 1-3 words, "icon": one emoji or ""}``.
     The writer's ``short`` when it is 1-3 words, at most ``LABEL_CHARS`` characters, kid-safe, plain text and holds
     none of ``avoid`` (a clue's game-name words); otherwise ``short_label(spoken)``. The writer's ``icon`` when it is
-    one kid-safe emoji, otherwise none."""
-    text = _clean(short).strip(" .,!?;:\"'")
+    one kid-safe emoji and none of ``avoid_icons`` (a picture of the game's name), otherwise none."""
+    text = _clean(short).strip(" .,!?;:\"'") if isinstance(short, str) else ""
     ok = (1 <= _words(text) <= LABEL_WORDS and len(text) <= LABEL_CHARS and not DARK_WORDS.search(text)
           and not any(icons.is_emoji(ch) for ch in text)
           and not avoid & {w.rstrip("s") for w in re.findall(r"[a-z]+", text.lower())})
-    return {"text": text if ok else short_label(spoken), "icon": _icon(icon)}
+    return {"text": text if ok else short_label(spoken), "icon": _icon(icon, avoid=avoid_icons)}
 
 
 def _items(raw) -> list[dict]:
@@ -319,8 +326,9 @@ def validate(fmt: str, data, params: dict) -> dict:
     elif fmt == "guess_the_game":
         seen: set[str] = set()
         for i, r in enumerate(rounds, 1):
-            game = _clean((r or {}).get("game"))
-            items = _items((r or {}).get("clues"))
+            r = r if isinstance(r, dict) else {}          # a malformed round is a rejection (and the retry), not a crash
+            game = _clean(r.get("game"))
+            items = _items(r.get("clues"))
             clues = [_clean(c["say"]) for c in items]
             if game not in params["games"]:
                 errors.append(f"round {i}: game must be copied exactly from the list (got {game!r})")
@@ -337,13 +345,14 @@ def validate(fmt: str, data, params: dict) -> dict:
                     errors.append(f"round {i} clue {k} gives the name away ({', '.join(sorted(leak))})")
             clues = [c if c[-1:] in ".!" else c + "." for c in clues]
             out_rounds.append({"game": game, "clues": clues,
-                               "labels": [label(c.get("short"), c.get("icon"), say, avoid=_name_words(game))
-                                          for c, say in zip(items, clues)]})
+                               "labels": [label(c.get("short"), c.get("icon"), say, avoid=_name_words(game),
+                                                avoid_icons=NAME_ICONS.get(game, "")) for c, say in zip(items, clues)]})
             texts += clues
     elif fmt == "pick_one":
         for i, r in enumerate(rounds, 1):
-            thing = _clean((r or {}).get("thing")).lower()
-            items = _items((r or {}).get("rewards"))
+            r = r if isinstance(r, dict) else {}
+            thing = _clean(r.get("thing")).lower()
+            items = _items(r.get("rewards"))
             rewards = [_clean(x["say"]).rstrip(".!") for x in items]
             if i <= len(params["things"]) and thing != params["things"][i - 1]:
                 errors.append(f"round {i} must be a {params['things'][i - 1]}")
@@ -539,14 +548,16 @@ def _text_mid(d, cx: float, cy: float, text: str, font, fill, stroke: int = 0) -
 
 
 def _fit(d, text: str, max_w: float, size: int, *, lines: int, min_size: int) -> tuple:
-    """(font, wrapped lines, size): the largest size from ``size`` down to ``min_size`` at which ``text`` fits
-    ``max_w`` in at most ``lines`` lines."""
+    """(font, wrapped lines, size): the largest size from ``size`` down at which ``text`` fits ``max_w`` in at most
+    ``lines`` lines. Under ``min_size`` only when it must (one long word), and never by dropping a word: "HATCH
+    LEGENDARY EGG" used to lose "EGG" at the floor."""
+    floor = max(12, min(size, min_size) // 2)
     while True:
         font = sof_shorts._font(size)
         rows = sof_shorts._wrap(d, text, font, int(max_w))
-        if size <= min_size or (len(rows) <= lines and all(d.textlength(r, font=font) <= max_w for r in rows)):
-            return font, rows[:lines], size
-        size = max(min_size, int(size * 0.9))
+        if size <= floor or (len(rows) <= lines and all(d.textlength(r, font=font) <= max_w for r in rows)):
+            return font, rows, size
+        size = max(floor, int(size * 0.9))
 
 
 def _emoji(icon: str, h: int):
@@ -556,10 +567,10 @@ def _emoji(icon: str, h: int):
 def _icon_and_words(im, d, lab: dict, cx: float, top: float, bottom: float, *, max_w: float, icon_h: int, size: int,
                     lines: int, stroke: int) -> None:
     """One label centred in [``top``, ``bottom``]: its icon, the 1-3 words in outlined capitals under it. Without an
-    icon (none given, or no emoji font) the words are drawn a little bigger on their own."""
+    icon (none given, or no emoji font) the words are drawn a little bigger on their own, one more line allowed."""
     pic = _emoji(lab.get("icon") or "", icon_h)
     if pic is None:
-        size = round(size * 1.3)
+        size, lines = round(size * 1.3), lines + 1
     font, rows, s = _fit(d, str(lab.get("text") or "").upper(), max_w, size, lines=lines, min_size=round(size * 0.55))
     lh = round(s * 1.18)
     gap = round(icon_h * 0.1) if pic else 0
