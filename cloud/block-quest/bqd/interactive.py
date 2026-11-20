@@ -11,7 +11,14 @@ over the same Creative Commons gameplay:
 One writer call (Claude on the subscription) fills the rounds; the code turns them into beats: a spoken line, the
 panel on screen, the seconds of countdown after it. Each beat is voiced on its own and the pieces are joined with
 the countdown ticks in between, so what the panel shows always matches what is being said. Pure helpers (prompts,
-validation, beats, the timeline, the ffmpeg commands, the panel drawing) are unit-tested without a model or ffmpeg."""
+validation, beats, the timeline, the ffmpeg commands, the panel drawing) are unit-tested without a model or ffmpeg.
+
+Felix (Puello Media) 2026-11: "much less on-screen text, never repeat what the narrator is saying", quieter and less
+generic sound effects, minimal section indicators, icons instead of text cards. So the panels show the round as a
+number ("1/4"), each choice / clue / reward as 1-3 key words plus one emoji icon (the writer gives both; a missing or
+invalid one falls back to the spoken line's key words, no icon), and the intro / call to action as an icon plus a
+word or two. The countdown ticks are a soft synthesised woodblock (``cc.sfx``, a lower "tock" on the last count),
+varied per Short and far under the voice."""
 
 from __future__ import annotations
 
@@ -23,6 +30,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from cc import icons, sfx
 from sof import render as sof_render
 from sof import shorts as sof_shorts
 from sof import tts
@@ -34,9 +42,9 @@ from bqd.stories import DARK_WORDS, Story, StoryError
 log = logging.getLogger("bqd.interactive")
 
 FORMATS: dict[str, dict] = {
-    "would_you_rather": {"label": "Roblox Would You Rather", "header": "WOULD YOU RATHER", "rounds": 4},
-    "guess_the_game": {"label": "Guess the Roblox Game", "header": "GUESS THE GAME", "rounds": 3},
-    "pick_one": {"label": "Roblox Pick One", "header": "PICK ONE", "rounds": 2},
+    "would_you_rather": {"label": "Roblox Would You Rather", "rounds": 4},
+    "guess_the_game": {"label": "Guess the Roblox Game", "rounds": 3},
+    "pick_one": {"label": "Roblox Pick One", "rounds": 2},
 }
 
 # Guess the Game draws only from long-running, well-known Roblox games that suit every age (no horror, no shooters,
@@ -52,6 +60,25 @@ GTG_TITLES = ["Guess the Roblox Game in 3 Clues", "Can You Guess These 3 Roblox 
               "Only Real Roblox Players Get All 3", "Guess the Roblox Game Before the Timer"]
 NUM_WORDS = ["one", "two", "three", "four", "five"]
 TICK_GAP = 0.25            # breathing room after each spoken line
+# Felix 2026-11: "the pings were too loud". The countdown tick (cc.sfx woodblock) sits 8 dB under the shared effect
+# level because the final loudnorm (dynamic) lifts the quiet countdown seconds by 6-10 dB, most on the last count.
+# Measured 2026-11-21 with Kokoro af_heart: voice peak -1.9 dBFS, the three counts about -30 / -28 / -24 dBFS, 21-28 dB
+# under the voice and still heard over the silent gameplay. At -27 the last count was only 16-17 dB under the voice.
+TICK_DB = sfx.PEAK_DB - 8.0
+# on screen: 1-3 key words per choice / clue / reward, plus one emoji icon (Felix 2026-11)
+LABEL_WORDS, LABEL_CHARS = 3, 20
+CTA_ICON, GAME_ICON = "💬", "🎮"
+THING_ICONS = {"egg": "🥚", "chest": "📦", "door": "🚪", "gift box": "🎁", "portal": "🌀", "potion": "🧪"}
+# kid-safe channel: icons never shown (weapons, death, blood, drink, smoking, drugs, gambling, rude, gross, scary)
+ICON_BLOCK = set("🔫🔪🗡⚔🪓🏹💣💀☠⚰⚱🩸🍺🍻🍷🍸🍹🥃🍾🥂🚬💊💉🎰🍆🍑💦💋🔞🖕💩🤮🤢👻😈👿🤬🧟🧛")
+# words the fallback label skips: articles, pronouns, helpers, generic verbs, time words
+_FILLER = {"a", "an", "the", "and", "or", "but", "to", "of", "in", "on", "at", "for", "with", "from", "by", "as", "into",
+           "onto", "that", "which", "who", "it", "its", "it's", "this", "these", "those", "you", "your", "you're", "i", "my",
+           "me", "we", "our", "they", "their", "he", "she", "his", "her", "is", "are", "was", "were", "be", "been", "can",
+           "could", "will", "would", "here", "there", "every", "each", "any", "all", "some", "very", "really", "so", "just",
+           "once", "again", "day", "time", "get", "gets", "have", "has", "had", "become", "own", "where", "when", "what",
+           "how", "if", "then", "than", "also"}
+_NEGATION = {"never", "no", "not", "cannot", "can't", "won't", "don't", "without"}
 SYSTEM = ("You write interactive YouTube Shorts for a Roblox channel watched by players of every age, younger ones "
           "included: kid-safe, upbeat, specific to Roblox. Completely original. Output strict JSON.")
 SAFETY = ("- Kid-safe for every age: nothing scary, mean, gross, romantic or dangerous; nothing about hacking, scams, "
@@ -156,13 +183,17 @@ Rules:
 - Each choice is 3 to 12 words and starts with a verb, e.g. "get a pet dragon that cannot fly". No question marks, no "or".
 - Both choices in a round are equally tempting or equally funny, so the pick is hard. Make them about Roblox: obbies,
   pets, eggs, Robux, avatars, servers, roleplay, tycoons, trading, badges, a well-known Roblox game.
+- For each choice also give what the screen shows while it is read out: "a_short" / "b_short", the 1-3 key words
+  (e.g. "Dragon pet", "1,000 Robux", "Never lag"), never the whole choice, and "a_icon" / "b_icon", exactly one emoji
+  that pictures it (e.g. "🐉").
 {SAFETY}
 - Different from these recent Shorts:
 {used_txt}
 
 Return JSON:
 {{"title": "<the edition, 2-4 words, e.g. Pets Edition>",
-  "rounds": [{{"a": "<choice A>", "b": "<choice B>"}}, {{"a": "...", "b": "..."}}, {{"a": "...", "b": "..."}}, {{"a": "...", "b": "..."}}],
+  "rounds": [{{"a": "<choice A>", "a_short": "<1-3 words>", "a_icon": "<one emoji>", "b": "<choice B>", "b_short": "...", "b_icon": "..."}},
+             {{...}}, {{...}}, {{...}}],
   "tags": ["<5-8 lowercase tags>"]}}""", {"rounds": 4})
     if fmt == "guess_the_game":
         avoid = set(recent_games or [])
@@ -176,10 +207,16 @@ Rules:
 - Use only well-known features you are completely sure of and that have been in the game for years: what players
   do there, the setting, the famous item. No claims about menus, voting, settings, updates, prices or numbers.
   If you are unsure about a detail, leave it out.
+- For each clue also give what the screen shows while it is read out: "short", its 1-3 key words (e.g. "Baby or pet"),
+  never the whole clue and never a word of the game's name, and "icon", exactly one emoji that pictures the clue
+  (e.g. "🍼") but not the name (no 🍕 for a pizza game).
 {SAFETY}
 
 Return JSON:
-{{"rounds": [{{"game": "<exactly as in the list>", "clues": ["<clue 1>", "<clue 2>", "<clue 3>"]}}, {{...}}, {{...}}],
+{{"rounds": [{{"game": "<exactly as in the list>", "clues": [{{"say": "<clue 1>", "short": "<1-3 words>", "icon": "<one emoji>"}},
+                                                         {{"say": "<clue 2>", "short": "...", "icon": "..."}},
+                                                         {{"say": "<clue 3>", "short": "...", "icon": "..."}}]}},
+             {{...}}, {{...}}],
   "tags": ["<5-8 lowercase tags>"]}}""", {"rounds": 3, "games": pool})
     if fmt == "pick_one":
         things = rng.sample(PICK_THINGS, 2)
@@ -190,19 +227,72 @@ Rules:
   trails, Robux amounts up to 1,000, or something silly. Start each with "a", "an" or a number.
 - In each round one reward is amazing ("a rainbow dragon pet that flies"), one is funny-bad ("a single wet sock"),
   one is in between; put them in a random order.
+- For each reward also give what the screen shows while it is read out: "short", its 1-3 key words (e.g. "Rainbow
+  dragon", "Wet sock", "100 Robux"), and "icon", exactly one emoji that pictures it (e.g. "🧦").
 {SAFETY}
 - Different from these recent Shorts:
 {used_txt}
 
 Return JSON:
 {{"title": "<2-4 words, e.g. Mystery Egg Edition>",
-  "rounds": [{{"thing": "{things[0]}", "rewards": ["...", "...", "..."]}}, {{"thing": "{things[1]}", "rewards": ["...", "...", "..."]}}],
+  "rounds": [{{"thing": "{things[0]}", "rewards": [{{"say": "<reward>", "short": "<1-3 words>", "icon": "<one emoji>"}}, {{...}}, {{...}}]}},
+             {{"thing": "{things[1]}", "rewards": [{{...}}, {{...}}, {{...}}]}}],
   "tags": ["<5-8 lowercase tags>"]}}""", {"rounds": 2, "things": things})
     raise StoryError(f"unknown format {fmt!r}")
 
 
+def short_label(spoken: str) -> str:
+    """The fallback on-screen words for a spoken choice / clue / reward: its first run of content words, at most
+    ``LABEL_WORDS`` words and ``LABEL_CHARS`` characters, an "and"/"or" kept between two of them, never ending on one
+    or on a "never"/"cannot" ("get a dragon pet that cannot fly" → "dragon pet", "never lag again in any game" →
+    "never lag", "Tornadoes and floods hit the map" → "Tornadoes and floods")."""
+    joins = {"and", "or"}
+    out: list[str] = []
+    for w in re.findall(r"\$?\d[\d,]*(?:\.\d+)?|[A-Za-z][A-Za-z'-]*", spoken):
+        if w.lower() in _FILLER and not (w.lower() in joins and out and out[-1].lower() not in joins):
+            if sum(x.lower() not in joins for x in out) >= 2:
+                break
+            continue
+        if len(out) == LABEL_WORDS or len(" ".join(out + [w])) > LABEL_CHARS:
+            break
+        out.append(w)
+    while len(out) > 1 and out[-1].lower() in _NEGATION | joins:
+        out.pop()
+    return " ".join(out) or " ".join(spoken.split()[:2])
+
+
+def _icon(s) -> str:
+    """``s`` when it is exactly one kid-safe emoji (a ZWJ sequence or skin tone counts as one), else ""."""
+    s = "".join(str(s or "").split())
+    if not s or any(ch not in "\u200d\ufe0f" and (not icons.is_emoji(ch) or 0x2C00 <= ord(ch) < 0x1F000 or ch in ICON_BLOCK)
+                    for ch in s):
+        return ""
+    bases = [ch for i, ch in enumerate(s) if icons.is_emoji(ch) and not 0x1F3FB <= ord(ch) <= 0x1F3FF
+             and (i == 0 or s[i - 1] != "\u200d")]
+    return s if len(bases) == 1 else ""
+
+
+def label(short, icon, spoken: str, *, avoid: set[str] = frozenset()) -> dict:
+    """What the panel shows for one spoken choice / clue / reward: ``{"text": 1-3 words, "icon": one emoji or ""}``.
+    The writer's ``short`` when it is 1-3 words, at most ``LABEL_CHARS`` characters, kid-safe, plain text and holds
+    none of ``avoid`` (a clue's game-name words); otherwise ``short_label(spoken)``. The writer's ``icon`` when it is
+    one kid-safe emoji, otherwise none."""
+    text = _clean(short).strip(" .,!?;:\"'")
+    ok = (1 <= _words(text) <= LABEL_WORDS and len(text) <= LABEL_CHARS and not DARK_WORDS.search(text)
+          and not any(icons.is_emoji(ch) for ch in text)
+          and not avoid & {w.rstrip("s") for w in re.findall(r"[a-z]+", text.lower())})
+    return {"text": text if ok else short_label(spoken), "icon": _icon(icon)}
+
+
+def _items(raw) -> list[dict]:
+    """A clue / reward list as ``[{"say", "short", "icon"}]``; plain strings (the older answer shape) are just "say"."""
+    out = [x if isinstance(x, dict) else {"say": x} for x in (raw if isinstance(raw, list) else [])]
+    return [x for x in out if _clean(x.get("say"))]
+
+
 def validate(fmt: str, data, params: dict) -> dict:
-    """Clean and check the writer's JSON for ``fmt``; raises StoryError listing every problem."""
+    """Clean and check the writer's JSON for ``fmt``; raises StoryError listing every problem. The on-screen words and
+    icons are never a reason to reject an answer: ``label`` falls back to the spoken line's key words."""
     if not isinstance(data, dict):
         raise StoryError("answer must be a JSON object")
     errors: list[str] = []
@@ -213,7 +303,8 @@ def validate(fmt: str, data, params: dict) -> dict:
     out_rounds: list[dict] = []
     if fmt == "would_you_rather":
         for i, r in enumerate(rounds, 1):
-            a, b = _clean((r or {}).get("a")).rstrip(".?!"), _clean((r or {}).get("b")).rstrip(".?!")
+            r = r if isinstance(r, dict) else {}
+            a, b = _clean(r.get("a")).rstrip(".?!"), _clean(r.get("b")).rstrip(".?!")
             for name, v in (("a", a), ("b", b)):
                 if not 3 <= _words(v) <= 12:
                     errors.append(f"round {i} choice {name} must be 3-12 words")
@@ -221,13 +312,16 @@ def validate(fmt: str, data, params: dict) -> dict:
                     errors.append(f"round {i} choice {name}: no question mark and no 'or'")
             if a and a.lower() == b.lower():
                 errors.append(f"round {i}: the two choices are the same")
-            out_rounds.append({"a": a[:1].lower() + a[1:], "b": b[:1].lower() + b[1:]})
+            out_rounds.append({"a": a[:1].lower() + a[1:], "b": b[:1].lower() + b[1:],
+                               "a_label": label(r.get("a_short"), r.get("a_icon"), a),
+                               "b_label": label(r.get("b_short"), r.get("b_icon"), b)})
             texts += [a, b]
     elif fmt == "guess_the_game":
         seen: set[str] = set()
         for i, r in enumerate(rounds, 1):
             game = _clean((r or {}).get("game"))
-            clues = [_clean(c) for c in ((r or {}).get("clues") or []) if _clean(c)]
+            items = _items((r or {}).get("clues"))
+            clues = [_clean(c["say"]) for c in items]
             if game not in params["games"]:
                 errors.append(f"round {i}: game must be copied exactly from the list (got {game!r})")
             if game in seen:
@@ -242,12 +336,15 @@ def validate(fmt: str, data, params: dict) -> dict:
                 if leak:
                     errors.append(f"round {i} clue {k} gives the name away ({', '.join(sorted(leak))})")
             clues = [c if c[-1:] in ".!" else c + "." for c in clues]
-            out_rounds.append({"game": game, "clues": clues})
+            out_rounds.append({"game": game, "clues": clues,
+                               "labels": [label(c.get("short"), c.get("icon"), say, avoid=_name_words(game))
+                                          for c, say in zip(items, clues)]})
             texts += clues
     elif fmt == "pick_one":
         for i, r in enumerate(rounds, 1):
             thing = _clean((r or {}).get("thing")).lower()
-            rewards = [_clean(x).rstrip(".!") for x in ((r or {}).get("rewards") or []) if _clean(x)]
+            items = _items((r or {}).get("rewards"))
+            rewards = [_clean(x["say"]).rstrip(".!") for x in items]
             if i <= len(params["things"]) and thing != params["things"][i - 1]:
                 errors.append(f"round {i} must be a {params['things'][i - 1]}")
             if len(rewards) != 3:
@@ -255,7 +352,8 @@ def validate(fmt: str, data, params: dict) -> dict:
             for k, x in enumerate(rewards, 1):
                 if not 2 <= _words(x) <= 8:
                     errors.append(f"round {i} reward {k} must be 2-8 words")
-            out_rounds.append({"thing": thing, "rewards": [x[:1].lower() + x[1:] if not x[:1].isdigit() else x for x in rewards]})
+            out_rounds.append({"thing": thing, "rewards": [x[:1].lower() + x[1:] if not x[:1].isdigit() else x for x in rewards],
+                               "labels": [label(x.get("short"), x.get("icon"), say) for x, say in zip(items, rewards)]})
             texts += rewards
     else:
         raise StoryError(f"unknown format {fmt!r}")
@@ -276,35 +374,37 @@ def _article(thing: str) -> str:
 
 
 def make_beats(fmt: str, script: dict, *, hold: int = 3) -> list[Beat]:
-    """The spoken lines, the panel for each and the countdowns, built from a validated script."""
+    """The spoken lines, the panel for each and the countdowns, built from a validated script. Panels carry only the
+    round number, the 1-3 word labels with their icons, and an icon plus a word or two for the intro / call to action
+    (Felix 2026-11: never what the narrator is saying)."""
     rounds = script["rounds"]
     n = len(rounds)
     beats: list[Beat] = []
     if fmt == "would_you_rather":
         for i, r in enumerate(rounds, 1):
-            panel = {"kind": "wyr", "round": i, "of": n, "a": r["a"], "b": r["b"]}
+            panel = {"kind": "wyr", "round": i, "of": n, "a": r["a_label"], "b": r["b_label"]}
             beats.append(Beat(f"Would you rather {r['a']}, or {r['b']}?", panel, hold))
         beats.append(Beat(f"Comment your {NUM_WORDS[n - 1] if n <= 5 else n} picks, like A, B, B, A.",
-                          {"kind": "cta", "text": "COMMENT YOUR PICKS"}))
+                          {"kind": "cta", "icon": CTA_ICON, "text": "A or B?"}))
     elif fmt == "guess_the_game":
-        beats.append(Beat("Guess the Roblox game.", {"kind": "intro", "text": "3 CLUES. 1 GAME."}))
+        beats.append(Beat("Guess the Roblox game.", {"kind": "intro", "icon": GAME_ICON, "text": "3 clues"}))
         for i, r in enumerate(rounds, 1):
             for k, c in enumerate(r["clues"], 1):
-                panel = {"kind": "clues", "round": i, "of": n, "clues": r["clues"][:k]}
-                beats.append(Beat(c, panel, hold if k == len(r["clues"]) else 0))     # the panel numbers the clues
-            beats.append(Beat(f"It's {r['game'].rstrip('!')}!", {"kind": "clues", "round": i, "of": n, "clues": r["clues"], "answer": r["game"]}))
+                panel = {"kind": "clues", "round": i, "of": n, "clues": r["labels"][:k]}
+                beats.append(Beat(c, panel, hold if k == len(r["clues"]) else 0))
+            beats.append(Beat(f"It's {r['game'].rstrip('!')}!", {"kind": "clues", "round": i, "of": n, "clues": r["labels"], "answer": r["game"]}))
         beats.append(Beat(f"How many did you get? Comment your score out of {NUM_WORDS[n - 1] if n <= 5 else n}.",
-                          {"kind": "cta", "text": "COMMENT YOUR SCORE"}))
+                          {"kind": "cta", "icon": CTA_ICON, "text": f"?/{n}"}))
     elif fmt == "pick_one":
         for i, r in enumerate(rounds, 1):
             thing = r["thing"]
-            closed = {"kind": "pick", "round": i, "of": n, "thing": thing, "open": [None, None, None]}
+            closed = {"kind": "pick", "round": i, "of": n, "icon": THING_ICONS.get(thing, ""), "open": [None, None, None]}
             beats.append(Beat(f"Pick {_article(thing)}: one, two, or three.", closed, hold))
             opened: list = [None, None, None]
             for k, x in enumerate(r["rewards"]):
-                opened[k] = x
+                opened[k] = r["labels"][k]
                 beats.append(Beat(f"{thing.capitalize()} {NUM_WORDS[k]}: {x}.", {**closed, "open": list(opened), "now": k}))
-        beats.append(Beat("Comment what you got!", {"kind": "cta", "text": "COMMENT WHAT YOU GOT"}))
+        beats.append(Beat("Comment what you got!", {"kind": "cta", "icon": CTA_ICON, "text": "1, 2 or 3?"}))
     else:
         raise StoryError(f"unknown format {fmt!r}")
     return beats
@@ -378,21 +478,22 @@ def silence_cmd(out: str, seconds: float) -> list[str]:
             "-c:a", "pcm_s16le", out]
 
 
-def tick_cmd(out: str, *, last: bool = False) -> list[str]:
-    """One countdown second: a short soft tick, then silence to exactly 1 s (a higher tick on the last one)."""
-    freq = 1320 if last else 880
-    return ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"sine=frequency={freq}:duration=0.09",
-            "-af", "volume=0.22,afade=t=out:st=0.05:d=0.04,apad=whole_dur=1", "-t", "1", "-ar", "44100", "-ac", "1",
-            "-c:a", "pcm_s16le", out]
+def tick_cmds(tick: str, tock: str, *, seed: str) -> list[list[str]]:
+    """The two countdown seconds (Felix 2026-11: the sine beeps were "too loud" and generic): a soft woodblock tick and
+    a lower "tock" for the last count (``cc.sfx``), each padded with silence to exactly 1 s, ``TICK_DB`` peak, their
+    pitch and tone drawn from ``seed`` (the date and the Short) so the sound changes from video to video."""
+    return [sfx.synth_cmd("tick", tick, seed=seed, peak_db=TICK_DB, pad_to=1.0),
+            sfx.synth_cmd("tock", tock, seed=seed, peak_db=TICK_DB, pad_to=1.0)]
 
 
 def _concat_cmd(list_file: str, out: str) -> list[str]:
     return ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", list_file, "-c:a", "pcm_s16le", out]
 
 
-def voice(story: Story, work: Path, cfg, *, index: int, hold: int = 3) -> str:
+def voice(story: Story, work: Path, cfg, *, index: int, hold: int = 3, seed: str = "") -> str:
     """Voice every beat, join them with the breaths and countdown ticks, loudness-normalise → ``work/short<n>.mp3``;
-    the cues go to ``work/s<k>/timeline.json`` for the render. Kept when both files already exist (resume)."""
+    the cues go to ``work/s<k>/timeline.json`` for the render. Kept when both files already exist (resume).
+    ``seed`` (the date) and ``index`` pick this Short's tick sound."""
     out = work / f"short{index + 1}.mp3"
     d = work / f"s{index}"
     tl_path = d / "timeline.json"
@@ -406,8 +507,8 @@ def voice(story: Story, work: Path, cfg, *, index: int, hold: int = 3) -> str:
     gap = str(pieces_dir / "gap.wav")
     tick, tock = str(pieces_dir / "tick.wav"), str(pieces_dir / "tock.wav")
     sof_render.run(silence_cmd(gap, TICK_GAP), 120)
-    sof_render.run(tick_cmd(tick), 120)
-    sof_render.run(tick_cmd(tock, last=True), 120)
+    for cmd in tick_cmds(tick, tock, seed=f"{seed}|{index}"):
+        sof_render.run(cmd, 120)
     order: list[str] = []
     speech: list[float] = []
     for i, (b, src) in enumerate(zip(beats, raw)):
@@ -432,120 +533,159 @@ INK, WHITE = (18, 18, 22), (255, 255, 255)
 PICK_COLORS = [GOLD, GREEN, PURPLE]
 
 
-def _text_center(d, cx: float, y: float, text: str, font, fill, stroke: int = 0) -> None:
-    d.text((cx - d.textlength(text, font=font) / 2, y), text, font=font, fill=fill,
-           stroke_width=stroke, stroke_fill=INK if stroke else None)
+def _text_mid(d, cx: float, cy: float, text: str, font, fill, stroke: int = 0) -> None:
+    """``text`` centred on (``cx``, ``cy``); with ``stroke`` a dark outline so it reads over any colour."""
+    d.text((cx, cy), text, font=font, fill=fill, anchor="mm", stroke_width=stroke, stroke_fill=INK if stroke else None)
 
 
-def panel_png(panel: dict, out: str, *, header: str, width: int, height: int, caption: str = "", count: int = 0) -> str:
-    """One full-frame RGBA overlay: the header chip, the format's boxes, the countdown number and the caption.
-    Solid boxes with a dark outline (no see-through bands); the gameplay stays visible above and below."""
+def _fit(d, text: str, max_w: float, size: int, *, lines: int, min_size: int) -> tuple:
+    """(font, wrapped lines, size): the largest size from ``size`` down to ``min_size`` at which ``text`` fits
+    ``max_w`` in at most ``lines`` lines."""
+    while True:
+        font = sof_shorts._font(size)
+        rows = sof_shorts._wrap(d, text, font, int(max_w))
+        if size <= min_size or (len(rows) <= lines and all(d.textlength(r, font=font) <= max_w for r in rows)):
+            return font, rows[:lines], size
+        size = max(min_size, int(size * 0.9))
+
+
+def _emoji(icon: str, h: int):
+    return icons.emoji_image(icon, h) if icon else None
+
+
+def _icon_and_words(im, d, lab: dict, cx: float, top: float, bottom: float, *, max_w: float, icon_h: int, size: int,
+                    lines: int, stroke: int) -> None:
+    """One label centred in [``top``, ``bottom``]: its icon, the 1-3 words in outlined capitals under it. Without an
+    icon (none given, or no emoji font) the words are drawn a little bigger on their own."""
+    pic = _emoji(lab.get("icon") or "", icon_h)
+    if pic is None:
+        size = round(size * 1.3)
+    font, rows, s = _fit(d, str(lab.get("text") or "").upper(), max_w, size, lines=lines, min_size=round(size * 0.55))
+    lh = round(s * 1.18)
+    gap = round(icon_h * 0.1) if pic else 0
+    y = top + (bottom - top - ((pic.height + gap) if pic else 0) - lh * len(rows)) / 2
+    if pic:
+        im.alpha_composite(pic, (round(cx - pic.width / 2), round(y)))
+        y += pic.height + gap
+    for row in rows:
+        _text_mid(d, cx, y + lh / 2, row, font, WHITE, stroke)
+        y += lh
+
+
+def panel_png(panel: dict, out: str, *, width: int, height: int, caption: str = "", count: int = 0) -> str:
+    """One full-frame RGBA overlay over the gameplay: the round chip ("1/4"), the format's boxes with 1-3 words and an
+    icon each, the countdown number, the caption (off by default). Solid boxes with a dark outline and outlined
+    capitals, so it reads over any footage; the gameplay stays visible around them.
+
+    Felix (Puello Media) 2026-11: minimal section indicator (the round number, no format name on every panel), never
+    the narrator's sentence on screen (key words + a clean icon), no text cards (the intro / call to action is an icon
+    with a word or two)."""
     from PIL import Image, ImageDraw
 
     im = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
     H, W = height, width
-    ow = max(4, round(H * 0.003))
-    f_head, f_body = sof_shorts._font(round(H * 0.027)), sof_shorts._font(round(H * 0.029))
-    f_small, f_big = sof_shorts._font(round(H * 0.022)), sof_shorts._font(round(H * 0.06))
-    x0, x1 = round(W * 0.07), round(W * 0.93)
+    ow = max(3, round(H * 0.003))
+    stroke = max(2, round(H * 0.0028))
     pad = round(H * 0.014)
-
+    x0, x1 = round(W * 0.07), round(W * 0.93)
+    top = round(H * 0.19)
     kind = panel.get("kind")
-    head = header + (f"  {panel['round']}/{panel['of']}" if panel.get("round") else "")
-    if kind == "pick":
-        head = f"PICK {_article(panel['thing']).upper()}" + f"  {panel['round']}/{panel['of']}"
-    hw = d.textlength(head, font=f_head) + 2 * pad * 1.6
-    hy = round(H * 0.115)
-    d.rounded_rectangle([(W - hw) / 2, hy, (W + hw) / 2, hy + round(H * 0.027) + 2 * pad], radius=pad * 2, fill=GOLD,
-                        outline=INK, width=ow)
-    _text_center(d, W / 2, hy + pad * 0.9, head, f_head, INK)
 
-    y = round(H * 0.2)
-    if kind == "wyr":
-        for letter, text, color in (("A", panel["a"], RED), ("B", panel["b"], BLUE)):
-            lines = sof_shorts._wrap(d, text.upper(), f_body, int((x1 - x0) * 0.78))[:3]
-            lh = round(H * 0.029 * 1.2)
-            bh = max(round(H * 0.075), len(lines) * lh + 2 * pad)
-            d.rounded_rectangle([x0, y, x1, y + bh], radius=pad * 2, fill=color, outline=INK, width=ow)
-            r = round(H * 0.026)
-            cx, cy = x0 + pad + r, y + bh / 2
-            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE, outline=INK, width=ow)
-            _text_center(d, cx, cy - H * 0.017, letter, f_body, INK)
-            ty = y + (bh - len(lines) * lh) / 2
-            tx = cx + r + pad
-            for ln in lines:
-                d.text((tx, ty), ln, font=f_body, fill=WHITE, stroke_width=max(2, ow // 2), stroke_fill=INK)
-                ty += lh
-            y += bh
-            if letter == "A":
-                y += round(H * 0.008)
-                ow_txt = "OR"
-                cw = d.textlength(ow_txt, font=f_head) + 2 * pad
-                d.rounded_rectangle([(W - cw) / 2, y, (W + cw) / 2, y + round(H * 0.04)], radius=pad, fill=INK)
-                _text_center(d, W / 2, y + H * 0.005, ow_txt, f_head, WHITE)
-                y += round(H * 0.048)
-    elif kind == "clues":
-        lh = round(H * 0.026 * 1.25)
-        lines: list[str] = []
-        for k, c in enumerate(panel.get("clues") or [], 1):
-            wrapped = sof_shorts._wrap(d, c, f_small, int((x1 - x0) - 2 * pad - H * 0.03))
-            lines += [f"{k}. {wrapped[0]}"] + ["   " + w for w in wrapped[1:]]
-        bh = max(round(H * 0.08), len(lines) * lh + 2 * pad)
-        d.rounded_rectangle([x0, y, x1, y + bh], radius=pad * 2, fill=WHITE, outline=INK, width=ow)
-        ty = y + pad
-        for ln in lines:
-            d.text((x0 + pad * 1.5, ty), ln, font=f_small, fill=INK)
-            ty += lh
-        y += bh + round(H * 0.012)
+    if panel.get("round"):
+        chip = f"{panel['round']}/{panel['of']}"
+        f_chip = sof_shorts._font(round(H * 0.028))
+        cw, ch = d.textlength(chip, font=f_chip) + 3 * pad, round(H * 0.028) + 1.6 * pad
+        cy = round(H * 0.13)
+        d.rounded_rectangle([(W - cw) / 2, cy - ch / 2, (W + cw) / 2, cy + ch / 2], radius=ch / 2, fill=GOLD, outline=INK, width=ow)
+        _text_mid(d, W / 2, cy, chip, f_chip, INK)
+
+    if kind == "wyr":                                    # two cards side by side: letter, icon, 1-3 words
+        gap = round(W * 0.05)
+        cw = (x1 - x0 - gap) / 2
+        ch = round(H * 0.25)
+        r = round(H * 0.023)
+        f_letter = sof_shorts._font(round(H * 0.03))
+        for k, (letter, lab, color) in enumerate((("A", panel["a"], RED), ("B", panel["b"], BLUE))):
+            bx = x0 + k * (cw + gap)
+            d.rounded_rectangle([bx, top, bx + cw, top + ch], radius=pad * 2, fill=color, outline=INK, width=ow)
+            lx, ly = bx + cw / 2, top + pad + r
+            d.ellipse([lx - r, ly - r, lx + r, ly + r], fill=WHITE, outline=INK, width=ow)
+            _text_mid(d, lx, ly, letter, f_letter, INK)
+            _icon_and_words(im, d, lab, lx, ly + r + pad * 0.5, top + ch - pad, max_w=cw - 2 * pad, icon_h=round(H * 0.085),
+                            size=round(H * 0.032), lines=2, stroke=stroke)
+        r = round(H * 0.027)                             # the OR badge where the two cards meet
+        d.ellipse([W / 2 - r, top + ch / 2 - r, W / 2 + r, top + ch / 2 + r], fill=INK, outline=WHITE, width=ow)
+        _text_mid(d, W / 2, top + ch / 2, "OR", sof_shorts._font(round(H * 0.022)), WHITE)
+    elif kind == "clues":                                # one pill per clue heard so far, then the answer
+        y = top
+        icon_h = round(H * 0.05)
+        for lab in panel.get("clues") or []:
+            pic = _emoji(lab.get("icon") or "", icon_h)
+            room = (x1 - x0) - 3 * pad - ((pic.width + pad) if pic else 0)
+            font, rows, s = _fit(d, str(lab.get("text") or "").upper(), room, round(H * 0.034), lines=1, min_size=round(H * 0.022))
+            pw = d.textlength(rows[0], font=font) + 3 * pad + ((pic.width + pad) if pic else 0)
+            ph = max(icon_h, s) + round(1.2 * pad)
+            px = (W - pw) / 2
+            d.rounded_rectangle([px, y, px + pw, y + ph], radius=ph / 2, fill=WHITE, outline=INK, width=ow)
+            x = px + 1.5 * pad
+            if pic:
+                im.alpha_composite(pic, (round(x), round(y + (ph - pic.height) / 2)))
+                x += pic.width + pad
+            d.text((x, y + ph / 2), rows[0], font=font, fill=INK, anchor="lm")
+            y += ph + round(H * 0.014)
         if panel.get("answer"):
-            name = panel["answer"].upper()
-            ans_lines = sof_shorts._wrap(d, name, f_body, int((x1 - x0) * 0.9))[:2]
-            ah = len(ans_lines) * round(H * 0.035) + 2 * pad
-            d.rounded_rectangle([x0, y, x1, y + ah], radius=pad * 2, fill=GREEN, outline=INK, width=ow)
-            ty = y + pad
-            for ln in ans_lines:
-                _text_center(d, W / 2, ty, ln, f_body, WHITE, stroke=max(2, ow // 2))
-                ty += round(H * 0.035)
-    elif kind == "pick":
+            y += round(H * 0.006)
+            font, rows, s = _fit(d, panel["answer"].upper(), (x1 - x0) - 4 * pad, round(H * 0.045), lines=2,
+                                 min_size=round(H * 0.03))
+            lh = round(s * 1.15)
+            aw = max(d.textlength(r, font=font) for r in rows) + 4 * pad
+            ah = lh * len(rows) + 2 * pad
+            d.rounded_rectangle([(W - aw) / 2, y, (W + aw) / 2, y + ah], radius=pad * 2, fill=GREEN, outline=INK, width=ow)
+            for i, row in enumerate(rows):
+                _text_mid(d, W / 2, y + pad + lh * (i + 0.5), row, font, WHITE, stroke)
+    elif kind == "pick":                                 # three boxes: number, then the thing's icon or what it held
         gap = round(W * 0.03)
         bw = ((x1 - x0) - 2 * gap) / 3
-        bh = round(H * 0.2)
+        bh = round(H * 0.22)
+        f_num = sof_shorts._font(round(H * 0.034))
         for k in range(3):
             bx = x0 + k * (bw + gap)
             item = (panel.get("open") or [None, None, None])[k]
-            fill = PICK_COLORS[k]
-            outline_w = ow * 2 if panel.get("now") == k else ow
-            d.rounded_rectangle([bx, y, bx + bw, y + bh], radius=pad * 2, fill=fill, outline=INK if panel.get("now") != k else WHITE,
-                                width=outline_w)
-            _text_center(d, bx + bw / 2, y + pad, str(k + 1), f_body, WHITE, stroke=max(2, ow // 2))
+            now = panel.get("now") == k
+            d.rounded_rectangle([bx, top, bx + bw, top + bh], radius=pad * 2, fill=PICK_COLORS[k],
+                                outline=WHITE if now else INK, width=ow * 2 if now else ow)
+            _text_mid(d, bx + bw / 2, top + pad + H * 0.019, str(k + 1), f_num, WHITE, stroke)
+            inner = top + pad * 1.5 + H * 0.038
             if item is None:
-                _text_center(d, bx + bw / 2, y + bh * 0.38, "?", f_big, WHITE, stroke=max(2, ow // 2))
+                pic = _emoji(panel.get("icon") or "", round(H * 0.08))
+                if pic:
+                    im.alpha_composite(pic, (round(bx + (bw - pic.width) / 2), round(inner + (top + bh - pad - inner - pic.height) / 2)))
+                else:
+                    _text_mid(d, bx + bw / 2, (inner + top + bh - pad) / 2, "?", sof_shorts._font(round(H * 0.06)), WHITE, stroke)
             else:
-                lines = sof_shorts._wrap(d, item.upper(), f_small, int(bw - 2 * pad))[:5]
-                lh = round(H * 0.022 * 1.2)
-                ty = y + bh * 0.3 + max(0, (bh * 0.65 - len(lines) * lh) / 2)
-                for ln in lines:
-                    _text_center(d, bx + bw / 2, ty, ln, f_small, WHITE, stroke=max(2, ow // 2))
-                    ty += lh
-        y += bh
-    elif kind in ("cta", "intro"):
-        text = str(panel.get("text") or "")
-        lines = sof_shorts._wrap(d, text, f_big, int((x1 - x0) * 0.9))[:3]
-        lh = round(H * 0.06 * 1.15)
-        bh = len(lines) * lh + 2 * pad
-        by = round(H * 0.3)
-        d.rounded_rectangle([x0, by, x1, by + bh], radius=pad * 2, fill=GOLD if kind == "cta" else BLUE, outline=INK, width=ow)
-        ty = by + pad
-        for ln in lines:
-            _text_center(d, W / 2, ty, ln, f_big, INK if kind == "cta" else WHITE, stroke=0 if kind == "cta" else max(2, ow // 2))
-            ty += lh
+                _icon_and_words(im, d, item, bx + bw / 2, inner, top + bh - pad, max_w=bw - 1.2 * pad, icon_h=round(H * 0.06),
+                                size=round(H * 0.024), lines=3, stroke=stroke)
+    elif kind in ("cta", "intro"):                       # an icon with a word or two, not a text card
+        pic = _emoji(panel.get("icon") or "", round(H * 0.09))
+        font, rows, s = _fit(d, str(panel.get("text") or "").upper(), (x1 - x0) - 4 * pad, round(H * 0.05), lines=1,
+                             min_size=round(H * 0.03))
+        bw = max(d.textlength(rows[0], font=font), pic.width if pic else 0) + 5 * pad
+        bh = ((pic.height + pad) if pic else 0) + round(s * 1.2) + 2.5 * pad
+        by = round(H * 0.24)
+        d.rounded_rectangle([(W - bw) / 2, by, (W + bw) / 2, by + bh], radius=pad * 2.5, fill=GOLD if kind == "cta" else BLUE,
+                            outline=INK, width=ow)
+        y = by + 1.25 * pad
+        if pic:
+            im.alpha_composite(pic, (round((W - pic.width) / 2), round(y)))
+            y += pic.height + pad
+        _text_mid(d, W / 2, y + s * 0.6, rows[0], font, WHITE, stroke)
 
     if count:
         r = round(H * 0.05)
-        cx, cy = W / 2, round(H * 0.66)
+        cx, cy = W / 2, round(H * 0.56)
         d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE, outline=INK, width=ow * 2)
-        _text_center(d, cx, cy - H * 0.036, str(count), f_big, INK)
+        _text_mid(d, cx, cy, str(count), sof_shorts._font(round(H * 0.06)), INK)
 
     if caption:
         cap = Image.open(sof_shorts.caption_png(caption, out + ".cap.png", width=W, height=H)).convert("RGBA")
@@ -555,10 +695,11 @@ def panel_png(panel: dict, out: str, *, header: str, width: int, height: int, ca
     return out
 
 
-def render(*, work: Path, name: str, index: int, header: str, background: str, audio: str, width: int = 1080,
-           height: int = 1920, fps: int = 30, captions: bool = False) -> str:
+def render(*, work: Path, name: str, index: int, background: str, audio: str, width: int = 1080, height: int = 1920,
+           fps: int = 30, captions: bool = False) -> str:
     """The gameplay clip for the whole length, the panel PNG of each cue on top, the voiced beats → ``work/<name>.mp4``.
-    No captions by default: the panel already shows every choice, clue and reward being read out."""
+    No captions by default (Felix 2026-11: never repeat what the narrator says): the panel shows each choice, clue and
+    reward as its key words and icon."""
     from cc import segments
 
     tl = json.loads((work / f"s{index}" / "timeline.json").read_text(encoding="utf-8"))
@@ -570,7 +711,7 @@ def render(*, work: Path, name: str, index: int, header: str, background: str, a
     sof_render.run(segments.clip_window_cmd(background, reel, offset=0.0, seconds=duration, fps=fps), 900)
     pngs, spans = [], []
     for i, c in enumerate(cues):
-        pngs.append(panel_png(c.panel, str(tmp / f"panel_{i:03d}.png"), header=header, width=width, height=height,
+        pngs.append(panel_png(c.panel, str(tmp / f"panel_{i:03d}.png"), width=width, height=height,
                               caption=c.caption if captions else "", count=c.count))
         spans.append((c.start, min(c.end, duration), c.caption))
     out = str(work / f"{name}.mp4")
