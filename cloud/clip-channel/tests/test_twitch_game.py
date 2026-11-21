@@ -162,3 +162,19 @@ def test_general_ranking_leaves_out_game_only_clips(monkeypatch):
 def test_general_prompt_has_the_cutscene_rule():
     note = twitch.GENERAL_NOTE.format(name="Kai")
     assert "cutscene" in note and "not out yet" in note
+
+
+def _c(i, title, created, vod="", off=None):
+    return {"id": f"c{i}", "title": title, "created": created, "vod": vod, "vod_offset": off}
+
+
+def test_one_title_twice_within_twenty_minutes_is_one_moment():
+    a, b = _c(1, "HE TRYNA IGNORE IT", 1000.0), _c(2, "He tryna ignore it!", 1000.0 + 600)
+    assert twitch.same_moment(a, b) and [c["id"] for c in twitch.distinct([a, b])] == ["c1"]
+    # a joke title reused an hour later is another moment, and so is another title ten minutes later
+    assert not twitch.same_moment(_c(1, "copyright test", 1000.0), _c(2, "copyright test", 1000.0 + 3600))
+    assert not twitch.same_moment(_c(1, "ninja", 1000.0), _c(2, "AURA", 1000.0 + 600))
+    # no title, or no date on one of them: only the old rules apply
+    assert not twitch.same_moment(_c(1, "", 1000.0), _c(2, "", 1000.0 + 600))
+    assert not twitch.same_moment(_c(1, "same", 0.0), _c(2, "same", 600.0))
+    assert twitch.same_moment(_c(1, "x", 1000.0), _c(2, "y", 1100.0))

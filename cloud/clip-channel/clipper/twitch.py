@@ -232,11 +232,21 @@ def top_clips(login: str, days: int, limit: int = 60, game: str = "", since: str
     return clips_page(login, days, limit), "page"
 
 
+SAME_TITLE_S = 20 * 60                    # two clips with one title made this close together are one moment
+
+
 def same_moment(a: dict, b: dict) -> bool:
-    """Viewers often clip one moment several times. Same stream within a minute, or made within 2.5 minutes."""
+    """Viewers often clip one moment several times. Same stream within a minute, or made within 2.5 minutes, or
+    given the same title (whatever the capitals and punctuation) within 20 minutes: on 2026-11-20 a ranking showed
+    "HE TRYNA IGNORE IT" and "He tryna ignore it" as two entries. Further apart, a shared title is not enough: a
+    streamer's viewers reuse joke titles ("copyright test") for different moments of a long stream."""
     if a["vod"] and a["vod"] == b["vod"] and a["vod_offset"] is not None and b["vod_offset"] is not None:
         return abs(a["vod_offset"] - b["vod_offset"]) < 60
-    return abs(a["created"] - b["created"]) < 150
+    gap = abs(a["created"] - b["created"])
+    if gap < 150:
+        return True
+    title = _norm(a.get("title") or "")
+    return bool(title) and title == _norm(b.get("title") or "") and bool(a["created"] and b["created"]) and gap < SAME_TITLE_S
 
 
 def distinct(clips: list[dict]) -> list[dict]:
