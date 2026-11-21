@@ -237,9 +237,9 @@ SAME_TITLE_S = 20 * 60                    # two clips with one title made this c
 
 def same_moment(a: dict, b: dict) -> bool:
     """Viewers often clip one moment several times. Same stream within a minute, or made within 2.5 minutes, or
-    given the same title (whatever the capitals and punctuation) within 20 minutes: on 2026-11-20 a ranking showed
-    "HE TRYNA IGNORE IT" and "He tryna ignore it" as two entries. Further apart, a shared title is not enough: a
-    streamer's viewers reuse joke titles ("copyright test") for different moments of a long stream."""
+    given the same title (whatever the capitals and punctuation) within 20 minutes. Further apart, a shared title is
+    not enough, because viewers reuse titles for different moments: "HE TRYNA IGNORE IT" and "He tryna ignore it" in
+    the 2026-11-20 ranking were made two days apart, in two different streams."""
     if a["vod"] and a["vod"] == b["vod"] and a["vod_offset"] is not None and b["vod_offset"] is not None:
         return abs(a["vod_offset"] - b["vod_offset"]) < 60
     gap = abs(a["created"] - b["created"])
