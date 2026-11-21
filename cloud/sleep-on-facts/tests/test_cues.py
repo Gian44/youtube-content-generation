@@ -116,8 +116,11 @@ class FakeVision:
 def test_fetch_cue_media_keeps_only_tiles_the_vision_check_approves(tmp_path):
     shades: dict[str, int] = {}
 
+    asked: list[str] = []
+
     def handler(req: httpx.Request):
         u = str(req.url)
+        asked.append(u)
         if "pixabay.com/api/videos" in u:
             return httpx.Response(200, json={"hits": [{"id": 5, "duration": 20, "pageURL": "pg", "user": "u",
                                                       "tags": "snow", "videos": {"large": {"url": "https://v/clip.mp4",
@@ -135,14 +138,16 @@ def test_fetch_cue_media_keeps_only_tiles_the_vision_check_approves(tmp_path):
 
     cue = {"section": 0, "n": 1, "text": "Wind tears across the summit.", "shot": "snow plume",
            "stock": ["snow plume", "summit wind"], "commons": "Everest", "start": 0, "end": 60}
-    vis = FakeVision([5, 1, 99, "x"])
+    vis = FakeVision([4, 1, 99, "x"])
     media = cues.fetch_cue_media([cue], str(tmp_path), topic="Mount Everest", vis=vis, pexels_key="",
                                  pixabay_key="k", transport=httpx.MockTransport(handler), per_cue=3)
     assert list(media) == [0] and len(media[0]) == 2
-    assert media[0][0].endswith(".mp4") and media[0][1].endswith("000.jpg")    # best first, clip downloaded
+    assert media[0][0].endswith("003.jpg") and media[0][1].endswith("000.jpg")    # best first
+    # 2026-11 (Gian): no unnamed stock clips for a passage; sof/footage.py puts checked subject clips there
+    assert not any("api/videos" in u or u.endswith(".mp4") for u in asked)
     assert "Wind tears across the summit." in vis.prompts[0] and "snow plume" in vis.prompts[0]
     meta = json.loads((tmp_path / "_cue000" / "cue.json").read_text())
-    assert meta["tiles"] == 5 and len(meta["approved"]) == 2
+    assert meta["tiles"] == 4 and len(meta["approved"]) == 2
     assert (tmp_path / "_cue000" / "credits.json").exists()
 
 

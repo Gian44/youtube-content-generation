@@ -151,9 +151,12 @@ def render_segments(segs: list[Segment], tmp: Path, *, width: int, height: int, 
 
 def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand: str, audio: str, clips: list[str], photos: list[str],
                          width: int = 1080, height: int = 1920, fps: int = 30, clip_seconds: float = 6.0, crossfade: float = 0.4,
-                         slow: float = 1.0, hold_card: str | None = None, title_band: bool = False) -> str:
-    """A vertical Short: the clips (or photos) under the narration, captions → ``work/<name>.mp4``. The title band over
-    the picture only with ``title_band`` (off since 2026-11-16, Gian: "It is covering the entire short")."""
+                         slow: float = 1.0, hold_card: str | None = None, title_band: bool = False,
+                         skip_words: set[str] | frozenset = frozenset()) -> str:
+    """A vertical Short: the clips (or photos) under the narration, a few emphasis words (``sof.shorts.emphasis_overlays``;
+    never the narration word for word) → ``work/<name>.mp4``. The title band over the picture only with ``title_band``
+    (off since 2026-11-16, Gian: "It is covering the entire short"). ``skip_words``: words never shown (the channel's
+    own name, say)."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -165,8 +168,8 @@ def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand:
         raise RuntimeError("short has no visuals")
     reel = render_segments(segs, tmp, width=width, height=height, fps=fps, crossfade=crossfade, total=duration,
                            out=str(tmp / "reel.mp4"))
-    cues = sof_shorts.caption_cues(text, duration)
-    pngs = [sof_shorts.caption_png(t, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, t) in enumerate(cues)]
+    cues, pngs = sof_shorts.emphasis_overlays(sof_shorts.caption_cues(text, duration), tmp, width=width, height=height,
+                                              duration=duration, skip=skip_words)
     tpng = sof_shorts.title_png(title, brand, str(tmp / "title.png"), width=width, height=height) if title_band else None
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=tpng, credit_png_path=None,
@@ -175,10 +178,11 @@ def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand:
 
 
 def build_background_short(*, work: Path, name: str, text: str, audio: str, background: str, width: int = 1080,
-                           height: int = 1920, fps: int = 30, offset: float = 0.0) -> str:
+                           height: int = 1920, fps: int = 30, offset: float = 0.0,
+                           skip_words: set[str] | frozenset = frozenset()) -> str:
     """A vertical Short over ONE continuous background clip (already ``width`` x ``height``, e.g. gameplay): the clip
-    from ``offset`` for exactly the narration's length (looped when it is shorter), captions on top →
-    ``work/<name>.mp4``."""
+    from ``offset`` for exactly the narration's length (looped when it is shorter), a few emphasis words on top (never
+    the narration word for word) → ``work/<name>.mp4``."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -186,8 +190,8 @@ def build_background_short(*, work: Path, name: str, text: str, audio: str, back
         raise RuntimeError("short narration has no duration")
     reel = str(tmp / "reel.mp4")
     sof_render.run(clip_window_cmd(background, reel, offset=offset, seconds=duration, fps=fps), 900)
-    cues = sof_shorts.caption_cues(text, duration)
-    pngs = [sof_shorts.caption_png(t, str(tmp / f"cue_{i:03d}.png"), width=width, height=height) for i, (_, _, t) in enumerate(cues)]
+    cues, pngs = sof_shorts.emphasis_overlays(sof_shorts.caption_cues(text, duration), tmp, width=width, height=height,
+                                              duration=duration, skip=skip_words)
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=None, credit_png_path=None,
                                           duration=duration, fps=fps), 900)

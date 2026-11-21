@@ -284,8 +284,9 @@ class Vision:
 
     # -- the pipeline's three questions ---------------------------------------
 
-    def classify(self, paths: list[str], *, subject: str, batch: int = 12) -> dict[str, str]:
-        """path → "subject" | "setting" | "reject" | "unknown" (unknown: nobody could look; the photo is kept)."""
+    def classify(self, paths: list[str], *, subject: str, batch: int = 12, note: str = "") -> dict[str, str]:
+        """path → "subject" | "setting" | "reject" | "unknown" (unknown: nobody could look; the photo is kept).
+        ``note`` goes before the labelling rules (footage: each tile is two frames of one clip, ``footage.CLIP_NOTE``)."""
         labels = {p: "unknown" for p in paths}
         if not paths or not self.active:
             return labels
@@ -300,7 +301,7 @@ class Vision:
                         labels[p] = "reject"
                 if not kept:
                     continue
-                data = self.ask(SHEET_NOTE.format(n=len(kept)) + CLASSIFY_PROMPT.format(n=len(kept), subject=subject),
+                data = self.ask(SHEET_NOTE.format(n=len(kept)) + note + CLASSIFY_PROMPT.format(n=len(kept), subject=subject),
                                 sheet)
                 if data is None:
                     continue

@@ -15,16 +15,23 @@ topic (generated daily from topics.yml categories, verified on Wikipedia) → re
   → faint synthesised ambient bed mixed under the voice (numpy + ffmpeg, licence-free)
   → photos of the subject itself: Wikimedia Commons (the article's own photos, then its Commons
     category), NASA for space topics, then Pexels/Pixabay only if the caption NAMES the subject;
-    a vision pass labels each subject / setting / reject → reel of subject shots (+ ≤30 % setting),
-    dimmed to 75 %, portraits shown whole on a blurred fill → smooth 4× zoompan reel, looped under the audio
+    a vision pass labels each subject / setting / reject; the named things the narrator talks about get
+    their own photos in the 20-second slots where they are named (sof/visuals.py, sof/cues.py)
+  → calm real footage (sof/footage.py): NASA video (space topics), Wikimedia Commons video, then
+    Pexels/Pixabay video only if its own metadata NAMES the subject; for the subject and for the named
+    things holding the most slots; each clip's longest calm window (no cuts, flashes or busy motion) is
+    vision-checked on two of its frames, then alternates with the photos in its thing's / the subject's slots
+  → one narration-synced timeline (sof/timeline.py): photos with a slow push-in, clips slowed 1.5-2×,
+    dimmed to 50 %, crossfaded, exactly as long as the narration
   → thumbnail from a vision-picked subject photo (the subject large and recognisable at tile size), the
     topic in big caps and the video's 2-4 word hook (`thumb_text`) in gold under it
   → YouTube upload, private + scheduled for 8:30 PM US Eastern; curiosity-first title ("The Moon Is Slowly
     Drifting Away From Earth | 3 Hours of Space Facts to Fall Asleep To"), plain-English chapters,
     Education category, hashtags; added to its category playlist
   → 3 Shorts teasers (sof/shorts.py): three different facts from three different chapters, ~50 s each,
-    same narrator a touch brighter, 1080×1920 over the run's own photos with burned-in captions; the first
-    goes live one hour after the long video, the others one and two days later, all linking to it
+    same narrator a touch brighter, 1080×1920 over the run's own footage clips and photos (frame always
+    filled: clips cover-cropped, photos panned), a few emphasis words on screen; the first goes live one
+    hour after the long video, the others one and two days later, all linking to it
     (Shorts are the one surface a new channel gets reach on)
   → ledger.json committed (Shorts under "shorts"; the first also under "short")
 ```
@@ -120,6 +127,38 @@ checks it each run; if Claude is capped or logged out, OpenAI then Gemini write 
 OAuth refresh token (re-authorize with the StoryFactory CLI
 `channel connect-youtube --channel sleep-on-facts`, then copy it over).
 
+## Visual style rules (Felix, 2026-11)
+
+Felix (Puello Media, a client editor) reviewed one programmatic video and said it looked "made by Claude": too
+many stills, too much on-screen text, stock-sounding effects. His standard, as this channel applies it — keep to
+it in future changes:
+
+1. **Footage, not stills** (YouTube treats image-heavy videos as slideshows). Calm real footage of the named
+   subject fills a real share of the slots (`sof/footage.py`; log line `footage: … · M of K slots (P %)`, ledger
+   `timeline.footage_slots`). Sources in order: NASA video (space topics), Wikimedia Commons video, then
+   Pexels/Pixabay only when the clip's own metadata names the subject. A named thing's clips go in its own
+   slots, the subject's clips in the others (filler, passage shots, chapter photos), alternating with the photos
+   (`footage_every`); a clip at most `footage_max_uses` times, `footage_gap` slots apart; slot 0 stays the
+   subject photo; photos keep every slot without a good clip. Every clip passes a calm check (the longest window
+   with no cut, no flash, no busy motion, no black and no frozen picture, slowed 1.5-2× to fill a slot without
+   looping) and the photos' vision check on two frames of that window ("subject" only; title cards, talking
+   heads, text rejected). Author and licence of every clip are credited like the photos. Commons video files
+   (upload.wikimedia.org) are rate-limited — 429 after ~10 quick requests (measured 2026-11-21) — so every
+   download and window cut there is paced 2 s a request across threads (`footage.WIKIMEDIA_GAP`); keep it.
+2. **Almost no text on screen.** The long video shows none (no chapter cards, no captions); credits go on the
+   credits page, else in the description, and only those that do not fit there appear small on screen. The
+   Shorts show only a few emphasis words (`shorts.emphasis_overlays` / `cc.textbudget`), never the narration
+   repeated, and no credit block.
+3. **No sound effects** — the narration and the faint synthesised bed only.
+4. **Chapters in the description only** (YouTube chapters), nothing on screen.
+5. **Maps and graphics** get the same slow push-in as every photo; the vision check rejects anything mostly text
+   or crowded with labels (posters, document scans, title cards, infographics, labelled diagrams and maps);
+   clean photos and clean maps stay.
+6. **Every frame filled.** Clips are cover-cropped; in the Shorts photos are cover-cropped with a slow pan across
+   them and clips cropped to 9:16 — no small photo on a blurred letterbox. (In the long video a portrait photo is
+   shown whole on a blurred copy of itself, which fills the frame.)
+7. **No pop-up text cards** — footage instead.
+
 ## Photo credits page (2026-11-07)
 
 CC BY / CC BY-SA photos must name their author. Until 2026-11-07 that credit was burned into the frame
@@ -134,8 +173,10 @@ KV Storage edit) → secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` 
 **sleep-on-facts credits site** workflow (or `python -m sof.credits_site deploy` with both in the
 environment). It creates the `sof-credits` KV namespace, deploys the `sleep-on-facts-credits` Worker and
 writes a `test` page. The daily run checks the site's root before every upload and re-deploys the Worker
-itself if it stopped answering. Without the two secrets the video keeps the on-screen credits; with them
-but Cloudflare down for the run, the authors are listed in the description instead (`sof/captions.py`).
+itself if it stopped answering. Without the two secrets (the case today) the credits go in the description
+first and only those that do not fit there stay small on screen (2026-11, Felix: less text on screen); with
+them but Cloudflare down for the run, the authors are listed in the description instead (`sof/captions.py`).
+Footage clips are credited the same way (author, licence, Commons/NASA page).
 
 ## Cost per video
 
@@ -152,7 +193,8 @@ exceeds 1.3× the word target, and before everything if the YouTube token is dea
 | `repackage.py`, `sof/repackage.py` | re-title / re-thumbnail / rename chapters of live videos |
 | `marathon.py`, `sof/marathon.py` | weekly ~9-hour compilation from kept media artifacts |
 | `ledger.json` | one row per uploaded video, appended and committed by the workflow |
-| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, render, thumbnail, seo, captions, credits_site, upload, ledger, pipeline`) |
+| `run.py`, `sof/` | the pipeline (`config, llm, topics, topicgen, research, script, prompts, noslop, tts, music, images, visuals, cues, footage, timeline, render, shorts, thumbnail, seo, captions, credits_site, upload, ledger, pipeline`) |
+| `sof/footage.py` | calm real footage: NASA / Commons / name-gated stock video search, the calm-window check, the clip vision check, cutting the window, placing clips in the slots |
 | `sof/credits_site.py` | the per-video photo-credits page on Cloudflare (Workers KV + Worker), published before each upload |
 | `sof/noslop.py` | the no-AI-slop lint + targeted rewrite + the prompt text of the rules; rules ported from [petergyang/no-ai-slop](https://github.com/petergyang/no-ai-slop) (MIT) and adapted for spoken narration. Vendored verbatim into `apps/worker/storyfactory/services/noslop.py` (a worker test keeps the two identical) |
 | `tests/` | unit tests (mocked HTTP) + one real-ffmpeg render test |

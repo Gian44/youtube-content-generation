@@ -120,3 +120,20 @@ def test_story_validation_needs_no_stock_searches_over_gameplay():
     assert stories.validate(dict(a), words_min=20, words_max=150, need_queries=False)["body"]
     with pytest.raises(stories.StoryError):
         stories.validate(dict(a), words_min=20, words_max=150)
+
+
+def test_story_shorts_show_a_few_words_never_the_channel_wide_ones():
+    """Felix 2026-11: a story Short shows emphasis words only; "Roblox" / "Robux" alone would be on every Short."""
+    from cc import textbudget
+    from sof import shorts as sof_shorts
+    body = ("I joined a Roblox obby with my friend Maya last night. We were stuck on stage 99 for an hour. "
+            "Then Maya found a secret ladder behind the lava, and we got 500 Robux each. Every Roblox obby has one. "
+            "Would you have taken the ladder?")
+    cues = sof_shorts.caption_cues(body, 40.0)
+    picked = textbudget.pick(textbudget.words_from_cues(cues), duration=40.0, skip=pipeline.SKIP_WORDS)
+    texts = [t for _, _, t in picked]
+    assert "500 Robux" in texts and not {"roblox", "robux"} & {t.lower() for t in texts}
+    assert "Roblox" in [t for _, _, t in textbudget.pick(textbudget.words_from_cues(cues), duration=40.0)]   # without the skip
+    assert textbudget.shown_words(picked) <= 8 and all(len(t.split()) <= 3 for t in texts)
+    poss = textbudget.words_from_cues([(0.0, 20.0, "We waited while Roblox's servers came back, then Theo typed hi.")])
+    assert [t for _, _, t in textbudget.pick(poss, duration=20.0, per_minute=30, min_gap=0.5, skip=pipeline.SKIP_WORDS)] == ["Theo"]

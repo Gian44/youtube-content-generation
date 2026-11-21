@@ -50,7 +50,7 @@ jobs:
           cache: pip
           cache-dependency-path: cloud/sleep-on-facts/requirements.txt
       - name: System deps
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-wqy-microhei
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fonts-wqy-microhei fonts-noto-color-emoji
       - name: Python deps (shared with cloud/sleep-on-facts; CPU-only torch for the Pocket TTS voice)
         run: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
       - name: Claude Code CLI (scripts run on Gian's Claude subscription via CLAUDE_CODE_OAUTH_TOKEN)

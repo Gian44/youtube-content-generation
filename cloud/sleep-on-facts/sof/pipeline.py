@@ -16,6 +16,7 @@ import re
 import shutil
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -77,11 +78,11 @@ def run(cfg: Config) -> int:
           flush=True)
     vis = vision.Vision.from_config(cfg)
     print(f"photo checks: {vis.describe()}", flush=True)
-    # Photo credits: on the video's own page (clean frame) when Cloudflare is configured, else on screen.
+    # Photo and footage credits: on the video's own page (clean frame) when Cloudflare is configured, else in the
+    # description, with only the ones that do not fit there on screen (Felix 2026-11: much less text on screen).
     site = credits_site.Site.from_config(cfg)
-    on_screen = cfg.photo_captions and site is None
     print("photo credits: " + (f"page on Cloudflare ({site.worker}); none on screen" if site else
-                               "on screen" + ("" if cfg.photo_captions else " off") +
+                               "in the description" + (", on screen only where they do not fit" if cfg.photo_captions else "") +
                                ("" if not cfg.credits_site else " (no CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID)")), flush=True)
     print(f"voice: {tts.voice_label(cfg)}" + (" (free, on the runner)" if cfg.tts_backend in ("kokoro", "pocket") else ""),
           flush=True)
@@ -225,22 +226,42 @@ def run(cfg: Config) -> int:
                 slots = _plan_timeline(cfg, work=work, llm=llm, topic=name, article=article or "", sections=secs,
                                        duration=duration, chapters=chapters, reel=image_paths, used=used,
                                        use_nasa=use_nasa, out=plan_path, vis=vis,
-                                       footage_queries=[name, *sc.image_queries[:8]])
+                                       footage_queries=[name, *sc.image_queries[:8]],
+                                       terms=images.name_terms(name, article or "", sc.image_keywords))
         except Exception as exc:  # noqa: BLE001 — never lose the video over the better visuals
             log.exception("timeline planning failed")
             print(f"! narration-matched photos unavailable ({exc}); using the looped subject reel", flush=True)
             slots = None
 
-    # 5. Render.
+    # 5. Render. Without a credits page the credits go in the description first; only those that do not fit
+    # there are drawn on screen (the same split again at upload: it depends only on the slots and the script).
     _stage("render")
     final = work / "final.mp4"
+    rows_by_path = _rows_by_path(used, img_dir, work / "entities")
+    shown = list(dict.fromkeys([*(slots or []), *image_paths]))
+    desc_budget = _credit_budget(name=name, seo_category=seo_category, hours=hours, sc=sc, chapters=chapters)
+    credits_text, in_description = captions.credit_line(
+        _credit_rows(shown, used, img_dir, work / "entities"), budget=desc_budget,
+        rest=captions.ON_SCREEN if cfg.photo_captions else captions.AND_OTHERS)
+
+    def on_screen_credits(paths: list[str]) -> dict[str, str]:
+        if site is not None or not cfg.photo_captions:
+            return {}
+        out = {}
+        for p in set(paths):
+            row = rows_by_path.get(str(Path(p).resolve()))
+            if row and captions.needs_credit(row) and captions.credit_part(row) not in in_description:
+                out[p] = captions.caption_text(row)
+        return out
+
     if not final.exists():
         reel = work / "reel.mp4"
         if not reel.exists():
             built = None
             if slots:
-                caps = _slot_captions(slots, used, img_dir, work / "entities") if on_screen else {}
-                print(f"on-screen credits: {len(caps)} of {len(set(slots))} photos", flush=True)
+                caps = on_screen_credits(slots)
+                print(f"on-screen credits: {len(caps)} of {len(set(slots))} photos and clips"
+                      + ("" if site else f" · {len(in_description)} credits in the description"), flush=True)
                 try:
                     built = timeline.build_timeline_reel(
                         slots, str(work / "timeline_tmp"), dwell=cfg.dwell_seconds, crossfade=cfg.crossfade_seconds,
@@ -250,7 +271,7 @@ def run(cfg: Config) -> int:
                     log.exception("timeline render failed")
                     print(f"! timeline render failed ({exc}); falling back to the looped subject reel", flush=True)
             if built is None:
-                caps = captions.captions_for(image_paths, used) if on_screen else {}
+                caps = on_screen_credits(image_paths)
                 print(f"on-screen credits: {len(caps)} of {len(image_paths)} photos", flush=True)
                 built = render.build_reel(image_paths, str(work / "reel_tmp"), dwell=cfg.dwell_seconds,
                                           crossfade=cfg.crossfade_seconds, width=cfg.width, height=cfg.height,
@@ -282,10 +303,12 @@ def run(cfg: Config) -> int:
     try:                                   # stills for checking the run by eye (kept as artifacts)
         step = max(10.0, duration / 12)
         times = [step * (i + 0.5) for i in range(int(duration // step))]
-        if plan_path.exists():             # + the first slots that show a just-named thing
+        if plan_path.exists():             # + the first slots that show a just-named thing, and some footage slots
             plan = json.loads(plan_path.read_text(encoding="utf-8")).get("plan") or []
             named = [r for r in plan if r.get("entity") and r.get("mention_time") is not None]
             times += [float(r["start"]) + cfg.dwell_seconds / 2 for r in named[::max(1, len(named) // 12)][:12]]
+            moving = [r for r in plan if footage.is_video(str(r.get("image") or ""))]
+            times += [float(r["start"]) + cfg.dwell_seconds / 2 for r in moving[::max(1, len(moving) // 8)][:8]]
         render.sample_frames(str(final), str(work / "frames"), sorted(set(times)))
     except Exception as exc:  # noqa: BLE001
         log.warning("sample frames skipped: %s", exc)
@@ -296,13 +319,13 @@ def run(cfg: Config) -> int:
         _stage("short")
         try:
             plan = json.loads(plan_path.read_text(encoding="utf-8")).get("plan") if plan_path.exists() else None
-            creds = _slot_captions(list(set([p for p in image_paths] + [str(r.get("image")) for r in (plan or []) if r.get("image")])),
-                                   used, img_dir, work / "entities") if on_screen else {}
             short_metas = shorts.make_all(cfg, llm=llm, work=work, topic=name, sections=secs, plan=plan, reel=image_paths,
-                                          labels=labels, credits=creds, count=cfg.shorts_count)
+                                          labels=labels, count=cfg.shorts_count,
+                                          clips=footage.kept(str(work / "footage" / footage.SUBJECT)))
             for m in short_metas:
-                print(f"short {m.get('index', 0) + 1}: {m['seconds']:.0f} s · {len(m['photos'])} photos · \"{m['hook_title']}\"",
-                      flush=True)
+                n_clips = sum(1 for p in m["photos"] if footage.is_video(p))
+                print(f"short {m.get('index', 0) + 1}: {m['seconds']:.0f} s · {len(m['photos']) - n_clips} photos · "
+                      f"{n_clips} clips · \"{m['hook_title']}\"", flush=True)
         except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the long video over it
             log.exception("shorts failed")
             print(f"! shorts skipped ({exc})", flush=True)
@@ -318,19 +341,17 @@ def run(cfg: Config) -> int:
                                used, img_dir, work / "entities")
     page_key = credits_site.page_key(run_id, smoke=cfg.is_smoke)
     credits_url = credits_site.publish_credits(site, key=page_key, rows=credit_rows, title=name, date=today)
-    if site is not None:
-        photos_line = captions.description_line(credits_url) if credits_url else captions.inline_credits(credit_rows)
-    else:
-        photos_line = captions.DESCRIPTION_LINE
+    if site is not None:                   # the frame is clean: the page, else as many authors as fit
+        photos_line = captions.description_line(credits_url) if credits_url else captions.inline_credits(
+            _credit_rows(shown, used, img_dir, work / "entities"), budget=desc_budget)
+    else:                                  # the same line the render split the on-screen credits by
+        photos_line = credits_text
 
     _stage("upload")
     variant = len(rows) % seo.TITLE_VARIANTS             # a different title shape from one video to the next
     title = seo.build_title(name, seo_category, hours, hook=sc.title_hook, variant=variant)
-    shape = STORY_FORMATS.get(sc.story_format or "")
-    blurb = (f"Tonight: {shape['opening'].format(subject=name)}. " if shape else "") + (sc.blurb or "")
-    description = seo.build_description(subject=name, category=seo_category, hours=hours, blurb=blurb,
-                                        chapters=chapters, footer=sc.footer or sc.description,
-                                        photos=photos_line, extra=_thumbnail_credit(thumb, used))
+    description = _description(name=name, seo_category=seo_category, hours=hours, sc=sc, chapters=chapters,
+                               photos=photos_line, extra=_thumbnail_credit(thumb, used))
     tags = seo.build_tags(name, seo_category, sc.tags)
     publish_at = None
     if cfg.schedule_publish and not cfg.is_smoke and cfg.privacy == "public":
@@ -360,9 +381,8 @@ def run(cfg: Config) -> int:
     short_entries: list[dict] = []
     for k, short_meta in enumerate(short_metas):
         try:
-            mine = {Path(p).resolve() for p in short_meta["photos"]}
-            rows_for_credit = [r for r in used if (img_dir / str(r.get("file"))).resolve() in mine]
-            rows_for_credit += [r for p, r in visuals.credits_by_path(str(work / "entities")).items() if Path(p).resolve() in mine]
+            mine = {str(Path(p).resolve()) for p in short_meta["photos"]}
+            rows_for_credit = [r for p, r in rows_by_path.items() if p in mine]          # its photos and clips
             sid, stitle, s_at = shorts.upload_short(yt, cfg, meta=short_meta, long_video_id=video_id, long_publish_at=publish_at,
                                                     topic=name, category=seo_category, hours=hours,
                                                     credit_rows=rows_for_credit, index=k, credits_url=credits_url)
@@ -419,7 +439,7 @@ def _check_recent_uploads(yt, cfg: Config, last: int = 3) -> None:
 
 def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, sections: list[dict], duration: float,
                    chapters: list[dict], reel: list[str], used: list[dict], use_nasa: bool, out: Path,
-                   footage_queries: list[str] | None = None, vis=None) -> list[str]:
+                   footage_queries: list[str] | None = None, vis=None, terms: list[str] | None = None) -> list[str]:
     """Slot list (one photo — or footage clip — per ``dwell`` seconds) that follows the narration; writes ``out``
     (timeline.json)."""
     mentions = visuals.extract_mentions(llm, sections, topic=topic, model=cfg.fast_model, wiki_title=article)
@@ -473,18 +493,11 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
         except Exception as exc:  # noqa: BLE001 — the named-thing plan alone still makes the video
             log.exception("cues failed")
             print(f"! per-passage shots skipped ({exc})", flush=True)
-    if cfg.footage_enabled:                # moving footage in some filler slots (sof/footage.py, 2026-10-25)
+    if cfg.footage_enabled:                # calm real footage of the subject and the named things (sof/footage.py)
         try:
-            cands = footage.search(footage_queries or [topic], pexels_key=cfg.pexels_api_key,
-                                   pixabay_key=cfg.pixabay_api_key, limit=cfg.footage_candidates)
-            clips = footage.gather(cands, str(work / "footage"), classify_fn=lambda ps: label(ps, topic),
-                                   want=cfg.footage_want, budget_seconds=cfg.footage_budget)
-            slots, placed = footage.mix_into_slots(slots, plan, clips, every=cfg.footage_every)
-            for k, row in enumerate(plan):
-                if k < len(slots) and footage.is_video(slots[k]):
-                    row["image"], row["why"] = slots[k], "footage"
-            stats["footage_slots"], stats["footage_clips"] = placed, len(clips)
-            print(f"footage: {len(clips)} clips from {len(cands)} candidates · {placed} of {len(slots)} slots", flush=True)
+            slots, plan = _add_footage(cfg, work=work, topic=topic, article=article, terms=terms or [], entities=entities,
+                                       slots=slots, plan=plan, stats=stats, use_nasa=use_nasa, vis=vis,
+                                       stock_queries=footage_queries or [topic])
         except Exception as exc:  # noqa: BLE001 — footage is a bonus; the photos alone still make the video
             log.exception("footage failed")
             print(f"! footage skipped ({exc})", flush=True)
@@ -498,27 +511,77 @@ def _plan_timeline(cfg: Config, *, work: Path, llm, topic: str, article: str, se
     return slots
 
 
+def _add_footage(cfg: Config, *, work: Path, topic: str, article: str, terms: list[str], entities: list[dict],
+                 slots: list[str], plan: list[dict], stats: dict, use_nasa: bool, vis,
+                 stock_queries: list[str]) -> tuple[list[str], list[dict]]:
+    """Felix (Puello Media) 2026-11 — "use video footage, not still images": checked clips of the named things that
+    hold the most slots (searched by their own names) and of the video's subject, then placed by
+    ``footage.mix_into_slots``. Updates ``stats``; returns the new (slots, plan)."""
+    t0 = time.monotonic()
+    if not vis.active:                     # unchecked footage is never shown (Gian 2026-10-27: "stop wrong shots")
+        print("footage: skipped (no vision check to approve clips)", flush=True)
+        return slots, plan
+    held = Counter(str(r["entity"]) for r in plan if r.get("entity"))
+    things = sorted((e for e in entities if held.get(e["key"])), key=lambda e: -held[e["key"]])[:cfg.footage_entities]
+    groups = [{"key": e["key"], "subject": f"{e['name']} ({topic})", "want": cfg.footage_per_entity, "limit": 12,
+               "per_query": 6, "terms": images.name_terms(e["name"], e.get("wiki_title") or ""),
+               "queries": list(dict.fromkeys(q for q in (e["name"], visuals._base_title(e.get("wiki_title") or "")) if q)),
+               "stock_queries": [e["name"]], "nasa": use_nasa and e.get("kind") in visuals.NASA_KINDS} for e in things]
+    groups.append({"key": footage.SUBJECT, "subject": topic, "limit": cfg.footage_candidates, "per_query": 20,
+                   "want": min(cfg.footage_want, math.ceil(len(slots) / max(1, cfg.footage_every) / cfg.footage_max_uses) + 2),
+                   "queries": list(dict.fromkeys(q for q in (topic, article) if q)), "terms": terms,
+                   "stock_queries": stock_queries, "nasa": use_nasa})
+    slot = cfg.dwell_seconds + cfg.crossfade_seconds
+    found, fst = footage.gather_footage(
+        groups, str(work / "footage"), classify=lambda paths, subject: vis.classify(paths, subject=subject, note=footage.CLIP_NOTE),
+        need=(slot + 0.5) / cfg.footage_max_slow, keep=(slot + 0.5) / cfg.footage_slow + 0.5, slot=slot,
+        slow=cfg.footage_slow, max_slow=cfg.footage_max_slow, pexels_key=cfg.pexels_api_key,
+        pixabay_key=cfg.pixabay_api_key, budget_seconds=cfg.footage_budget)
+    mine = found.pop(footage.SUBJECT, [])
+    slots, placed = footage.mix_into_slots(slots, plan, mine, entity_clips=found, every=cfg.footage_every,
+                                           max_uses=cfg.footage_max_uses, gap=cfg.footage_gap)
+    plan = [dict(r, image=slots[k], why=f"footage ({r.get('why')})") if k < len(slots) and slots[k] != r.get("image")
+            else r for k, r in enumerate(plan)]
+    stats.update(footage_slots=placed, footage_clips=fst["clips"], footage_sources=fst["sources"])
+    things_with = sum(1 for v in found.values() if v)
+    print(f"footage: {fst['clips']} clips ({len(mine)} of {topic}, {fst['clips'] - len(mine)} of {things_with} named things) "
+          f"from {fst['candidates']} candidates ({fst['calm']} calm, {fst['approved']} approved) · {placed} of {len(slots)} "
+          f"slots ({100 * placed // max(1, len(slots))} %) · "
+          + (", ".join(f"{k} {v}" for k, v in fst["sources"].items() if v) or "no sources")
+          + f" · {time.monotonic() - t0:.0f} s", flush=True)
+    return slots, plan
+
+
 def _rows_by_path(used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, dict]:
-    """absolute photo path → credits.json row, for the reel and the per-thing / per-passage photos."""
+    """absolute path → credits row, for the reel, the per-thing / per-passage photos and the footage clips
+    (``work/footage``, beside ``entity_dir``)."""
     rows = {str((img_dir / str(r.get("file"))).resolve()): r for r in used if r.get("file")}
     rows.update(visuals.credits_by_path(str(entity_dir)))           # missing folder → {}
+    rows.update(footage.credits_by_path(str(entity_dir.parent / "footage")))
     return rows
 
 
-def _slot_captions(slots: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> dict[str, str]:
-    """path → on-screen credit for every slot photo whose licence needs one (reel + per-thing photos)."""
-    rows = _rows_by_path(used, img_dir, entity_dir)
-    out = {}
-    for p in set(slots):
-        row = rows.get(str(Path(p).resolve()))
-        if row and captions.needs_credit(row):
-            out[p] = captions.caption_text(row)
-    return out
+def _description(*, name: str, seo_category: str, hours, sc, chapters: list[dict], photos: str, extra: str) -> str:
+    shape = STORY_FORMATS.get(sc.story_format or "")
+    blurb = (f"Tonight: {shape['opening'].format(subject=name)}. " if shape else "") + (sc.blurb or "")
+    return seo.build_description(subject=name, category=seo_category, hours=hours, blurb=blurb, chapters=chapters,
+                                 footer=sc.footer or sc.description, photos=photos, extra=extra)
+
+
+DESCRIPTION_BYTES = 4900   # seo.build_description's limit (YouTube allows 5,000)
+EXTRA_RESERVE = 400        # the thumbnail's credit line, unknown until the thumbnail is made
+
+
+def _credit_budget(**kw) -> int:
+    """Bytes left for the credits line in the description once everything else (opening, chapters, sources,
+    hashtags, a thumbnail credit) is in — so crediting photos never pushes the Wikipedia sources out."""
+    rest = len(_description(**kw, photos="", extra="").encode("utf-8"))
+    return max(300, DESCRIPTION_BYTES - rest - EXTRA_RESERVE)
 
 
 def _credit_rows(paths: list[str], used: list[dict], img_dir: Path, entity_dir: Path) -> list[dict]:
-    """Credit rows (all sources, credited or not) for the photos in ``paths``, in order of first appearance —
-    what the credits page lists. Footage clips and unknown files have no row and are skipped."""
+    """Credit rows (all sources, credited or not) for the photos and clips in ``paths``, in order of first
+    appearance — what the credits page and the description list. Unknown files have no row and are skipped."""
     rows = _rows_by_path(used, img_dir, entity_dir)
     out, seen = [], set()
     for p in paths:
@@ -536,7 +599,7 @@ def _timeline_stats(plan_path: Path) -> dict | None:
     try:
         st = json.loads(plan_path.read_text(encoding="utf-8")).get("stats") or {}
         return {k: st.get(k) for k in ("slots", "thing_slots", "cue_slots", "things_shown", "distinct_photos",
-                                       "lag_median")}
+                                       "lag_median", "footage_slots", "footage_clips")}
     except Exception:  # noqa: BLE001
         return None
 

@@ -6,8 +6,10 @@ kids"): every day one Roblox story and two interactive Shorts, all over Creative
 `topics.yml` (the writer rejects anything creepy, scammed, hacked or banned). The interactive formats live in
 `bqd/interactive.py`: **would_you_rather** (4 rounds, A red / B blue, 3-second countdown), **guess_the_game** (3
 games from a fixed kid-safe list, 3 clues each, the name never in a clue) and **pick_one** (pick an egg / chest /
-door: one, two or three, then all three open). Each spoken line is voiced on its own and joined with countdown
-ticks, so the panel always matches the voice. Ledger rows carry `format` for the two-week comparison.
+door: one, two or three, then all three open). Each spoken line is voiced on its own and joined with the countdown
+seconds (a soft woodblock tick, one per second, far under the voice), so the panel always matches the voice. Panels
+show the round number and each choice / clue / reward as 1-3 words with an emoji icon, never the spoken sentence
+(see "Visual style rules" below). Ledger rows carry `format` for the two-week comparison.
 
 **Voice (2026-11-19, `bqd/voice.py`)**: Kokoro **af_heart**, US English, speed 1.05 (about 180 words a minute), on
 the runner, free, no quota; fixed for this channel whatever `TTS_BACKEND` says. "Roblox" and "Robux" are respelled
@@ -35,8 +37,8 @@ topics.yml (13 categories with weights, hints and a narrator persona)
   → narration: voice F (Pocket TTS, free, on the runner); TTS_BACKEND=gemini + GEMINI_API_KEY_BLOCKQUEST
     switches to Charon on this channel's own free tier
   → b-roll: Pexels/Pixabay video on the story's setting queries, previews checked by Codex/Claude; stock
-    photos when nothing fits; a category card when the photos fail too
-  → 1080×1920, clips 6 s each crossfaded, burned captions, title band "Block Quest Daily", −16 LUFS
+    photos when nothing fits; no Short when the photos fail too (no text card instead of footage)
+  → 1080×1920, clips 6 s each crossfaded, a few emphasis words (no captions, no title band), −16 LUFS
   → upload (Entertainment): Short 1 public now, Shorts 2–3 private + publishAt; ledger.json committed
 ```
 
@@ -84,3 +86,36 @@ keeps every story clean for young listeners, and each Short plays over one conti
 gameplay (`gameplay.yml`, `bqd/gameplay.py`, `cc.segments.build_background_short`). The clip's maker is credited by
 name and link in the description; uploads go to the Gaming category with `#roblox`. `background: "stock"` in
 `bqd/config.py` brings back the Pexels/Pixabay path.
+
+## Visual style rules (Felix, 2026-11)
+
+A client editor (Felix, Puello Media) said the programmatic videos looked "made by Claude". What his notes mean for
+this channel, for every future change (Gian: the channel stays kid-safe, all ages, on the Creative Commons gameplay):
+
+1. **Footage, not stills.** Every Short plays continuous gameplay from `gameplay.yml`. The stock path
+   (`background: "stock"`) makes no Short when it finds neither footage nor photos, rather than a text card.
+2. **Little text, never the narration.** Story Shorts show only a few emphasis words (`cc.textbudget` via
+   `cc.segments`: the key number with its unit, a first-mentioned name; never "Roblox"/"Robux" alone,
+   `pipeline.SKIP_WORDS`). Interactive panels show each choice / clue / reward as 1-3 key words plus one emoji icon:
+   the writer's `a_short`/`a_icon`, `b_short`/`b_icon` and per-clue / per-reward `short`/`icon`, checked (1-3
+   words, at most 20 characters, kid-safe, one kid-safe emoji — no weapon, grave, romance, monster, creed,
+   political sign or flag, `interactive.ICON_BLOCK` — no word of the game's name in a clue and no picture of it,
+   `interactive.NAME_ICONS`, e.g. no 🍕 for Work at a Pizza Place); when one is missing or invalid the spoken line's
+   key words are shown with no icon. The spoken lines never change for this. A label too long for its box shrinks;
+   no word is ever cut off. Guess the Game's answer (the game's name) is the one longer text: it is the needed word.
+3. **Quiet, varied sound.** No whoosh, static or sine ping. The countdown is a soft synthesised woodblock with a
+   lower "tock" on the last count (`cc.sfx`), a different variant per Short (seeded by the date and the Short), one
+   per countdown second so the number keeps time with the voice. `interactive.TICK_DB` (-32 dBFS) keeps every tick
+   21-28 dB under the voice's peak after the final loudnorm, which lifts the quiet countdown by 6-10 dB (measured
+   2026-11-21 with Kokoro af_heart; `test_countdown_ticks_keep_time_and_stay_far_under_the_voice` holds it at
+   18 dB or more). No other effects.
+4. **Minimal section indicators.** The round as a number ("1/4"); the format's name is in the title and the voice,
+   not on the panels.
+5. **Graphics.** None on this channel today. Any future one: slow camera motion, no label that repeats what is
+   already on screen.
+6. **Every frame filled.** Gameplay fills the 1080×1920 frame under everything (all 87 clips are 1080×1920 with no
+   bars, checked 2026-11-21). Panels are compact solid boxes in the upper half, the countdown circle under them,
+   clear of the Shorts UI (bottom fifth, right edge).
+7. **Icons, not text cards.** The intro and the call to action are an icon with a word or two (🎮 "3 clues",
+   💬 "A or B?", 💬 "?/3", 💬 "1, 2 or 3?"); Pick One's closed boxes show the egg / chest / door as an icon.
+   Icons are Noto Color Emoji (`fonts-noto-color-emoji` in the workflow); without the font the words are drawn alone.

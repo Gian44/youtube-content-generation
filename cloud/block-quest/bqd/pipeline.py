@@ -24,6 +24,9 @@ from bqd.config import Config
 
 log = logging.getLogger("bqd.pipeline")
 EXIT_OK, EXIT_FAIL, EXIT_PREFLIGHT, EXIT_WRITER = 0, 1, 2, 4
+# Felix (Puello Media) 2026-11: a story Short shows only a few emphasis words (cc.textbudget, via cc.segments), never
+# the narration. Words that would turn up on nearly every Short of this channel are never among them.
+SKIP_WORDS = frozenset({"roblox", "robux", "roblox's", "roblox’s"})
 
 
 def _stage(name: str) -> None:
@@ -117,7 +120,7 @@ def run(cfg: Config) -> int:
     audio: list[str] = []
     for k, s in enumerate(tales):
         if s.format != "story":                       # one voiced line per beat, joined with the countdown ticks
-            audio.append(interactive.voice(s, work, cfg, index=k, hold=cfg.hold_seconds))
+            audio.append(interactive.voice(s, work, cfg, index=k, hold=cfg.hold_seconds, seed=today))
             print(f"short {k + 1}: {tts.duration_seconds(audio[-1]):.0f} s ({s.format})", flush=True)
             continue
         raw = tts.speak([voice.for_tts(s.body)], str(work / f"s{k}" / "tts"), cfg.sof, short=True)[0]
@@ -182,8 +185,8 @@ def run(cfg: Config) -> int:
             continue
         if s.format != "story" and not out.exists():
             try:
-                interactive.render(work=work, name=name, index=k, header=interactive.FORMATS[s.format]["header"],
-                                   background=backs[k].local, audio=a, width=cfg.width, height=cfg.height, fps=cfg.fps)
+                interactive.render(work=work, name=name, index=k, background=backs[k].local, audio=a, width=cfg.width,
+                                   height=cfg.height, fps=cfg.fps)
             except Exception as exc:  # noqa: BLE001
                 log.exception("short %d failed", k + 1)
                 print(f"! short {k + 1} render failed ({exc})", flush=True)
@@ -192,22 +195,21 @@ def run(cfg: Config) -> int:
         if library and not out.exists():
             try:
                 segments.build_background_short(work=work, name=name, text=s.body, audio=a, background=backs[k].local,
-                                                width=cfg.width, height=cfg.height, fps=cfg.fps)
+                                                width=cfg.width, height=cfg.height, fps=cfg.fps, skip_words=SKIP_WORDS)
             except Exception as exc:  # noqa: BLE001
                 log.exception("short %d failed", k + 1)
                 print(f"! short {k + 1} render failed ({exc})", flush=True)
                 files.append("")
                 continue
         if not out.exists():
-            card = None
-            if not v["clips"] and not v["photos"]:
-                card = segments.title_card_png(str(work / f"s{k}" / "card.png"),       # the title band already names it
-                                               title=seo.CATEGORY_LABELS.get(s.category, s.category.replace("_", " ")),
-                                               kicker="TODAY'S STORY", footer=cfg.brand, width=cfg.width, height=cfg.height)
+            if not v["clips"] and not v["photos"]:      # Felix 2026-11: no text card in place of footage
+                print(f"! short {k + 1} found no footage and no photos; skipped", flush=True)
+                files.append("")
+                continue
             try:
                 segments.build_vertical_short(work=work, name=name, text=s.body, title=s.title, brand=cfg.brand, audio=a,
                                               clips=v["clips"], photos=v["photos"], width=cfg.width, height=cfg.height, fps=cfg.fps,
-                                              clip_seconds=cfg.clip_seconds, slow=cfg.clip_slow, hold_card=card)
+                                              clip_seconds=cfg.clip_seconds, slow=cfg.clip_slow, skip_words=SKIP_WORDS)
             except Exception as exc:  # noqa: BLE001 — one bad render must not cost the other Shorts
                 log.exception("short %d failed", k + 1)
                 print(f"! short {k + 1} render failed ({exc})", flush=True)

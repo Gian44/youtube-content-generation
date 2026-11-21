@@ -110,12 +110,15 @@ def build_description(category: str, segments: list[dict], hours: int, chapters:
     originals = "The original videos:\n" + "\n".join(f"- {n}: https://youtu.be/{s['video_id']}" for n, s in zip(names, segments))
     from sof import captions
 
-    # Parts made since 2026-11-07 carry no on-screen credit: their ledger row links the credits page.
+    # Parts made since 2026-11-07 carry no on-screen credit: their ledger row links the credits page. A part
+    # without one credits its photos on screen (before 2026-11-21) or in its own description, with only the
+    # overflow on screen (Felix 2026-11) — and every original video is linked above.
     pages = [str(s.get("credits_url") or "") for s in segments if s.get("credits_url")]
+    no_page = (f"{captions.SOURCES} Each part's credits are in its original video's description (linked above) or on "
+               f"screen" + ("; credits pages for some parts: " + " · ".join(pages) if pages else "") + f". {captions.LICENCES}")
     parts = [head, ("Chapters\n" + "\n".join(lines)) if lines else "", originals,
              "Facts in these videos are drawn from Wikipedia (CC BY-SA 4.0); each original video lists its sources.",
-             captions.description_line(pages) if len(pages) == len(segments) else
-             (captions.DESCRIPTION_LINE + (" Photo credits for the other parts: " + " · ".join(pages) if pages else "")),
+             captions.description_line(pages) if len(pages) == len(segments) else no_page,
              *[c for c in (thumb_credits or []) if c],
              " ".join(["#sleep", f"#{p.hashtag}", "#sleepdocumentary"])]
     text = "\n\n".join(x for x in parts if x)

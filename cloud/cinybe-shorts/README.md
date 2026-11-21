@@ -45,10 +45,29 @@ films.yml (themes in order; the first film without a ledger row that the run can
     lays the film's own sound, cut with the same pieces, under the voice instead, sidechain-ducked ~12 dB);
     chapters at act starts; thumbnail = the film's own frame at the first Short's moment + the thumbnail text
     in gold caps + a "MOVIE RECAP" tag, no film name
-  → Shorts: the same, 9:16 (≤ 3.5-s shots), small outlined captions (no box) timed per beat, no title band over the footage (`shorts_title_band`, off since 2026-11-16); −16 LUFS voice
+  → Shorts: the same, 9:16 (≤ 3.5-s shots), a few emphasis words instead of captions (Felix 2026-11: the key number or a name, never the narration), no title band over the footage (`shorts_title_band`, off since 2026-11-16); −16 LUFS voice
   → upload (Film & Animation): long video public at once; Short 1 an hour later, Shorts 2–3 one and two
     days later; ledger.json committed; the film trashed in the store
 ```
+
+## Visual style rules (Felix, 2026-11)
+
+A client editor (Felix, Puello Media) found our programmatic videos read as "made by Claude": too many stills, too
+much on-screen text, stock-sounding effects. On this channel the picture is already the film itself, so his footage
+rule is met by design (Gian's rule stands: nothing that is not from the movie, no stock). The rest, kept for every
+future change:
+
+- **On-screen words**: no full captions on the Shorts. Only the key number or a main character's name (the plan's
+  `people`) the first time it is said inside a sentence, a few times a minute, 1-3 words, timed to the beat that says
+  it (`cny.render.emphasis_cues` → `sof.shorts.emphasis_overlays` → `cc.textbudget`). Never the narration word for
+  word, never a quoted line's first word, a nationality or creed ("German", "Jew"), a place, or a name shown twice;
+  no people in the plan → numbers only. The long recap carries no text at all.
+- **Sound effects**: none. The film (muted) and the voice over the quiet ambient bed carry it; do not add whooshes,
+  pings or risers. If an effect is ever needed, use `cc.sfx` (quiet, varied, on a few cuts only).
+- **Sections**: chapters live in the description only; no act titles or chapter cards on screen.
+- **Framing**: every frame filled. 16:9 film fills the recap; a 4:3 print sits on a blurred fill of itself (Gian,
+  2026-11-08), bars burned into the file are cropped first; Shorts are a 9:16 crop of the film. No black bars, no cards.
+  A DVD print with non-square pixels is made square first (`cut.SQUARE_PIXELS`), or every shape is 12-16 % off.
 
 Everything that is not recap-specific is imported from `../sleep-on-facts/sof` (see `cny/__init__.py`):
 writer (`llm`), voice (`tts`), no-slop, uploader, ledger, music; segment planning from `../common/cc`. One fix
@@ -145,7 +164,7 @@ hand-written reference synopsis.
 | `cny/cut.py` | scene detection, shot picking in a window, burned-in bars, the 16:9 fill / 9:16 crop filter |
 | `cny/visuals.py` | scene cuts per act (± 30 s), cached |
 | `cny/beats.py` | beat times (parse, repair, snap quoted lines), each beat's film window and pieces, one ffmpeg render per beat |
-| `cny/render.py` | long recap and Shorts from the beats, captions per beat, film-sound mix, timing helpers |
+| `cny/render.py` | long recap and Shorts from the beats, the Shorts' few emphasis words, film-sound mix, timing helpers |
 | `cny/thumbnail.py` | the thumbnail: film frame + hook, no film name |
 | `cny/seo.py` | titles (hook, never the film name), descriptions, tags, Short publish times |
 | `cny/pipeline.py` | orchestration, resumable `work/<date>-<slug>/`, ledger |

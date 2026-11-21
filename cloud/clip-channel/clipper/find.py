@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 import yaml
+from cc.icons import is_emoji
 
 ROOT = Path(__file__).resolve().parent.parent
 WORK, OUT, LEDGER = ROOT / "work", ROOT / "out", ROOT / "ledger.json"
@@ -219,17 +220,59 @@ Rules:
   never in the middle of one.
 - "rank": 1 is the most extreme example of the theme and 5 the mildest. Rank by the theme itself (bigger prize,
   harder fail), not by the order of the videos.
-- "label": 1 to 3 words plus exactly one emoji at the end. If the theme ranks something measurable (money, size,
-  speed, a count), the label is that number as said in the clip, for example "$250,000 💰". Otherwise it is what a
-  friend would blurt out, for example "Wiped out 💀". The label must match what the clip itself shows or says.
+- "label": 1 or 2 words plus exactly one emoji at the end, never a description of the clip. If the theme ranks
+  something measurable (money, size, speed, a count), the label is that number as said in the clip, for example
+  "$250,000 💰". Otherwise it is what a friend would blurt out, for example "Wiped out 💀". The label must match
+  what the clip itself shows or says.
 - A higher rank must visibly beat the one below it (bigger number, more extreme moment). Avoid ties: with more
   than five candidate videos, drop the ones that would tie.
 - "title_plain" and "title_accent" form the on-screen title, for example "Ranking MrBeast's" and "Biggest Wins".
-  Together under 32 characters.
+  Together at most 5 words and under 32 characters.
 - "upload_title": under 60 characters, says what is ranked and may tease number 1.
 
 Return JSON only:
 {{"theme": "", "title_plain": "", "title_accent": "", "upload_title": "", "items": [{{"rank": 1, "video": "V1", "start": 0, "end": 0, "label": ""}}]}}"""
+
+
+# Felix (Puello Media) 2026-11: much less on-screen text, only the most necessary words ("$14", not "Classic Cuban
+# sandwich $14"). A ranking entry is 1-2 words plus its emoji icon ("Rage 😡"), the title at most 5 words. The
+# planners ask for that; these enforce it on whatever comes back.
+_JOINERS = {"a", "an", "the", "and", "or", "of", "to", "in", "on", "at", "for", "with", "by", "from", "this", "that",
+            "his", "her", "their", "my", "is", "was", "ever", "all"}
+
+
+def _trim_tail(words: list[str]) -> list[str]:
+    """Drop words a cut-short phrase must not end on ("Biggest Wins Of" -> "Biggest Wins")."""
+    while len(words) > 1 and words[-1].lower().strip(",.;:!?") in _JOINERS:
+        words = words[:-1]
+    return [*words[:-1], words[-1].rstrip(",;:")] if words else words
+
+
+def split_emoji(label: str) -> tuple[str, str]:
+    """A ranking label's words and its emoji, apart: the words are drawn in the bold font, the emoji as an icon."""
+    text = "".join(ch for ch in label if not is_emoji(ch) and ch not in "\u200d\ufe0f").strip()
+    return text, "".join(ch for ch in label if is_emoji(ch))
+
+
+def short_label(label: str, max_words: int = 2) -> str:
+    """A ranking entry as shown: the first `max_words` words, then the label's emoji ("Kai rages at chat 😡" ->
+    "Kai rages 😡"). A number label stays whole ("$250,000 💰")."""
+    text, emoji = split_emoji(label)
+    return " ".join(_trim_tail(text.split()[:max_words]) + ([emoji] if emoji else []))
+
+
+def short_title(plain: str, accent: str, fallback: tuple[str, str], max_words: int = 5) -> tuple[str, str]:
+    """The two-colour on-screen title in at most `max_words` words. A longer one from the model is replaced by
+    `fallback` (cutting the model's own words could leave nonsense); the fallback is trimmed from the end of the
+    accent, then the front of the plain part, if it is long too. The upload title is not touched."""
+    if len(plain.split()) + len(accent.split()) <= max_words:
+        return plain, accent
+    p, a = fallback[0].split(), fallback[1].split()
+    while len(p) + len(a) > max_words and len(a) > 1:
+        a = _trim_tail(a[:-1])
+    while len(p) + len(a) > max_words and len(p) > 1:
+        p = p[1:]
+    return " ".join(p), " ".join(a)
 
 
 def _video_text(info: dict, words: list[dict], cap: int = 60_000) -> str:
@@ -261,7 +304,7 @@ def pick_ranking_multi(sources: list[dict], used_themes=()) -> dict | None:
             rank, key, s, e = int(it["rank"]), str(it["video"]).strip().upper(), float(it["start"]), float(it["end"])
         except (KeyError, TypeError, ValueError):
             continue
-        src, label = by_key.get(key), str(it.get("label") or "").strip()[:26]
+        src, label = by_key.get(key), short_label(str(it.get("label") or ""))
         if not src or not label or not 1 <= rank <= 5:
             continue
         if s < 0 or e - s < 2 or e > float(src["info"].get("duration") or 0) + 2:
@@ -271,7 +314,8 @@ def pick_ranking_multi(sources: list[dict], used_themes=()) -> dict | None:
     theme = str(data.get("theme") or "").strip()[:40]
     if not theme or len(items) != 5 or len({it["video_id"] for it in items.values()}) < 5:
         return None
-    plain, accent = str(data.get("title_plain") or "Ranking").strip()[:24], str(data.get("title_accent") or theme).strip()[:24]
+    accent = str(data.get("title_accent") or theme).strip()[:24]
+    plain, accent = short_title(str(data.get("title_plain") or "Ranking").strip()[:24], accent, ("Ranking", accent))
     # the first pass only sees a timestamp every 10 s, so its cut points are rough: a second pass sets them
     # sentence by sentence
     return {"theme": theme, "title_plain": plain, "title_accent": accent,

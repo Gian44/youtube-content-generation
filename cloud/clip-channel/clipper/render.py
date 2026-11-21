@@ -1,8 +1,12 @@
-"""Editor: cut the moment, crop it to 9:16, burn captions, and add the headline in one of two looks.
+"""Editor: cut the moment, crop it to 9:16, add the few emphasis words, and the headline in one of two looks.
 
-Style A (meme panel): white panel on top with a bold black headline + emoji line, clip below, glow captions.
-Style B (cinematic): clip centred between black bars, a two-line banner for the first seconds, big captions.
-Reference: project doc claude/clipping-style-reference.md."""
+Style A (meme panel): white panel on top with a bold black headline + emoji line, clip below, glow emphasis words.
+Style B (cinematic): clip centred over a blurred copy of itself, a two-line banner for the first seconds.
+Reference: project doc claude/clipping-style-reference.md.
+
+Felix (Puello Media) 2026-11, applied to every style: the clip is the footage; on screen only the few words that
+matter (a number, a first-mentioned name), never the speech repeated; quiet, varied sound effects on a few cuts
+only, never a whoosh; no flat empty bands. Rules: README.md."""
 from __future__ import annotations
 
 import json
@@ -12,17 +16,21 @@ import statistics
 import subprocess
 from pathlib import Path
 
+from cc import icons, sfx, textbudget
 from PIL import Image, ImageDraw, ImageFont
 
-from .find import YTDLP, label_said, sh
+from .find import YTDLP, label_said, sh, split_emoji
 
 W, H = 1080, 1920
 PANEL_H = 700                    # style A: white headline panel height; the clip fills the rest
 B_TOP, B_SIZE = 420, 1080        # style B: square clip box
 BANNER_S = 5                     # style B: seconds the banner stays up
+# ASS WrapStyle. 2026-11-21 review: 0 word-wraps a line wider than the frame where 2 ran it off both edges; the old
+# captions were capped at 18 characters, an emphasis name of up to 3 words is not ("Massachusetts Institute
+# Technology" lost its ends in Style B's 76 px capitals). A line that fits is drawn exactly as before.
+WRAP = 0
 FONTS_BOLD = [r"C:\Windows\Fonts\arialbd.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
               "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
-FONTS_EMOJI = [r"C:\Windows\Fonts\seguiemj.ttf", "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"]
 
 
 def _font(paths: list[str], size: int):
@@ -95,23 +103,29 @@ def face_center_x(path: Path) -> float:
         return 0.5
 
 
-def caption_chunks(words: list[dict], start: float, end: float, max_words: int = 3, max_chars: int = 18) -> list[tuple[float, float, str]]:
-    ws = [w for w in words if start <= w["t"] < end]
-    groups: list[list[dict]] = []
-    for w in ws:
-        g = groups[-1] if groups else None
-        if g and len(g) < max_words and sum(len(x["w"]) + 1 for x in g) + len(w["w"]) <= max_chars \
-                and w["t"] - g[-1]["e"] < 0.6 and not re.search(r"[.?!]$", g[-1]["w"]):
-            g.append(w)
-        else:
-            groups.append([w])
-    out = []
-    for i, g in enumerate(groups):
-        t0 = g[0]["t"] - start
-        nxt = groups[i + 1][0]["t"] - start if i + 1 < len(groups) else end - start
-        t1 = nxt if nxt - (g[-1]["e"] - start) < 0.8 else g[-1]["e"] - start + 0.25
-        out.append((max(t0, 0), min(max(t1, t0 + 0.2), end - start), " ".join(x["w"] for x in g)))
-    return out
+def _word_keys(text: str) -> set[str]:
+    """Lower-case words of `text` without edge punctuation or a possessive ("Kai's" -> "kai"), to compare."""
+    return {re.sub(r"['’]s$", "", w.strip(".,!?:;\"'“”‘’()")).lower() for w in text.split()} - {""}
+
+
+def emphasis(words: list[dict], start: float, end: float, on_screen: list[str]) -> list[tuple[float, float, str]]:
+    """The few words of [start, end) worth putting on screen, timed from that start: the key number with its unit,
+    else a first-mentioned name, 1-3 words, about 6 a minute (cc.textbudget). Felix (Puello Media) 2026-11: the
+    3-word running captions repeated what the speaker says; now never that, never a word already on screen
+    (`on_screen`: title, labels, names; a number counts as shown when its digits are), never a masked swear."""
+    skip = {s for t in on_screen for s in (t, *(w.strip(".,!?:;\"'") for w in t.split()))}
+    shown_nums = {re.sub(r"\D", "", s) for s in skip} - {""}
+    # 2026-11-21 review: cc.textbudget only skips an exact match, so "Kai's" (title "Kai Cenat's"), "Adin's" (label
+    # "Adin Ross") or "GTA Online" (title "... GTA 6") still repeated what was on screen. Any shared word drops a
+    # pick, and the pick runs again without it so the entry's one slot can go to the next number or name.
+    shown_words = set().union(*map(_word_keys, on_screen)) if on_screen else set()
+    ws = [(w["t"] - start, w["e"] - start, w["w"]) for w in words if start <= w["t"] < end]
+    while True:
+        out = textbudget.pick(ws, duration=end - start, skip=skip)
+        bad = {t for _, _, t in out if "*" in t or re.sub(r"\D", "", t) in shown_nums or _word_keys(t) & shown_words}
+        if not bad:
+            return out
+        skip |= bad
 
 
 def _ts(t: float) -> str:
@@ -132,7 +146,7 @@ def write_ass(path: Path, chunks, style: str, duration: float, watermark: str, a
     else:
         cap = f"Style: Cap,Arial,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (B_TOP + B_SIZE) + 150},1"
         mark = f"Style: Mark,Arial,36,&H80FFFFFF,&H80FFFFFF,&HC0000000,&H00000000,-1,0,0,0,100,100,2,0,1,1,0,2,44,44,{H - (B_TOP + B_SIZE) + 28},1"
-    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", f"WrapStyle: {WRAP}", "ScaledBorderAndShadow: yes", "",
              "[V4+ Styles]",
              "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
              cap, mark, "", "[Events]",
@@ -165,26 +179,6 @@ def _wrap(draw, text: str, font, max_w: int) -> list[str]:
     return lines + ([cur] if cur else [])
 
 
-def _emoji_image(text: str, target_h: int = 96):
-    """Colour emoji as an image. Segoe UI Emoji (Windows) scales freely; Noto Color Emoji (Linux runners) is a
-    bitmap font that only loads at size 109, so it is drawn there and resized."""
-    for p in FONTS_EMOJI:
-        for size in (target_h, 109):
-            try:
-                f = ImageFont.truetype(p, size)
-                im = Image.new("RGBA", (int(f.getlength(text)) + 16, int(size * 1.5)), (0, 0, 0, 0))
-                ImageDraw.Draw(im).text((8, 4), text, font=f, embedded_color=True)
-            except Exception:
-                continue
-            box = im.getbbox()
-            if not box:
-                continue
-            im = im.crop(box)
-            s = target_h / im.height
-            return im.resize((max(1, int(im.width * s)), target_h), Image.LANCZOS)
-    return None
-
-
 def panel_png(path: Path, style: str, headline: str, emojis: str, accent: str) -> None:
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
@@ -197,7 +191,7 @@ def panel_png(path: Path, style: str, headline: str, emojis: str, accent: str) -
                 break
             size -= 6
         lh = int(size * 1.16)
-        em = _emoji_image(emojis.strip().replace(" ", "")) if emojis.strip() else None
+        em = icons.emoji_image(emojis)
         block = lh * len(lines) + (118 if em else 0)
         y = max(150, (PANEL_H + 110 - block) // 2)
         for ln in lines:
@@ -219,6 +213,14 @@ def panel_png(path: Path, style: str, headline: str, emojis: str, accent: str) -
     img.save(path)
 
 
+def _blur_fill(src: str) -> str:
+    """Filter chain: the clip blurred, darkened and scaled to cover the whole frame, to sit behind the sharp clip
+    box. Felix (Puello Media) 2026-11: no awkward empty space, every frame filled; this replaces the flat black
+    bars and bands. Blurred at quarter size, then scaled up: cheap, and softer."""
+    return (f"{src}scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},"
+            f"boxblur=10:2,lutyuv=y=val*0.55:u=128+(val-128)*0.7:v=128+(val-128)*0.7,scale={W}:{H},setsar=1")
+
+
 def render(seg: Path, ass: Path, panel: Path, out: Path, style: str, face_x: float) -> None:
     sw, sh_, _ = probe(seg)
     box_h, top = (H - PANEL_H, PANEL_H) if style == "A" else (B_SIZE, B_TOP)
@@ -227,10 +229,13 @@ def render(seg: Path, ass: Path, panel: Path, out: Path, style: str, face_x: flo
     x = int(min(max(face_x * tw - W / 2, 0), tw - W))
     y = (th - box_h) // 2
     grade = "" if style == "A" else "eq=saturation=1.18:contrast=1.06,"
-    pad = "white" if style == "A" else "black"
+    clip = f"scale={tw}:{th},crop={W}:{box_h}:{x}:{y},{grade}setsar=1"
+    if style == "A":     # the white headline panel is the approved meme look (Gian, "its perfect"): kept as it is
+        base = f"[0:v]fps=30,{clip},pad={W}:{H}:0:{top}:white"
+    else:                # style B: the square box over the blurred clip, not black bars
+        base = f"[0:v]fps=30,split[s][g];{_blur_fill('[g]')}[bg];[s]{clip}[fg];[bg][fg]overlay=0:{top}"
     ov = "overlay=0:0" if style == "A" else f"overlay=0:0:enable='lt(t,{BANNER_S})'"
-    graph = (f"[0:v]fps=30,scale={tw}:{th},crop={W}:{box_h}:{x}:{y},{grade}setsar=1,"
-             f"pad={W}:{H}:0:{top}:{pad},subtitles={ass.name}[b];[b][1:v]{ov}[v]")
+    graph = f"{base},subtitles={ass.name}[b];[b][1:v]{ov}[v]"
     r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", seg.name, "-i", panel.name, "-filter_complex", graph,
                         "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", out.name],
@@ -246,7 +251,9 @@ def make_clip(outdir: Path, creator: dict, video_id: str, info: dict, words: lis
     _, _, dur = probe(seg)
     style, accent = clip["style"], cfg.get("accent") or "#FF8A00"
     ass = outdir / "caps.ass"
-    write_ass(ass, caption_chunks(words, clip["start"], clip["start"] + dur), style, dur, cfg.get("channel_name") or "", accent)
+    chunks = emphasis(words, clip["start"], clip["start"] + dur,
+                      [*(h.replace("|", " ") for h in clip["headlines"]), creator.get("name") or "", cfg.get("channel_name") or ""])
+    write_ass(ass, chunks, style, dur, cfg.get("channel_name") or "", accent)
     fx = face_center_x(seg)
     outs = []
     for i, head in enumerate(clip["headlines"], 1):
@@ -260,22 +267,19 @@ def make_clip(outdir: Path, creator: dict, video_id: str, info: dict, words: lis
         "source": f"https://www.youtube.com/watch?v={video_id}&t={int(clip['start'])}s", "source_title": info.get("title"),
         "start": clip["start"], "end": clip["end"], "style": style, "headlines": clip["headlines"],
         "emojis": clip.get("emojis"), "upload_title": clip.get("title"), "why": clip.get("why"), "face_x": round(fx, 3),
+        "on_screen_words": [[round(t0, 2), text] for t0, _, text in chunks],
     }, indent=1, ensure_ascii=False), encoding="utf-8")
     return outs
 
 
 # ---- Style C: ranking (reference: project doc claude/clipping-style-ranking.md) ------------------------------------
-R_TOP, R_H = 360, 1280           # clip box under the black title band
+R_TOP, R_H = 360, 1280           # clip box under the title band; the blurred clip fills the bands above and below
 RANK_ORDER = [3, 5, 4, 2, 1]     # play order: the list fills in out of order and number 1 lands last
 GOLD, RED, WHITE, BLACK = (255, 200, 40, 255), (255, 59, 48, 255), (255, 255, 255, 255), (0, 0, 0, 255)
-# short falling "bloop" played as each entry lands; synthesized, so there is nothing to license
-POP = "aevalsrc=0.5*sin(2*PI*(900-2400*t)*t)*exp(-16*t):d=0.25:s=48000"
-
-
-def _split_emoji(label: str) -> tuple[str, str]:
-    text = "".join(ch for ch in label if ord(ch) < 0x2190 and ord(ch) != 0x200D).strip()
-    emoji = "".join(ch for ch in label if ord(ch) >= 0x2190 and ord(ch) != 0xFE0F)
-    return text, emoji
+# Felix (Puello Media) 2026-11: the "bloop" on every entry (-6 dBFS) was too loud and too samey. Now a soft
+# synthesized pluck (a low thump for the #1 reveal) on the few cuts cc.sfx.on_cuts picks, peaking SFX_UNDER dB
+# under the clip's own peak and never above cc.sfx.PEAK_DB. Synthesized, so there is nothing to license.
+SFX_UNDER = 18.0
 
 
 def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict, shown: set, watermark: str) -> None:
@@ -283,6 +287,8 @@ def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict
     ranks in `shown` carry their label yet."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    for yy in range(R_TOP):         # soft dark gradient: the title stays legible over the blurred clip behind it
+        d.line([(0, yy), (W, yy)], fill=(0, 0, 0, int(80 + 110 * yy / R_TOP)))
     size = 72
     while True:
         f = _font(FONTS_BOLD, size)
@@ -307,9 +313,9 @@ def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict
     for rank in range(1, 6):
         d.text((44, y), f"{rank}.", font=num_f, fill=GOLD, stroke_width=5, stroke_fill=BLACK)
         if rank in shown:
-            text, emoji = _split_emoji(labels[rank])
+            text, emoji = split_emoji(labels[rank])
             d.text((136, y + 6), text, font=lab_f, fill=WHITE, stroke_width=5, stroke_fill=BLACK)
-            em = _emoji_image(emoji, 56) if emoji else None
+            em = icons.emoji_image(emoji, 56)
             if em:
                 img.alpha_composite(em, (int(136 + d.textlength(text, font=lab_f) + 14), y + 8))
         y += 104
@@ -320,10 +326,10 @@ def rank_frame_png(path: Path, title_plain: str, title_accent: str, labels: dict
 
 
 def write_ass_rank(path: Path, chunks) -> None:
-    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+    lines = ["[Script Info]", "ScriptType: v4.00+", f"PlayResX: {W}", f"PlayResY: {H}", f"WrapStyle: {WRAP}", "ScaledBorderAndShadow: yes", "",
              "[V4+ Styles]",
              "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-             f"Style: Cap,Arial,62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (R_TOP + R_H) + 70},1",
+             f"Style: Cap,Arial,76,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,60,60,{H - (R_TOP + R_H) + 70},1",
              "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
     for t0, t1, text in chunks:
         text = text.replace("{", "(").replace("}", ")").replace("\\", "/")
@@ -336,22 +342,35 @@ def _has_audio(path: Path) -> bool:
     return bool((r.stdout or "").strip())
 
 
-def render_rank_part(seg: Path, panel: Path, ass: Path, out: Path, face_x: float) -> None:
+def sound_effect(kind: str, out: Path, seed: str, clip_peak: float) -> float:
+    """Synthesize one cc.sfx effect into `out` (48 kHz stereo WAV), peaking SFX_UNDER dB under `clip_peak` and never
+    above cc.sfx.PEAK_DB. Returns the peak it really has (dBFS)."""
+    target = min(sfx.PEAK_DB, clip_peak - SFX_UNDER)
+    sfx.synth(kind, str(out), seed=seed, peak_db=target, sample_rate=48000, channels=2)
+    # the low-pass and the mono-to-stereo copy take 1.5-6 dB off the level asked for: aim again so it lands on target
+    sfx.synth(kind, str(out), seed=seed, peak_db=target + (target - sfx.peak_db(str(out))), sample_rate=48000, channels=2)
+    return sfx.peak_db(str(out))
+
+
+def render_rank_part(seg: Path, panel: Path, ass: Path, out: Path, face_x: float, effect: Path | None = None) -> None:
+    """One entry of the ranking: the clip box over the blurred clip, the list overlay, and the clip's own sound with
+    `effect` (a WAV from sound_effect) mixed in at the cut, when given."""
     sw, sh_, dur = probe(seg)
     scale = max(W / sw, R_H / sh_)
     tw, th = int(sw * scale / 2 + 0.5) * 2, int(sh_ * scale / 2 + 0.5) * 2
     x = int(min(max(face_x * tw - W / 2, 0), tw - W))
     y = (th - R_H) // 2
-    vf = (f"[0:v]fps=30,scale={tw}:{th},crop={W}:{R_H}:{x}:{y},setsar=1,pad={W}:{H}:0:{R_TOP}:black,"
-          f"subtitles={ass.name}[b];[b][1:v]overlay=0:0[v]")
+    vf = (f"[0:v]fps=30,split[s][g];{_blur_fill('[g]')}[bg];[s]scale={tw}:{th},crop={W}:{R_H}:{x}:{y},setsar=1[fg];"
+          f"[bg][fg]overlay=0:{R_TOP},subtitles={ass.name}[b];[b][1:v]overlay=0:0[v]")
     stereo = "aformat=sample_rates=48000:channel_layouts=stereo"
     if _has_audio(seg):
         # short fades so one clip's sound does not snap into the next
-        af = (f"[0:a]{stereo},afade=t=in:d=0.06,afade=t=out:st={max(dur - 0.2, 0):.3f}:d=0.2[a0];[2:a]{stereo}[p];"
-              "[a0][p]amix=inputs=2:duration=first:normalize=0[a]")
-    else:
-        af = f"[2:a]{stereo},apad=whole_dur={dur:.3f}[a]"
-    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", seg.name, "-i", panel.name, "-f", "lavfi", "-i", POP,
+        af = f"[0:a]{stereo},afade=t=in:d=0.06,afade=t=out:st={max(dur - 0.2, 0):.3f}:d=0.2"
+        extra = ["-i", effect.name] if effect else []
+        af += f"[a0];[2:a]{stereo}[p];[a0][p]amix=inputs=2:duration=first:normalize=0[a]" if effect else "[a]"
+    else:                # no sound track: silence, and no effect (it would be the loudest thing in the part)
+        extra, af = ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"], "[2:a]anull[a]"
+    r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", seg.name, "-i", panel.name, *extra,
                         "-filter_complex", vf + ";" + af, "-map", "[v]", "-map", "[a]", "-t", f"{dur:.3f}",
                         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
                         "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", out.name],
@@ -378,8 +397,12 @@ def make_ranking(outdir: Path, plan: dict, words_by_id: dict, cfg: dict) -> Path
     outdir.mkdir(parents=True, exist_ok=True)
     labels = {it["rank"]: it["label"] for it in plan["items"]}
     by_rank = {it["rank"]: it for it in plan["items"]}
-    parts, shown, said = [], set(), {}
-    for rank in RANK_ORDER:
+    on_screen = [plan["title_plain"], plan["title_accent"], cfg.get("channel_name") or "",
+                 *(t for it in plan["items"] for t in (it["creator"], split_emoji(it["label"])[0]))]
+    seed = f"{outdir.parent.name}/{outdir.name}"       # e.g. 2026-11-21/twitch-kaicenat-7d: new sounds each ranking
+    with_fx = sfx.on_cuts(len(RANK_ORDER), seed=seed)  # a few cuts, never two in a row, always the #1 reveal
+    parts, shown, said, log, at = [], set(), {}, [], 0.0
+    for i, rank in enumerate(RANK_ORDER):
         it = by_rank[rank]
         shown.add(rank)
         seg = (cut_local(Path(it["src_file"]), it["start"], it["end"], outdir / f"src{rank}.mp4") if it.get("src_file")
@@ -388,16 +411,27 @@ def make_ranking(outdir: Path, plan: dict, words_by_id: dict, cfg: dict) -> Path
         heard = " ".join(w["w"] for w in words_by_id.get(it["video_id"], []) if it["start"] <= w["t"] < it["start"] + dur)
         said[rank] = label_said(it["label"], heard)      # a number on the list that nobody says in the clip is suspect
         ass = outdir / f"caps{rank}.ass"
-        # captions stop at the planned end, not the file's: the download can run a frame or two long, and the next
+        # words stop at the planned end, not the file's: the download can run a frame or two long, and the next
         # sentence's first word would flash on screen
-        chunks = (caption_chunks(words_by_id.get(it["video_id"], []), it["start"], min(it["start"] + dur, it["end"]))
+        chunks = (emphasis(words_by_id.get(it["video_id"], []), it["start"], min(it["start"] + dur, it["end"]), on_screen)
                   if plan.get("captions", True) else [])       # off for streams that already show live captions
         write_ass_rank(ass, chunks)
         panel = outdir / f"list{rank}.png"
         rank_frame_png(panel, plan["title_plain"], plan["title_accent"], labels, set(shown), cfg.get("channel_name") or "")
+        clip_peak = sfx.peak_db(str(seg)) if _has_audio(seg) else None
+        kind = effect = fx_peak = None
+        if i in with_fx and clip_peak is not None:
+            kind, effect = ("thump" if rank == 1 else "pluck"), outdir / f"sfx{rank}.wav"
+            fx_peak = sound_effect(kind, effect, seed, clip_peak)
         part = outdir / f"part{rank}.mp4"
-        render_rank_part(seg, panel, ass, part, face_center_x(seg))
+        render_rank_part(seg, panel, ass, part, face_center_x(seg), effect)
         parts.append(part)
+        part_dur = probe(part)[2]
+        # where each part starts in option1.mp4 and what it puts on screen and in the sound, for the smoke checks
+        log.append({"rank": rank, "at": round(at, 3), "dur": round(part_dur, 3), "words": [t for _, _, t in chunks],
+                    "sfx": kind, "sfx_file": effect.name if effect else None,
+                    "sfx_peak_db": fx_peak, "clip_peak_db": clip_peak})
+        at += part_dur
     (outdir / "parts.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
     out = outdir / "option1.mp4"
     r = subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "parts.txt", "-c", "copy",
@@ -407,7 +441,7 @@ def make_ranking(outdir: Path, plan: dict, words_by_id: dict, cfg: dict) -> Path
         raise RuntimeError(f"concat failed: {(r.stderr or '')[-400:]}")
     (outdir / "info.json").write_text(json.dumps({
         "style": "C", "theme": plan["theme"], "title": [plan["title_plain"], plan["title_accent"]],
-        "upload_title": plan["upload_title"], "play_order": RANK_ORDER,
+        "upload_title": plan["upload_title"], "play_order": RANK_ORDER, "sfx_seed": seed, "parts": log,
         "items": [{**{k: v for k, v in it.items() if k != "src_file"}, "label_said": said.get(it["rank"]),
                    "source": it.get("source_url") or f"https://www.youtube.com/watch?v={it['video_id']}&t={int(it['start'])}s"}
                   for it in plan["items"]],

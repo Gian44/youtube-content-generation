@@ -1,4 +1,7 @@
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -98,7 +101,8 @@ def test_pick_one_rounds_follow_the_drawn_things():
     out = interactive.validate("pick_one", data, p)
     beats = interactive.make_beats("pick_one", out)
     assert beats[0].hold == 3 and beats[0].panel["open"] == [None, None, None] and beats[0].say.startswith("Pick a")
-    assert beats[3].panel["open"][2] == "100 Robux" and beats[3].panel["now"] == 2 and len(beats) == 9
+    assert beats[3].panel["open"][2] == {"text": "100 Robux", "icon": ""} and beats[3].panel["now"] == 2 and len(beats) == 9
+    assert beats[0].panel["icon"] == interactive.THING_ICONS[p["things"][0]] and "thing" not in beats[0].panel
     wrong = json.loads(json.dumps(data))
     wrong["rounds"][0]["thing"] = "spaceship"
     with pytest.raises(stories.StoryError, match="must be a"):
@@ -126,24 +130,153 @@ def test_timeline_places_the_countdown_after_each_question():
 
 
 def test_ffmpeg_commands_are_well_formed():
-    assert interactive.tick_cmd("t.wav")[-1] == "t.wav" and "apad=whole_dur=1" in " ".join(interactive.tick_cmd("t.wav"))
-    assert "1320" in " ".join(interactive.tick_cmd("t.wav", last=True))
+    tick, tock = interactive.tick_cmds("t.wav", "k.wav", seed="2026-11-21|0")
+    assert tick[-1] == "t.wav" and tock[-1] == "k.wav" and all("apad=whole_dur=1" in " ".join(c) for c in (tick, tock))
+    assert "sine=" not in " ".join(tick + tock)                          # Felix 2026-11: no sine pings
+    assert tick != interactive.tick_cmds("t.wav", "k.wav", seed="2026-11-21|1")[0]   # another Short, another tick
+    assert interactive.TICK_DB <= -24.0
     assert interactive.silence_cmd("s.wav", 0.25)[interactive.silence_cmd("s.wav", 0.25).index("-t") + 1] == "0.250"
 
 
 @pytest.mark.parametrize("panel", [
-    {"kind": "wyr", "round": 1, "of": 4, "a": "get a dragon pet that cannot fly at all", "b": "get a cat"},
-    {"kind": "clues", "round": 2, "of": 3, "clues": ["One clue here.", "Another clue that is a bit longer than one line."],
+    {"kind": "wyr", "round": 1, "of": 4, "a": {"text": "Dragon pet", "icon": "🐉"}, "b": {"text": "Flying cat", "icon": ""}},
+    {"kind": "clues", "round": 2, "of": 3, "clues": [{"text": "Baby or pet", "icon": "🍼"}, {"text": "Tornadoes and floods", "icon": ""}],
      "answer": "Natural Disaster Survival"},
-    {"kind": "pick", "round": 1, "of": 2, "thing": "egg", "open": ["a rainbow dragon pet", None, None], "now": 0},
-    {"kind": "cta", "text": "COMMENT YOUR PICKS"}])
-def test_panel_png_draws_every_kind(tmp_path, panel):
+    {"kind": "pick", "round": 1, "of": 2, "icon": "🥚", "open": [{"text": "Rainbow dragon", "icon": "🐉"}, None, None], "now": 0},
+    {"kind": "pick", "round": 2, "of": 2, "icon": "", "open": [None, None, None]},
+    {"kind": "cta", "icon": "💬", "text": "A or B?"},
+    {"kind": "intro", "icon": "🎮", "text": "3 clues"}])
+@pytest.mark.parametrize("emoji_font", [True, False])
+def test_panel_png_draws_every_kind(tmp_path, monkeypatch, panel, emoji_font):
     from PIL import Image
-    out = interactive.panel_png(panel, str(tmp_path / "p.png"), header="WOULD YOU RATHER", width=540, height=960, count=3,
-                                caption="Would you rather?")
+    if not emoji_font:                                                   # no emoji font: the words alone, no crash
+        monkeypatch.setattr(interactive.icons, "emoji_image", lambda text, target_h=96: None)
+    out = interactive.panel_png(panel, str(tmp_path / "p.png"), width=540, height=960, count=3)
     im = Image.open(out)
     assert im.size == (540, 960) and im.mode == "RGBA"
     assert im.getpixel((5, 950))[3] == 0                                  # the gameplay shows through outside the boxes
+    assert im.getpixel((270, 125))[3] == (255 if panel.get("round") else 0)   # the round chip, nothing else up there
+
+
+def _panel_texts(panel: dict) -> list[str]:
+    out = []
+    for k, v in panel.items():
+        if k in ("kind", "icon", "answer"):                               # the answer is the game's name: the one needed word
+            continue
+        for x in (v if isinstance(v, list) else [v]):
+            if isinstance(x, dict):
+                out.append(str(x.get("text") or ""))
+            elif isinstance(x, str):
+                out.append(x)
+    return out
+
+
+def test_panels_never_show_the_spoken_sentence():
+    """Felix 2026-11: 1-3 words per choice / clue / reward and per call to action, never what the narrator says."""
+    p_one = _params("pick_one")
+    pick = json.loads(json.dumps(PICK))
+    pick["rounds"][0]["thing"], pick["rounds"][1]["thing"] = p_one["things"]
+    for fmt, data, params in (("would_you_rather", WYR_SHORT, _params("would_you_rather")), ("would_you_rather", WYR, _params("would_you_rather")),
+                              ("guess_the_game", GTG_SHORT, _params("guess_the_game")), ("guess_the_game", GTG_OK, _params("guess_the_game")),
+                              ("pick_one", pick, p_one)):
+        beats = interactive.make_beats(fmt, interactive.validate(fmt, json.loads(json.dumps(data)), params))
+        for b in beats:
+            texts = _panel_texts(b.panel)
+            words = [[w for w in t.split() if w.lower() not in ("and", "or")] for t in texts]   # "1, 2 or 3?" is three
+            assert all(1 <= len(w) <= 3 for w in words), (fmt, b.panel)        # (a closed pick shows icons only)
+            assert not any(t.lower().strip(".!?") == b.say.lower().strip(".!?") for t in texts)
+            assert "header" not in b.panel                                 # the round number only (the chip)
+
+
+WYR_SHORT = {"title": "Pets Edition", "tags": ["pets"], "rounds": [
+    {"a": "Get a dragon pet that cannot fly", "a_short": "Dragon pet", "a_icon": "🐉",
+     "b": "get a tiny cat that flies everywhere", "b_short": "Flying cat", "b_icon": "🐱"},
+    {"a": "hatch a legendary egg every day", "a_short": "Legendary egg every single day", "a_icon": "🥚🐣",   # too long, two icons
+     "b": "get one thousand Robux once", "b_short": "1,000 Robux", "b_icon": "💰"},
+    {"a": "beat every obby on your first try", "a_short": "Haunted obby", "a_icon": "💀",                   # not kid-safe
+     "b": "never lag again in any game", "b_short": "Never lag", "b_icon": "⚡"},
+    {"a": "have the rarest hat in the game", "b": "have the fastest pet in the server"}]}                 # no shorts at all
+GTG_SHORT = {"tags": ["quiz"], "rounds": [
+    {"game": "Adopt Me!", "clues": [{"say": "You can raise a baby or a pet here.", "short": "Baby or pet", "icon": "🍼"},
+                                    {"say": "Eggs hatch into pets you can trade.", "short": "Adopt pets", "icon": "🥚"},   # name leak
+                                    "A legendary neon pet is the big dream."]},                                            # old shape
+    GTG_OK["rounds"][1], GTG_OK["rounds"][2]]}
+
+
+def test_writer_labels_are_validated_with_a_fallback_and_the_spoken_lines_stay():
+    out = interactive.validate("would_you_rather", json.loads(json.dumps(WYR_SHORT)), _params("would_you_rather"))
+    r = out["rounds"]
+    assert r[0]["a_label"] == {"text": "Dragon pet", "icon": "🐉"} and r[0]["b_label"] == {"text": "Flying cat", "icon": "🐱"}
+    assert r[1]["a_label"] == {"text": "hatch legendary egg", "icon": ""} and r[1]["b_label"]["text"] == "1,000 Robux"
+    assert r[2]["a_label"] == {"text": "beat obby", "icon": ""} and r[2]["b_label"] == {"text": "Never lag", "icon": "⚡"}
+    assert r[3]["a_label"] == {"text": "rarest hat", "icon": ""} and r[3]["b_label"] == {"text": "fastest pet", "icon": ""}
+    assert r[0]["a"] == "get a dragon pet that cannot fly"                # the spoken line is untouched
+    g = interactive.validate("guess_the_game", json.loads(json.dumps(GTG_SHORT)), _params("guess_the_game"))["rounds"][0]
+    assert g["clues"] == GTG_OK["rounds"][0]["clues"]                     # same spoken clues whichever shape came in
+    assert g["labels"][0] == {"text": "Baby or pet", "icon": "🍼"}
+    assert g["labels"][1] == {"text": "Eggs hatch", "icon": "🥚"}       # "Adopt" would give the game away
+    assert g["labels"][2] == {"text": "legendary neon pet", "icon": ""}
+    p = _params("pick_one")
+    pick = {"title": "Mystery Edition", "tags": [], "rounds": [
+        {"thing": p["things"][0], "rewards": [{"say": "a rainbow dragon pet that flies", "short": "Rainbow dragon", "icon": "🐉"},
+                                             {"say": "a single wet sock", "short": "Wet sock", "icon": "🔫"}, "100 Robux"]},
+        {"thing": p["things"][1], "rewards": ["a golden crown hat", "a slightly used banana", "a speed trail"]}]}
+    k = interactive.validate("pick_one", pick, p)["rounds"][0]
+    assert k["rewards"][0] == "a rainbow dragon pet that flies"
+    assert k["labels"] == [{"text": "Rainbow dragon", "icon": "🐉"}, {"text": "Wet sock", "icon": ""}, {"text": "100 Robux", "icon": ""}]
+    # the spoken lines are still checked as before: a bad one is a rejection (and the retry), not a fallback
+    bad = json.loads(json.dumps(WYR_SHORT))
+    bad["rounds"][0]["a"] = "get scammed"
+    with pytest.raises(stories.StoryError):
+        interactive.validate("would_you_rather", bad, _params("would_you_rather"))
+
+
+def test_short_label_and_icon_rules():
+    assert interactive.short_label("get a dragon pet that cannot fly") == "dragon pet"
+    assert interactive.short_label("never lag again in any game") == "never lag"
+    assert interactive.short_label("Tornadoes and floods hit the map.") == "Tornadoes and floods"
+    assert interactive.short_label("get one thousand Robux once") == "one thousand Robux"
+    assert interactive.short_label("spend 1,000 Robux on a hat") == "spend 1,000 Robux"
+    for s in ("hatch a legendary egg every day", "You can play as police or a criminal.", "a slightly used banana"):
+        t = interactive.short_label(s)
+        assert 1 <= len(t.split()) <= 3 and len(t) <= interactive.LABEL_CHARS and set(t.lower().split()) <= set(s.lower().split())
+    assert interactive._icon("🐉") == "🐉" and interactive._icon(" ❤️ ") == "❤️" and interactive._icon("👍🏽") == "👍🏽"
+    assert interactive._icon("👨\u200d👩\u200d👧") == "👨\u200d👩\u200d👧"           # one ZWJ family is one icon
+    for bad in ("🐉🐱", "A", "", None, "龍", "🔫", "💀", "🗡️", "1️⃣", "dragon 🐉"):
+        assert interactive._icon(bad) == "", bad
+    assert interactive.label("Hacked account", "🐉", "get a cat that flies")["text"] == "cat flies"   # kid-safe check
+    assert interactive.label("Dragon 🐉", "🐉", "get a dragon")["text"] == "dragon"                  # no emoji in the words
+    assert interactive.label(["Dragon", "pet"], ["🐉"], "get a dragon pet") == {"text": "dragon pet", "icon": ""}
+    # no creed, political sign, flag, grave, romance or monster as an icon on an all-ages channel
+    for bad in ("✝️", "☪", "🕉", "☭", "🏳️‍🌈", "🏴", "🇺🇸", "🇺", "🪦", "🫦", "💏", "👹", "🕷", "🧨"):
+        assert interactive._icon(bad) == "", bad
+
+
+def test_guess_the_game_icons_never_picture_the_name_and_bad_rounds_are_rejections():
+    p = _params("guess_the_game")
+    p["games"] = list(interactive.GAMES)
+    data = json.loads(json.dumps(GTG_OK))
+    data["rounds"][0] = {"game": "Work at a Pizza Place", "clues": [
+        {"say": "You make food and deliver it to houses.", "short": "Deliver food", "icon": "🍕"},
+        {"say": "Someone rings up orders at the counter.", "short": "Counter", "icon": "🧾"},
+        {"say": "The boxes go out on a moped.", "short": "Moped", "icon": "🛵"}]}
+    labels = interactive.validate("guess_the_game", data, p)["rounds"][0]["labels"]
+    assert labels[0] == {"text": "Deliver food", "icon": ""} and labels[1]["icon"] == "🧾" and labels[2]["icon"] == "🛵"
+    for fmt, bad in (("guess_the_game", {"rounds": ["Adopt Me!", 3, None]}),
+                     ("pick_one", {"title": "Mystery", "rounds": ["egg", "chest"]})):
+        with pytest.raises(stories.StoryError):                          # not an AttributeError that ends the whole run
+            interactive.validate(fmt, bad, _params(fmt))
+
+
+def test_panel_words_are_never_cut_off():
+    """A label too long for its box shrinks; no word is dropped ("HATCH LEGENDARY EGG" lost "EGG" in a WYR card)."""
+    from PIL import Image, ImageDraw
+    d = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    for text, max_w, size, lines in (("HATCH LEGENDARY EGG", 383, 80, 2), ("LEGENDARY NEON PET", 300, 65, 1),
+                                     ("SLIGHTLY USED BANANA", 255, 46, 3), ("NATURAL DISASTER SURVIVAL", 820, 86, 2)):
+        font, rows, s = interactive._fit(d, text, max_w, size, lines=lines, min_size=round(size * 0.55))
+        assert " ".join(rows).split() == text.split() and len(rows) <= lines, (text, rows)
+        assert all(d.textlength(r, font=font) <= max_w for r in rows)
 
 
 def test_interactive_seo():
@@ -215,3 +348,56 @@ def test_voice_speaks_every_beat_respelled_and_writes_the_timeline(tmp_path, mon
     assert len(spoken) == 5 and "Roebucks in Roeblox" in spoken[1] and "Robux" in s.script["rounds"][1]["b"]
     tl = json.loads((tmp_path / "s0" / "timeline.json").read_text())
     assert sum(1 for c in tl["cues"] if c["count"]) == 12 and tl["total"] > 20
+
+
+def _has_flite() -> bool:
+    if not shutil.which("ffmpeg"):
+        return False
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
+    return " flite " in r.stdout
+
+
+def _peak(path, start: float, seconds: float) -> float:
+    """Sample peak (dBFS) of a window, decoded from the start (atrim): an input seek into an MP3 lands a few
+    milliseconds late and misses a tick's attack."""
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-af",
+                        f"atrim=start={start:.3f}:duration={seconds:.3f},volumedetect", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    m = re.search(r"max_volume:\s*(-?[\d.]+) dB", r.stderr)
+    return float(m.group(1)) if m else -99.0
+
+
+@pytest.mark.skipif(not _has_flite(), reason="needs ffmpeg with the flite voice (the runner's apt ffmpeg has it)")
+def test_countdown_ticks_keep_time_and_stay_far_under_the_voice(tmp_path, monkeypatch):
+    """interactive.voice with real ffmpeg (tick synthesis, concat, the channel's loudnorm); ffmpeg's flite voice
+    stands in for Kokoro at its loudness. Felix 2026-11: the pings were too loud. The dynamic loudnorm lifts the quiet
+    countdown, so the gap is measured after it, as the viewer hears it (with Kokoro: 21-22 dB; at the old -27 dBFS
+    tick level the last count was 16-17 dB under the voice and this test fails)."""
+    from bqd import interactive as it
+
+    def flite_speak(chunks, out_dir, cfg, short=False):
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        paths = []
+        for i, c in enumerate(chunks):
+            p = f"{out_dir}/{i:04d}.wav"
+            text = re.sub(r"[^A-Za-z ]", " ", c)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", f"flite=text='{text}':voice=slt",
+                            "-af", "volume=0.45", p], check=True)
+            paths.append(p)
+        return paths
+
+    monkeypatch.setattr(it.tts, "speak", flite_speak)
+    s = it.write(FakeLLM([WYR_SHORT]), "would_you_rather", seed="2026-11-21", used=[])
+    out = it.voice(s, tmp_path, config.Config.from_env(count=1), index=0, seed="2026-11-21")
+    tl = json.loads((tmp_path / "s0" / "timeline.json").read_text())
+    speech = [c for c in tl["cues"] if not c["count"]]
+    ticks = [c for c in tl["cues"] if c["count"]]
+    # one tick per countdown second, each exactly 1 s: the number on screen keeps time with the voice
+    assert [c["count"] for c in ticks] == [3, 2, 1] * 4
+    assert abs(it.tts.duration_seconds(out) - tl["total"]) < 0.15
+    # the stand-in is as loud as the real voice before the mix (Kokoro af_heart's interactive Shorts: -23 LUFS, 2026-11-21)
+    assert -25.0 <= it.sfx.loudness(str(tmp_path / "s0" / "pieces" / "joined.wav"))["I"] <= -21.0
+    voice_peak = max(_peak(out, c["start"], c["end"] - c["start"]) for c in speech)
+    tick_peaks = [_peak(out, c["start"], 1.0) for c in ticks]
+    assert voice_peak - max(tick_peaks) >= 18.0, (voice_peak, tick_peaks)
+    assert min(tick_peaks) > -45.0                                       # quiet, still heard

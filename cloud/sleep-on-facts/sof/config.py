@@ -118,13 +118,20 @@ class Config:
     crossfade_seconds: float = 1.5
     xfade_batch: int = 20
     video_dim: float = 0.5          # 2026-10-27: very dark for sleep, Gian's call (0.95 on 10-25 was too bright; thumbnails/Shorts unaffected)
-    # moving footage between the photos (sof/footage.py): Pexels + Pixabay video, vision-checked preview frames
+    # calm real footage of the subject and of the named things (sof/footage.py; Felix 2026-11 "footage, not
+    # stills"): NASA video (space topics), Wikimedia Commons video, then Pexels/Pixabay only when they name it;
+    # each clip's calmest window (no cuts, flashes or busy motion) is vision-checked like the photos
     footage_enabled: bool = True
-    footage_every: int = 3              # every 3rd filler slot (no named thing on screen) shows a clip
-    footage_want: int = 30              # clips per video (each used at most 3 times, never close together)
-    footage_candidates: int = 80
+    footage_every: int = 2              # at most one footage slot in any 2 consecutive slots: clips and photos alternate
+    footage_want: int = 30              # clips of the video's subject (fewer for a short video)
+    footage_entities: int = 12          # named things (those holding the most slots) searched for their own clips
+    footage_per_entity: int = 3         # clips kept per named thing
+    footage_max_uses: int = 3           # one clip shown at most this often...
+    footage_gap: int = 30               # ...and never again within this many slots (10 minutes)
+    footage_candidates: int = 80        # candidates for the subject (a named thing: 12)
     footage_slow: float = 1.5           # clips play at 1/1.5 speed: drifting, not busy
-    footage_budget: float = 600.0       # seconds for searching, checking and downloading clips
+    footage_max_slow: float = 2.0       # a shorter calm window may be slowed to 1/2 speed to fill its slot
+    footage_budget: float = 1080.0      # seconds for searching, checking and cutting clips (18 min of a ~2h40m run)
     # discovery
     publish_tz: str = "America/New_York"   # scheduled publish slot: 8:30 PM US Eastern, all year (DST-aware)
     publish_hour: int = 20
@@ -133,7 +140,8 @@ class Config:
     publish_max_wait_hours: float = 20.0   # the run starts ~08:30 UTC (after the Gemini quota reset), slot ~00:30 UTC
     playlists: bool = True          # add each video to its category playlist (created on first use)
     upload_check_seconds: int = 300  # after upload, poll up to this long for a rejection ("Video is too long", duplicate…)
-    photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos — only when no credits page (below)
+    photo_captions: bool = True     # small on-screen credit on CC BY / BY-SA photos/clips — only without a credits page
+                                    # (below), and only for those whose credit does not fit in the description
     # photo credits page (sof/credits_site.py, 2026-11-07): one page per video on Cloudflare Workers KV, linked from
     # the description, so the frame carries no credit text. Needs CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID.
     credits_site: bool = True

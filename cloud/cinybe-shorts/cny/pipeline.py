@@ -339,6 +339,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     if shorts_enabled:
         _stage("shorts")
         by_idx = {int(a["index"]): a for a in plan.acts}
+        names = [str(p.get("name") or "") for p in plan.long_form.get("people") or [] if isinstance(p, dict)]
         for k, (s, audio, durs) in enumerate(zip(plan.shorts, short_audio, short_durs)):
             name = f"short{k + 1}"
             out = work / f"{name}.mp4"
@@ -348,7 +349,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                     render.build_short(cfg, work=work, name=name, video=film_files.video_path, short=s, durs=durs,
                                        cuts=cuts.get(int(s["act_index"]), []), crop=crop,
                                        end=float(act.get("end_seconds", film_end)), film_end=film_end, audio=audio,
-                                       film_audio=film_audio)
+                                       film_audio=film_audio, names=names)
                 except Exception as exc:  # noqa: BLE001 — a Short is a bonus; never lose the recap over it
                     log.exception("short %d failed", k + 1)
                     print(f"! short {k + 1} skipped ({exc})", flush=True)

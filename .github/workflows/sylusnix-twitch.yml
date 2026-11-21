@@ -109,6 +109,36 @@ jobs:
         run: |
           f=$(ls out/*/twitch-*/option1.mp4 2>/dev/null | head -1)
           [ -n "$f" ] && ffmpeg -y -v error -i "$f" -vf "fps=1/2.8,scale=300:-1,tile=8x2" -frames:v 1 "$(dirname "$f")/sheet.jpg" || true
+      # Felix (Puello Media) 2026-11: effects quiet and on a few cuts only. Per part: the clip's loudness in the
+      # finished video, and where there is an effect, its peak against the clip's peak (OK = at least 15 dB under,
+      # and the first 0.3 s of the part peaks no higher with the effect than the clip alone, within 1.5 dB).
+      - name: Effect levels against the clip audio (smoke runs only, read in this log)
+        if: ${{ success() && env.SMOKE == 'true' }}
+        run: |
+          python - <<'EOF'
+          import glob, json, os
+          import clipper                      # puts cloud/common on the path
+          from cc import sfx
+          for path in glob.glob("out/*/twitch-*/info.json"):
+              d, info = os.path.dirname(path), json.load(open(path, encoding="utf-8"))
+              video = os.path.join(d, "option1.mp4")
+              print(f"[levels] {d}: title {' '.join(info['title'])!r}, effects seeded {info['sfx_seed']!r}")
+              for p in info["parts"]:
+                  clip = sfx.loudness(video, start=p["at"], seconds=p["dur"])
+                  line = (f"[levels] #{p['rank']} at {p['at']:.2f}s: clip {clip['I']:.1f} LUFS, "
+                          f"peak {sfx.peak_db(video, start=p['at'], seconds=p['dur']):.1f} dBFS")
+                  if p["sfx"]:
+                      fx = sfx.peak_db(os.path.join(d, p["sfx_file"]))
+                      mixed = sfx.peak_db(video, start=p["at"], seconds=0.3)
+                      alone = sfx.peak_db(os.path.join(d, f"src{p['rank']}.mp4"), start=0, seconds=0.3)
+                      ok = p["clip_peak_db"] - fx >= 15 and mixed <= alone + 1.5
+                      line += (f" | {p['sfx']} peak {fx:.1f} dBFS, {p['clip_peak_db'] - fx:.1f} dB under the clip's "
+                               f"{p['clip_peak_db']:.1f}; first 0.3 s {mixed:.1f} with it, {alone:.1f} without"
+                               f" | {'OK' if ok else 'CHECK'}")
+                  else:
+                      line += " | no effect"
+                  print(f"{line} | words on screen: {p['words']}")
+          EOF
       - name: Commit the Twitch ledger (skipped on smoke runs)
         if: ${{ success() && env.SMOKE != 'true' }}
         working-directory: .

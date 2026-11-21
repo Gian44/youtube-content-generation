@@ -33,7 +33,7 @@ def test_page_lists_credited_photos_with_links_and_counts_the_rest():
             _row()]                                                    # a duplicate of the first
     html = credits_site.render_page(rows, title="Hampi & Co", date="2026-11-07", video_url="https://youtu.be/abc", shorts=3)
     assert html.startswith("<!doctype html>") and "<title>Photo credits — Hampi &amp; Co</title>" in html
-    assert "Photos that require attribution (2)" in html
+    assert "Photos that require attribution (2)" in html and "(video)" not in html
     assert ('<span class=t>Well in Hampi</span><br>Prof Ranga Sai · <a href="https://creativecommons.org/licenses/by-sa/4.0/">'
             'CC BY-SA 4.0</a> · Wikimedia Commons — <a href="https://commons.wikimedia.org/wiki/File:Well.jpg">file page</a>') in html
     assert "Jane &amp; Co · <a href=\"https://creativecommons.org/licenses/by/2.0/\">CC BY 2.0</a>" in html
@@ -170,17 +170,33 @@ def test_deploy_that_never_comes_up_fails_softly():
 
 
 def test_description_lines_point_at_the_page_or_name_the_authors():
-    assert captions.description_line(None) == captions.DESCRIPTION_LINE and "on screen" in captions.DESCRIPTION_LINE
+    assert captions.description_line(None) == captions.DESCRIPTION_LINE and "on screen" not in captions.DESCRIPTION_LINE
+    assert "footage" in captions.SOURCES and "NASA" in captions.SOURCES        # 2026-11: clips come from NASA/Commons too
     one = captions.description_line("https://x.workers.dev/k")
-    assert one.startswith(captions.SOURCES) and one.endswith("Photo credits (authors and licences): https://x.workers.dev/k")
-    assert "on screen" not in one
-    assert captions.description_line(["https://a/1", "", "https://a/2"]).endswith("Photo credits for each part: https://a/1 · https://a/2")
+    assert one.startswith(captions.SOURCES)
+    assert one.endswith("Photo and footage credits (authors and licences): https://x.workers.dev/k") and "on screen" not in one
+    assert captions.description_line(["https://a/1", "", "https://a/2"]).endswith(
+        "Photo and footage credits for each part: https://a/1 · https://a/2")
     rows = [_row(), _row(file="2.jpg", artist="Bo", license="CC BY 2.0"), _row(file="3.jpg", license="Public domain"),
             _row(file="4.jpg", source="pexels", license="Pexels License"), _row()]
     line = captions.inline_credits(rows)
-    assert line == (f"{captions.SOURCES} Photo credits (Wikimedia Commons): Prof Ranga Sai (CC BY-SA 4.0); Bo (CC BY 2.0). "
+    assert line == (f"{captions.SOURCES} Credits (Wikimedia Commons): Prof Ranga Sai (CC BY-SA 4.0); Bo (CC BY 2.0). "
                     f"{captions.LICENCES}")
     many = [_row(file=f"{i}.jpg", artist=f"Photographer Number {i}") for i in range(80)]
     short = captions.inline_credits(many, budget=400)
     assert len(short) <= 400 and short.endswith(f"; and others. {captions.LICENCES}") and "Photographer Number 0 (CC BY-SA 4.0)" in short
     assert "on screen" not in captions.inline_credits([_row(license="CC0")])
+
+
+def test_page_credits_footage_clips_like_photos():
+    rows = [_row(kind="clip", title="Spinning Saturn", artist="Kevin Gill", license="CC BY 2.0",
+                 page="https://commons.wikimedia.org/wiki/File:Spinning_Saturn.webm"),
+            _row(file="c2.mp4", kind="clip", source="nasa", license="NASA (public domain)", artist="NASA/GSFC"),
+            _row(file="c3.mp4", kind="clip", license="Public domain", title="Saturn Lightning"),
+            _row(file="9.jpg", source="nasa", license="NASA (public domain)", artist="NASA/JPL")]
+    html = credits_site.render_page(rows, title="Saturn")
+    assert "Photos and footage that require attribution (1)" in html
+    assert "<span class=t>Spinning Saturn</span> (video)<br>Kevin Gill" in html
+    assert "1 image and 1 video clip from the" in html and "1 public-domain or CC0 video clip via" in html
+    assert "video clips are cut to one calm stretch, cropped, slowed down and dimmed" in html
+    assert "Pexels" not in html                                   # no stale "footage comes from Pexels and Pixabay" line
