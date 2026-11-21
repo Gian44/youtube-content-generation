@@ -940,5 +940,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44794711042"
+  },
+  {
+    "date": "2026-11-21",
+    "kind": "shorts",
+    "topic": "3 shorts: pick_one, guess_the_game, sibling_shenanigans",
+    "video_id": "ad63YR4RRAo",
+    "stories": [
+      {
+        "video_id": "ad63YR4RRAo",
+        "title": "Roblox Pick One: Sparkle Egg Surprise #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick an egg: one, two, or three.",
+        "words": 58,
+        "seconds": 26,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_029.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "SchesTAshvw",
+        "title": "Can You Guess These 3 Roblox Games #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Lumber Tycoon 2",
+          "Welcome to Bloxburg",
+          "Blox Fruits"
+        ],
+        "words": 88,
+        "seconds": 38,
+        "publish_at": "2026-11-22T01:43:14Z",
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_027.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "DWLn5eCehTw",
+        "title": "My Little Sister Beat My Obby in Four Minutes #roblox #Shorts",
+        "format": "story",
+        "category": "sibling_shenanigans",
+        "persona": "confession",
+        "hook": "My little sister finished my obby in four minutes, and I'd told everybody it takes an hour.",
+        "words": 139,
+        "seconds": 40,
+        "publish_at": "2026-11-22T09:43:14Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_012.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44931093035"
   }
 ]
