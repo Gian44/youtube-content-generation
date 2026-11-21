@@ -45,3 +45,7 @@ twitch:
   - {name: Clix,                login: clix,       verified: true}
   - {name: Marlon,              login: marlon,     verified: true}
   - {name: Silky,               login: silky,      verified: true}
+  # added 2026-11-21 (manager). Campaign page read that day: contentrewards.com/discover/2eaa14fb-6927-4136-897e-b096e0d907d6
+  # "KreekCraft GTA 6 Clipping", accepting clips, YouTube allowed. Not joined (it requires his overlay on every clip).
+  # min_views 1000: his clips reach 1,000 to 6,000 views, and the other six had nothing usable left on 11-20.
+  - {name: KreekCraft,          login: kreekcraft, verified: true, min_views: 1000}
