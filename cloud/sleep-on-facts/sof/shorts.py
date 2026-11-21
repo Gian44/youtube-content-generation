@@ -8,7 +8,7 @@ pointer to the full video.
 
 2026-10-19: the one Short per video out-reached the long videos ~6× (Rice Short 1.3K views vs 39 on the
 long video), so each video now ships ``shorts_count`` (3) Shorts, each a different fact from a different
-chapter, published ``shorts_spacing_hours`` (24 h) apart so the channel posts every day.
+chapter, published ``shorts_spacing_hours`` (8 h) apart so the day's three Shorts never go online together.
 
 Felix (Puello Media) 2026-11: footage instead of stills, every frame filled, much less text. So the 9:16 frame
 is always filled — a footage clip cover-cropped and slowed, or a photo cover-cropped with a slow pan across it

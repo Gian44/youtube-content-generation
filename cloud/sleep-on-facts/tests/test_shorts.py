@@ -95,7 +95,7 @@ def test_config_and_cli_flags():
     from sof.config import parse_args
     cfg = Config()
     assert cfg.shorts_enabled and cfg.shorts_height == 1920 and cfg.shorts_delay_minutes == 60
-    assert cfg.shorts_count == 3 and cfg.shorts_spacing_hours == 24
+    assert cfg.shorts_count == 3 and cfg.shorts_spacing_hours == 8
     assert parse_args(["--no-shorts"]).no_shorts and not parse_args([]).no_shorts
 
 

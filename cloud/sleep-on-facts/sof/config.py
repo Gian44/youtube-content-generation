@@ -164,10 +164,11 @@ class Config:
     cues_budget: float = 1500.0         # seconds for searching, checking and downloading cue pictures
     cues_workers: int = 3
     # Shorts teasers (sof/shorts.py): ~50 s vertical clips per long video; the first an hour after it goes
-    # live, the rest one a day after that (2026-10-19: Shorts out-reach the long videos ~6×)
+    # live, the rest 8 h apart (2026-10-19: Shorts out-reach the long videos ~6×). 24 h apart until 2026-11-21: with a
+    # video a day that put three Shorts (one from each of the last three videos) online in the same minute.
     shorts_enabled: bool = True
     shorts_count: int = 3
-    shorts_spacing_hours: float = 24.0
+    shorts_spacing_hours: float = 8.0
     shorts_words: int = 115            # ≈ 45–50 s at the narrator's pace, before the fixed closing line
     shorts_photos: int = 6
     shorts_width: int = 1080
