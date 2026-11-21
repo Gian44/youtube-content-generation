@@ -726,5 +726,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44708292228"
+  },
+  {
+    "date": "2026-11-21",
+    "kind": "video",
+    "film": "Scarlet Street",
+    "year": 1945,
+    "theme": "Public domain classics",
+    "topic": "Scarlet Street (1945)",
+    "video_id": "hiOTX4hGSgY",
+    "title": "Meek Cashier Rescues a Stranger and Loses His Art, His Money, and His Mind",
+    "privacy": "public",
+    "uploaded_at": "2026-11-21T14:11:31+00:00",
+    "duration_seconds": 761,
+    "words": 3070,
+    "acts": 16,
+    "transcript": "archive-asr",
+    "cues": 816,
+    "plot_reference": true,
+    "beats": 140,
+    "shots": 325,
+    "film_file": "archive.org/ScarletStreet/Scarlet_Street.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "oQcYgu2twpM",
+        "title": "Quiet Cashier Beats Off a Mugger and Meets the Woman Who Will Ruin Him #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-21T15:11:31Z",
+        "act_index": 1
+      },
+      {
+        "video_id": "6RswPUuUQsI",
+        "title": "He Asks Her to Marry Him and She Laughs in His Face #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-22T15:11:31Z",
+        "act_index": 12
+      },
+      {
+        "video_id": "lb8CTASDI1E",
+        "title": "A Man Lies in Court and an Innocent Man Is Sent to Die #Shorts",
+        "seconds": 27,
+        "publish_at": "2026-11-23T15:11:31Z",
+        "act_index": 14
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 7,
+        "after": 5,
+        "rewritten": 2
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 6,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44910185443"
   }
 ]
