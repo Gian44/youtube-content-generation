@@ -47,5 +47,6 @@ twitch:
   - {name: Silky,               login: silky,      verified: true}
   # added 2026-11-21 (manager). Campaign page read that day: contentrewards.com/discover/2eaa14fb-6927-4136-897e-b096e0d907d6
   # "KreekCraft GTA 6 Clipping", accepting clips, YouTube allowed. Not joined (it requires his overlay on every clip).
-  # min_views 1000: his clips reach 1,000 to 6,000 views, and the other six had nothing usable left on 11-20.
-  - {name: KreekCraft,          login: kreekcraft, verified: true, min_views: 1000}
+  # min_views 500: his GTA 6 clips made since 2026-11-19 UTC have 500 to 800 views (the ones above 1,000 were made on
+  # 11-18 UTC and stay out), and the other six streamers had nothing usable left on 11-20.
+  - {name: KreekCraft,          login: kreekcraft, verified: true, min_views: 500}
