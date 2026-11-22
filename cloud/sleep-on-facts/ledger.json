@@ -2669,5 +2669,22 @@
     "voice": "gemini Charon (gemini-3.8-flash-tts×10,gemini-3.8-flash-lite-tts×12)",
     "cost_estimate_usd": 0.11,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45044048286"
+  },
+  {
+    "date": "2026-11-22",
+    "kind": "marathon",
+    "topic": "Marathon: Northern Lights, Emperor Penguin, Giant Panda",
+    "category": "nature & animals",
+    "video_id": "-MMKdna-bU8",
+    "title": "6 Hours of Nature Facts to Fall Asleep To | Northern Lights, Emperor Penguin & Giant Panda",
+    "privacy": "public",
+    "publish_at": "2026-11-23T00:30:00Z",
+    "duration_seconds": 21345,
+    "segments": [
+      "fJHHVQfT6q0",
+      "_XcCD4T7GSI",
+      "rQ5_a7RG8S8"
+    ],
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45062479567"
   }
 ]
