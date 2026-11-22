@@ -88,3 +88,11 @@ def test_bare_count_takes_its_noun_but_not_filler():
     assert shown("They counted 7 survivors in the house.") == ["7 survivors"]
     assert shown("Then 7 more came, in 1610, and 3 of them stayed.") == ["7", "1610", "3"]
     assert shown("It cost 25 dollar flat.") == ["$25"]
+
+
+def test_place_names_that_start_with_a_group_word_stay_whole():
+    # 2026-11-21 Indian Ocean run: "Indian" was dropped and "Ocean" shown alone; "3,862,000 square" lost its unit
+    words = tb.words_from_cues([(0.0, 40.0, "Ships sailed from the Atlantic into the Indian Ocean, which covers "
+                                            "3,862,000 square miles. Marx was not a German.")])
+    out = [t for _, _, t in tb.pick(words, duration=40.0, per_minute=30, min_gap=0.1)]
+    assert "Indian Ocean" in out and "Ocean" not in out and "3,862,000 sq mi" in out and "German" not in out

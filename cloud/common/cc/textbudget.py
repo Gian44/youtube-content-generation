@@ -26,6 +26,8 @@ UNITS = {
     "pounds": "lb", "degrees": "°", "°c": "°C", "°f": "°F", "light-years": "light-years", "light": "",
     "years": "years", "year": "", "days": "days", "hours": "hours", "minutes": "min", "seconds": "s",
     "mph": "", "km/h": "", "robux": "Robux", "dollars": "", "dollar": "", "views": "",
+    "square kilometres": "km²", "square kilometers": "km²", "square km": "km²", "square miles": "sq mi",
+    "square metres": "m²", "square meters": "m²", "square feet": "sq ft",
 }
 _NUM = re.compile(r"^[$£€]?\d[\d,]*(?:\.\d+)?(?:%|st|nd|rd|th|s|k|m|bn)?$", re.I)
 _YEAR = re.compile(r"^(1[0-9]{3}|20[0-9]{2})s?$")
@@ -82,8 +84,8 @@ def _number_at(words: list[Word], i: int) -> tuple[str, int] | None:
     if i + 1 < len(words):
         nxt = _bare(words[i + 1][2]).lower()
         two = (nxt + " " + _bare(words[i + 2][2]).lower()) if i + 2 < len(words) else ""
-        if two in UNITS:
-            shown, n = shown + UNITS[two], 3
+        if two in UNITS:                                     # "99.86 per cent" → "99.86%", "3,862,000 square miles"
+            shown, n = (shown + UNITS[two] if UNITS[two] == "%" else f"{shown} {UNITS[two]}"), 3
         elif nxt in UNITS:
             unit = UNITS[nxt] or _bare(words[i + 1][2])
             if nxt in ("dollars", "dollar") and not shown.startswith("$"):
@@ -92,7 +94,7 @@ def _number_at(words: list[Word], i: int) -> tuple[str, int] | None:
                 shown = shown + unit if unit in ("%", "°", "°C", "°F") else f"{shown} {unit}"
             n = 2
         elif (not _YEAR.match(w) and not re.search(r"[,.;:!?]$", words[i][2]) and nxt.isalpha() and nxt == _bare(words[i + 1][2])
-              and len(nxt) >= 3 and nxt not in STOP and nxt not in NOT_NOUNS):
+              and len(nxt) >= 3 and nxt not in STOP and nxt not in NOT_NOUNS and nxt != "square"):
             shown, n = f"{shown} {nxt}", 2                  # "7 survivors", "20 times": a bare count says nothing
     return shown, n
 
@@ -109,7 +111,7 @@ def _name_at(words: list[Word], i: int, max_words: int) -> tuple[str, int] | Non
     j = i
     while j < len(words) and len(parts) < max_words:
         w = _bare(words[j][2])
-        if len(w) < 2 or not w[:1].isupper() or w.lower() in STOP or w.lower() in GROUPS or _NUM.match(w):
+        if len(w) < 2 or not w[:1].isupper() or w.lower() in STOP or _NUM.match(w):
             break
         parts.append(w)
         if words[j][2].rstrip("\"'”’)").endswith((".", ",", "!", "?", ";", ":")):
@@ -117,6 +119,8 @@ def _name_at(words: list[Word], i: int, max_words: int) -> tuple[str, int] | Non
             break
         j += 1
     if not parts or (len(parts) == 1 and len(parts[0]) < 3):
+        return None
+    if all(x.lower() in GROUPS for x in parts):          # "German" alone, never; "Indian Ocean" is a place (2026-11-21)
         return None
     return " ".join(parts), len(parts)
 
