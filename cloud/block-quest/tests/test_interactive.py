@@ -413,3 +413,21 @@ def test_guess_the_game_clue_3_may_not_repeat_clue_1():
     with pytest.raises(stories.StoryError, match="round 3: clue 3 repeats clue 1"):
         interactive.validate("guess_the_game", again, p)
     assert "Clue 1 is only the setting" in interactive.prompt_for("guess_the_game", seed="x", used=[])[0]
+
+
+def test_captions_are_short_readable_chunks_and_drawn_mid_frame(tmp_path):
+    """Gian 2026-11-22: full subtitles on Block Quest Shorts, in the middle of the frame, one or two lines each."""
+    from PIL import Image
+    from sof import shorts as sof_shorts
+    text = "My little brother traded his best pet for a rock and then the rock turned out to be the rarest item in the game."
+    cues = sof_shorts.caption_cues(text, 10.0, max_chars=40, split_words=True)
+    assert all(len(t) <= 40 for _, _, t in cues)
+    assert " ".join(t for _, _, t in cues) == text
+    assert abs(cues[-1][1] - 10.0) < 0.01
+    cfg = config.Config()
+    assert cfg.captions and cfg.caption_y_story == 0.5
+    out = interactive.panel_png({"kind": "pick", "icon": "", "open": [None, None, None]}, str(tmp_path / "p.png"),
+                                width=540, height=960, caption=cues[0][2], count=3, caption_y=cfg.caption_y_interactive)
+    alpha = Image.open(out).getchannel("A")
+    rows = [y for y in range(960) if alpha.crop((0, y, 540, y + 1)).getbbox()]
+    assert any(abs(y - 960 * cfg.caption_y_interactive) < 20 for y in rows)   # the caption sits at its line

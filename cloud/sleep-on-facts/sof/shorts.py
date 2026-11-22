@@ -248,9 +248,31 @@ def choose_photos(*, section: int, plan: list[dict] | None, reel: list[str], lab
 
 # ---------------------------------------------------------------- 3. captions (timed by character share)
 
-def caption_cues(narration: str, duration: float, *, max_chars: int = 70) -> list[tuple[float, float, str]]:
+def _word_chunks(text: str, max_chars: int) -> list[str]:
+    """``text`` cut at word boundaries into the fewest chunks of at most ``max_chars``, lengths evened out."""
+    words = text.split()
+    n = max(1, -(-len(text) // max_chars))
+    while True:
+        target = len(text) / n
+        out, cur = [], ""
+        for w in words:
+            trial = f"{cur} {w}".strip()
+            if cur and (len(trial) > max_chars or (len(cur) >= target and len(out) < n - 1)):
+                out.append(cur)
+                cur = w
+            else:
+                cur = trial
+        out.append(cur)
+        if all(len(c) <= max_chars for c in out) or n >= len(words):
+            return out
+        n += 1
+
+
+def caption_cues(narration: str, duration: float, *, max_chars: int = 70,
+                 split_words: bool = False) -> list[tuple[float, float, str]]:
     """``(start, end, text)`` per cue. TTS pace is close to uniform per character, so each sentence
-    gets its share of the audio by character count; long sentences are split at clause boundaries."""
+    gets its share of the audio by character count; long sentences are split at clause boundaries. With
+    ``split_words`` a clause still longer than ``max_chars`` is cut at word boundaries too (short, readable chunks)."""
     sents = [s.strip() for s in _SENT.split(narration.strip()) if s.strip()]
     cues: list[str] = []
     for s in sents:
@@ -265,6 +287,8 @@ def caption_cues(narration: str, duration: float, *, max_chars: int = 70) -> lis
             cur = f"{cur} {piece}".strip()
         if cur:
             parts.append(cur)
+        if split_words:
+            parts = [c for p in parts for c in (_word_chunks(p, max_chars) if len(p) > max_chars else [p])]
         cues.extend(parts)
     total = sum(len(c) for c in cues) or 1
     out, t = [], 0.0

@@ -186,7 +186,8 @@ def run(cfg: Config) -> int:
         if s.format != "story" and not out.exists():
             try:
                 interactive.render(work=work, name=name, index=k, background=backs[k].local, audio=a, width=cfg.width,
-                                   height=cfg.height, fps=cfg.fps)
+                                   height=cfg.height, fps=cfg.fps, captions=cfg.captions,
+                                   caption_y=cfg.caption_y_interactive, caption_scale=cfg.caption_scale)
             except Exception as exc:  # noqa: BLE001
                 log.exception("short %d failed", k + 1)
                 print(f"! short {k + 1} render failed ({exc})", flush=True)
@@ -195,7 +196,9 @@ def run(cfg: Config) -> int:
         if library and not out.exists():
             try:
                 segments.build_background_short(work=work, name=name, text=s.body, audio=a, background=backs[k].local,
-                                                width=cfg.width, height=cfg.height, fps=cfg.fps, skip_words=SKIP_WORDS)
+                                                width=cfg.width, height=cfg.height, fps=cfg.fps, skip_words=SKIP_WORDS,
+                                                captions=cfg.captions, caption_y=cfg.caption_y_story,
+                                                caption_max_chars=cfg.caption_max_chars, caption_scale=cfg.caption_scale)
             except Exception as exc:  # noqa: BLE001
                 log.exception("short %d failed", k + 1)
                 print(f"! short {k + 1} render failed ({exc})", flush=True)

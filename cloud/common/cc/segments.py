@@ -179,10 +179,12 @@ def build_vertical_short(*, work: Path, name: str, text: str, title: str, brand:
 
 def build_background_short(*, work: Path, name: str, text: str, audio: str, background: str, width: int = 1080,
                            height: int = 1920, fps: int = 30, offset: float = 0.0,
-                           skip_words: set[str] | frozenset = frozenset()) -> str:
+                           skip_words: set[str] | frozenset = frozenset(), captions: bool = False,
+                           caption_y: float = 0.5, caption_max_chars: int = 40, caption_scale: float = 0.032) -> str:
     """A vertical Short over ONE continuous background clip (already ``width`` x ``height``, e.g. gameplay): the clip
     from ``offset`` for exactly the narration's length (looped when it is shorter), a few emphasis words on top (never
-    the narration word for word) → ``work/<name>.mp4``."""
+    the narration word for word) → ``work/<name>.mp4``. With ``captions`` the whole narration is shown instead, in
+    short chunks centred at ``caption_y`` (Block Quest Daily, Gian 2026-11-22), and no emphasis words."""
     tmp = work / f"{name}_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     duration = tts.duration_seconds(audio)
@@ -190,8 +192,13 @@ def build_background_short(*, work: Path, name: str, text: str, audio: str, back
         raise RuntimeError("short narration has no duration")
     reel = str(tmp / "reel.mp4")
     sof_render.run(clip_window_cmd(background, reel, offset=offset, seconds=duration, fps=fps), 900)
-    cues, pngs = sof_shorts.emphasis_overlays(sof_shorts.caption_cues(text, duration), tmp, width=width, height=height,
-                                              duration=duration, skip=skip_words)
+    if captions:
+        cues = sof_shorts.caption_cues(text, duration, max_chars=caption_max_chars, split_words=True)
+        pngs = [sof_shorts.caption_png(t, str(tmp / f"cap_{i:03d}.png"), width=width, height=height, scale=caption_scale,
+                                       y=caption_y) for i, (_, _, t) in enumerate(cues)]
+    else:
+        cues, pngs = sof_shorts.emphasis_overlays(sof_shorts.caption_cues(text, duration), tmp, width=width, height=height,
+                                                  duration=duration, skip=skip_words)
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=cues, cue_pngs=pngs, title_png_path=None, credit_png_path=None,
                                           duration=duration, fps=fps), 900)

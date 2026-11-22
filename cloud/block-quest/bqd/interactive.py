@@ -482,14 +482,15 @@ def recent_games(rows: list[dict], *, limit: int = 12) -> list[str]:
 
 # ---------------------------------------------------------------- voice + timeline
 
-def timeline(beats: list[Beat], speech: list[float], *, gap: float = TICK_GAP) -> tuple[list[Cue], float]:
+def timeline(beats: list[Beat], speech: list[float], *, gap: float = TICK_GAP,
+             max_chars: int = 40) -> tuple[list[Cue], float]:
     """Cues for the panel PNGs and the total length: each line's captions spread over its speech (by characters),
     then ``gap``, then one cue per countdown second."""
     cues: list[Cue] = []
     t = 0.0
     for b, d in zip(beats, speech):
         if b.say and d > 0:
-            for s, e, text in sof_shorts.caption_cues(b.say, d):
+            for s, e, text in sof_shorts.caption_cues(b.say, d, max_chars=max_chars, split_words=True):
                 cues.append(Cue(round(t + s, 3), round(t + e, 3), b.panel, text))
             t += d
         end_gap = t + gap
@@ -607,7 +608,8 @@ def _icon_and_words(im, d, lab: dict, cx: float, top: float, bottom: float, *, m
         y += lh
 
 
-def panel_png(panel: dict, out: str, *, width: int, height: int, caption: str = "", count: int = 0) -> str:
+def panel_png(panel: dict, out: str, *, width: int, height: int, caption: str = "", count: int = 0,
+              caption_y: float = 0.68, caption_scale: float = 0.032) -> str:
     """One full-frame RGBA overlay over the gameplay: the round chip ("1/4"), the format's boxes with 1-3 words and an
     icon each, the countdown number, the caption (off by default). Solid boxes with a dark outline and outlined
     capitals, so it reads over any footage; the gameplay stays visible around them.
@@ -723,7 +725,8 @@ def panel_png(panel: dict, out: str, *, width: int, height: int, caption: str = 
         _text_mid(d, cx, cy, str(count), sof_shorts._font(round(H * 0.06)), INK)
 
     if caption:
-        cap = Image.open(sof_shorts.caption_png(caption, out + ".cap.png", width=W, height=H)).convert("RGBA")
+        cap = Image.open(sof_shorts.caption_png(caption, out + ".cap.png", width=W, height=H, scale=caption_scale,
+                                                y=caption_y)).convert("RGBA")
         im.alpha_composite(cap)
         Path(out + ".cap.png").unlink(missing_ok=True)
     im.save(out, "PNG")
@@ -731,10 +734,11 @@ def panel_png(panel: dict, out: str, *, width: int, height: int, caption: str = 
 
 
 def render(*, work: Path, name: str, index: int, background: str, audio: str, width: int = 1080, height: int = 1920,
-           fps: int = 30, captions: bool = False) -> str:
+           fps: int = 30, captions: bool = False, caption_y: float = 0.68, caption_scale: float = 0.032) -> str:
     """The gameplay clip for the whole length, the panel PNG of each cue on top, the voiced beats → ``work/<name>.mp4``.
     No captions by default (Felix 2026-11: never repeat what the narrator says): the panel shows each choice, clue and
-    reward as its key words and icon."""
+    reward as its key words and icon. Gian 2026-11-22 turned captions on for Block Quest Daily (``captions=True``):
+    the spoken line under the panel and the countdown, at ``caption_y``."""
     from cc import segments
 
     tl = json.loads((work / f"s{index}" / "timeline.json").read_text(encoding="utf-8"))
@@ -747,7 +751,8 @@ def render(*, work: Path, name: str, index: int, background: str, audio: str, wi
     pngs, spans = [], []
     for i, c in enumerate(cues):
         pngs.append(panel_png(c.panel, str(tmp / f"panel_{i:03d}.png"), width=width, height=height,
-                              caption=c.caption if captions else "", count=c.count))
+                              caption=c.caption if captions else "", count=c.count, caption_y=caption_y,
+                              caption_scale=caption_scale))
         spans.append((c.start, min(c.end, duration), c.caption))
     out = str(work / f"{name}.mp4")
     sof_render.run(sof_shorts.overlay_cmd(reel, audio, out, cues=spans, cue_pngs=pngs, title_png_path=None, credit_png_path=None,

@@ -40,6 +40,14 @@ class Config:
     width: int = 1080
     height: int = 1920
     fps: int = 30
+    # Gian 2026-11-22: full subtitles on every Short, in the middle of the frame ("people would just read them and
+    # not really focus on the gameplay"). Story Shorts: dead centre. Interactive Shorts: just under the panel and the
+    # countdown circle (56 %), which sit in the upper half. Short chunks so each cue is one or two lines.
+    captions: bool = True
+    caption_y_story: float = 0.50
+    caption_y_interactive: float = 0.68
+    caption_max_chars: int = 40
+    caption_scale: float = 0.036
     clip_seconds: float = 6.0
     clip_slow: float = 1.0
     footage_per_story: int = 4
