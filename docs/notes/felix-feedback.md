@@ -13,10 +13,11 @@ style rules (Felix, 2026-11)". One line per lesson; update a line instead of add
 - NASA `~orig` film transfers and DVD-sourced Archive prints are often anamorphic: force square pixels before any cover-crop or they come out 12-16 % too wide or squeezed.
 - Bound every step of a budgeted stage (search, vision, cut) with one total timeout, and do first the work that fills the most slots.
 - Check footage code against live NASA and Commons from Gian's PC; the mocks hid the rate limit. The cloud session cannot reach either.
+- Name-gated stock finds almost nothing for a broad subject: the first real run (Indian Ocean, 2026-11-21) got 0 clips of the subject and 14 of named things, 25 of 372 slots (7 %); the share comes from the named things.
 
 ## On-screen text
 - Show the key number with its unit ("$14", "7 survivors"), else a first-mentioned name, 1-3 words, a few a minute (`cc.textbudget`); never the sentence.
-- A capitalised word mid-sentence is not a name: quoted dialogue ("They're", "Don't") and nationalities or creeds ("German", "Jew") must never be picked; use the plan's own name list when there is one.
+- A capitalised word mid-sentence is not a name: quoted dialogue ("They're", "Don't") and a nationality or creed on its own ("German", "Jew") must never be picked, but a place that starts with one stays whole ("Indian Ocean", not "Ocean"); use the plan's own name list when there is one.
 - Never show what is already on screen, compared word by word with possessives stripped ("Kai's" repeats "Kai Cenat's"), numbers by their digits.
 - When text is timed by character share, change capitals only, never characters, or the words drift off the voice.
 - When a length cap on captions goes away, make sure long lines wrap instead of running off the frame.
