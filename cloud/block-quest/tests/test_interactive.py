@@ -401,3 +401,15 @@ def test_countdown_ticks_keep_time_and_stay_far_under_the_voice(tmp_path, monkey
     tick_peaks = [_peak(out, c["start"], 1.0) for c in ticks]
     assert voice_peak - max(tick_peaks) >= 18.0, (voice_peak, tick_peaks)
     assert min(tick_peaks) > -45.0                                       # quiet, still heard
+
+
+def test_guess_the_game_clue_3_may_not_repeat_clue_1():
+    p = _params("guess_the_game")
+    assert interactive.same_clue("You can raise a baby or a pet here.", "Raise your pets and a baby.") == {"raise", "pet", "baby"}
+    assert not interactive.same_clue("You start in a quiet forest.", "You chop wood and sell it.")
+    assert not interactive.same_clue("You can raise a baby or a pet here.", "A legendary neon pet is the big dream.")   # one shared word
+    again = json.loads(json.dumps(GTG_OK))
+    again["rounds"][2]["clues"][2] = "Play as a criminal or the police."
+    with pytest.raises(stories.StoryError, match="round 3: clue 3 repeats clue 1"):
+        interactive.validate("guess_the_game", again, p)
+    assert "Clue 1 is only the setting" in interactive.prompt_for("guess_the_game", seed="x", used=[])[0]

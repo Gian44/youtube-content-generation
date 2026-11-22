@@ -177,6 +177,25 @@ def _name_words(game: str) -> set[str]:
     return {w.rstrip("s") for w in re.findall(r"[a-z]+", game.lower()) if len(w) >= 4 and w not in GENERIC_NAME_WORDS}
 
 
+# words that carry no fact of their own, for comparing two clues
+_CLUE_FILLER = set("""your with that this they them their there here have from into what when where while will
+    would could every other more most some many much very just also only then than players player game games roblox
+    around about over under after before each these those thing things the and you can are for has get got one its
+    his her our out all any who how big new own not but""".split())
+
+
+def _fact_words(clue: str) -> set[str]:
+    return {w.rstrip("s") for w in re.findall(r"[a-z]+", clue.lower()) if len(w) >= 3 and w not in _CLUE_FILLER}
+
+
+def same_clue(a: str, b: str) -> set[str]:
+    """The words two clues share when they say the same thing: at least 2, and at least half of the shorter clue's
+    fact words (seen 2026-11-20: clue 3 repeated clue 1). Empty when they are different clues."""
+    wa, wb = _fact_words(a), _fact_words(b)
+    both = wa & wb
+    return both if len(both) >= 2 and len(both) * 2 >= min(len(wa), len(wb)) else set()
+
+
 def prompt_for(fmt: str, *, seed: str, used: list[str], recent_games: list[str] | None = None) -> tuple[str, dict]:
     """(prompt, params) for one interactive Short; ``params`` are what the validator checks against."""
     rng = _rng(fmt + "|" + seed)
@@ -208,6 +227,8 @@ Return JSON:
 (copy the name exactly): {json.dumps(pool)}.
 For each game write three spoken clues, vaguest first; the third makes it easy.
 Rules:
+- Clue 1 is only the setting or the mood (where you are, how it starts): never the game's main activity or its
+  famous item. Each later clue adds a new fact; clue 3 never says clue 1 again in other words.
 - Each clue is 5 to 9 words, a plain statement ("You can adopt a baby or a pet.").
 - Never use the game's name or any word of it, not even in another form.
 - Use only well-known features you are completely sure of and that have been in the game for years: what players
@@ -343,6 +364,9 @@ def validate(fmt: str, data, params: dict) -> dict:
                 leak = _name_words(game) & {w.rstrip("s") for w in re.findall(r"[a-z]+", c.lower())}
                 if leak:
                     errors.append(f"round {i} clue {k} gives the name away ({', '.join(sorted(leak))})")
+            if len(clues) == 3 and same_clue(clues[0], clues[2]):
+                errors.append(f"round {i}: clue 3 repeats clue 1 ({', '.join(sorted(same_clue(clues[0], clues[2])))}); "
+                              "give a new fact")
             clues = [c if c[-1:] in ".!" else c + "." for c in clues]
             out_rounds.append({"game": game, "clues": clues,
                                "labels": [label(c.get("short"), c.get("icon"), say, avoid=_name_words(game),
