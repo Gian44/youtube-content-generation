@@ -242,7 +242,7 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
                                      target_words=cfg.target_words, acts_range=cfg.acts_range,
                                      shorts_per_film=cfg.shorts_per_film if shorts_enabled else 1,
                                      short_max_words=cfg.short_max_words, noslop_rounds=cfg.noslop_rounds,
-                                     fast_model=cfg.sof.fast_model, cues=cues)
+                                     fast_model=cfg.sof.fast_model, cues=cues, max_words=cfg.max_long_words)
         except planner.PlanError as exc:              # the writer varies run to run: retry tomorrow, never skip the film
             print(f"✗ planning failed: {exc}", flush=True)
             return EXIT_PLAN
@@ -280,6 +280,14 @@ def run(cfg: Config, *, shorts_enabled: bool = True) -> int:
     (work / "chapters.json").write_text(json.dumps(chapters, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"narration: {duration / 60:.1f} min · {words / max(0.1, duration / 60):.0f} wpm · {len(flat)} beats · "
           f"{len(chapters)} chapters", flush=True)
+    limit = cfg.max_long_seconds
+    if limit and not cfg.is_smoke and duration > limit:
+        # Backstop before the 6-minute render and the upload: over 15:00 YouTube abandons the video on an unverified
+        # channel ("Video is too long", both Plan 9 uploads 2026-11-22). Drop the plan so the next run writes a shorter one.
+        print(f"✗ narration {duration / 60:.1f} min is over the {limit / 60:.1f}-min cap (channel not verified for "
+              f">15-min videos); plan dropped, the next run rewrites it shorter", flush=True)
+        plan_path.unlink(missing_ok=True)
+        return EXIT_PLAN
     short_audio: list[str] = []
     short_durs: list[list[float]] = []
     for k, s in enumerate(plan.shorts if shorts_enabled else []):

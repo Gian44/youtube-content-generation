@@ -16,7 +16,7 @@ def test_thumbnail_config_and_beat_timing_helpers(tmp_path, monkeypatch):
     assert thumbnail.trim_bars(boxed).size == (640, 268)
     assert thumbnail.trim_bars(Image.new("RGB", (64, 64), (0, 0, 0))).size == (64, 64)   # an all-black frame is left alone
     c = config.Config()
-    assert 230 <= c.words_per_minute <= 250 and 3900 <= c.target_words <= 4300 and c.minutes == 17   # faster than the samples
+    assert 230 <= c.words_per_minute <= 250 and 2800 <= c.target_words <= 3100 and c.minutes == 17   # capped under 15:00 (tests/test_length_cap.py)   # faster than the samples
     assert not c.film_audio and c.music_enabled                                     # muted footage over the quiet bed
     # each beat's spoken seconds, scaled to the assembled narration, split back per act
     monkeypatch.setattr(render.tts, "duration_seconds", lambda p: {"a": 2.0, "b": 3.0, "c": 5.0}[p])

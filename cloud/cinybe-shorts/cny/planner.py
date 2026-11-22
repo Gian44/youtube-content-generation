@@ -347,7 +347,7 @@ def _cap_short(s: dict, cap: int) -> None:
 
 
 def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, shorts_per_film: int, short_max_words: int,
-                     people: list[dict] | None = None) -> dict:
+                     people: list[dict] | None = None, max_words: int | None = None) -> dict:
     errors: list[str] = []
     if not isinstance(data, dict):
         raise PlanError("scripts must be a JSON object")
@@ -383,7 +383,14 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
         errors.append(f"long_form.sections must have {len(acts)} entries (one per act), got {len(sections)}")
     total = sum(len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict))
     lo_w, hi_w = int(LONG_FORM_TOLERANCE[0] * target_words), int(LONG_FORM_TOLERANCE[1] * target_words)
-    if not (lo_w <= total <= hi_w):
+    if max_words:                       # hard ceiling: over it the video runs past YouTube's 15:00 limit (unverified channel)
+        hi_w = min(hi_w, max_words)
+    if total > hi_w:
+        counts = [len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict)]
+        errors.append(f"long_form total words {total} is over the maximum of {hi_w} (target {target_words}); the video "
+                      f"must stay under 15 minutes. Your sections had {', '.join(map(str, counts))} words. Cut at least "
+                      f"{total - hi_w} words: tighten the longest sections and merge or drop minor beats; keep every act")
+    elif total < lo_w:
         msg = (f"long_form total words {total} outside {lo_w}-{hi_w} (target {target_words}); aim for about "
                f"{target_words // max(1, len(acts))} words per section")
         if total < lo_w:
@@ -474,7 +481,8 @@ def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, m
 
 def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, duration: float, plot_text: str = "",
               target_words: int, acts_range: tuple[int, int], shorts_per_film: int, short_max_words: int,
-              noslop_rounds: int = 1, fast_model: str | None = None, dialogue_max_chars: int = 60000, cues=None) -> FilmPlan:
+              noslop_rounds: int = 1, fast_model: str | None = None, dialogue_max_chars: int = 60000, cues=None,
+              max_words: int | None = None) -> FilmPlan:
     acts_min, acts_max = acts_range
     reference = (f"A published plot summary, for reference only (the transcript decides what is on screen):\n{plot_text[:6000]}\n"
                  if plot_text.strip() else "")
@@ -497,7 +505,7 @@ def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, durati
     try:
         scripts = _call(llm, scripts_prompt, SCRIPTS_SYSTEM,
                         lambda d: validate_scripts(d, acts, film=title, target_words=target_words, shorts_per_film=shorts_per_film,
-                                                   short_max_words=short_max_words, people=people),
+                                                   short_max_words=short_max_words, people=people, max_words=max_words),
                         temperature=0.5, max_tokens=max(8000, int(target_words * 2.5)))
     except LLMError as exc:
         raise PlanError(f"scripts call failed: {exc}") from exc

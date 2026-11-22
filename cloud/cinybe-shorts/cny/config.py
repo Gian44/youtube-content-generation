@@ -20,6 +20,8 @@ VOICE_TEMPO = 1.15              # Gian 2026-11-08 "make it faster to retain audi
 VOICE_TIGHTEN = ("silenceremove=start_periods=1:start_threshold=-42dB:start_silence=0.05:"
                  "stop_periods=-1:stop_duration=0.12:stop_threshold=-42dB:stop_silence=0.1")
 WORDS_PER_MINUTE = round(NATURAL_WPM * VOICE_TEMPO * PAUSE_GAIN)
+SLOWEST_WPM = 215               # slowest finished narration seen: 225-242 wpm (Plan 9 runs, 2026-11-22) less a margin
+YT_UNVERIFIED_MAX_SECONDS = 900  # YouTube abandons uploads over 15:00 on a channel without phone verification
 SMOKE_MAX_MINUTES = 3           # at/below this the run is a smoke test: always unlisted, ledger untouched
 DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this channel (Sleep On Facts owns the
                                 # free Gemini TTS quota); env TTS_BACKEND=gemini + GEMINI_API_KEY_CINYBE flips it
@@ -28,6 +30,9 @@ DEFAULT_TTS_BACKEND = "pocket"  # Gian 2026-11-07: fallback voice F for this cha
 @dataclass
 class Config:
     minutes: int = 17                   # long recap target: ~20 min (Gian 2026-11-08), told faster → the same story in ~17
+    max_long_minutes: float = 14.5      # hard cap on the long recap: the channel is not phone-verified, so YouTube
+                                        # abandons anything over 15:00 ("Video is too long": both Plan 9 uploads,
+                                        # 2026-11-22). Env CNY_MAX_LONG_MINUTES=0 lifts it once the channel is verified.
     film: str | None = None             # force a film (with --year); otherwise the next one in films.yml
     year: int | None = None
     privacy: str = "public"
@@ -105,8 +110,28 @@ class Config:
     sof: SofConfig = field(default_factory=SofConfig)
 
     @property
+    def target_minutes(self) -> float:
+        """The length the writer aims for: ``minutes``, pulled under the cap with room for the 1.3x tolerance."""
+        if self.max_long_minutes > 0:
+            return min(float(self.minutes), self.max_long_minutes * 0.85)
+        return float(self.minutes)
+
+    @property
     def target_words(self) -> int:
-        return int(self.minutes * self.words_per_minute)
+        return int(self.target_minutes * self.words_per_minute)
+
+    @property
+    def max_long_words(self) -> int | None:
+        """Most words the long recap may have so it stays under ``max_long_minutes`` even at the slowest pace."""
+        if self.max_long_minutes <= 0:
+            return None
+        return int(self.max_long_minutes * SLOWEST_WPM)
+
+    @property
+    def max_long_seconds(self) -> float | None:
+        if self.max_long_minutes <= 0:
+            return None
+        return min(self.max_long_minutes * 60 + 20, YT_UNVERIFIED_MAX_SECONDS - 5)
 
     @property
     def is_smoke(self) -> bool:
@@ -120,7 +145,7 @@ class Config:
     @property
     def acts_range(self) -> tuple[int, int]:
         """17 min → 13–19 acts (~210–310 words each at ~240 wpm); 10 min → 8–11; a 3-minute smoke → 4–5."""
-        hi = max(5, min(24, round(self.minutes * 1.1)))
+        hi = max(5, min(24, round(self.target_minutes * 1.1)))
         return max(4, hi - min(6, max(1, hi // 3))), hi
 
     @classmethod
@@ -143,6 +168,8 @@ class Config:
         cfg.r2_access_key_id = os.environ.get("R2_ACCESS_KEY_ID", cfg.r2_access_key_id)
         cfg.r2_secret_access_key = os.environ.get("R2_SECRET_ACCESS_KEY", cfg.r2_secret_access_key)
         cfg.r2_bucket = os.environ.get("R2_BUCKET") or cfg.r2_bucket
+        if os.environ.get("CNY_MAX_LONG_MINUTES"):
+            cfg.max_long_minutes = float(os.environ["CNY_MAX_LONG_MINUTES"])
         cfg.opensubtitles_api_key = os.environ.get("OPENSUBTITLES_API_KEY", "")
         cfg.opensubtitles_username = os.environ.get("OPENSUBTITLES_USERNAME", "")
         cfg.opensubtitles_password = os.environ.get("OPENSUBTITLES_PASSWORD", "")
