@@ -792,5 +792,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44910185443"
+  },
+  {
+    "date": "2026-11-22",
+    "kind": "video",
+    "film": "Plan 9 from Outer Space",
+    "year": 1959,
+    "theme": "Public domain classics",
+    "topic": "Plan 9 from Outer Space (1959)",
+    "video_id": "r4fgWoLE3dQ",
+    "title": "Aliens Raise the Dead From Their Graves to Stop Humans From Blowing Up the Universe",
+    "privacy": "public",
+    "uploaded_at": "2026-11-22T18:33:23+00:00",
+    "duration_seconds": 806,
+    "words": 3005,
+    "acts": 13,
+    "transcript": "whisper",
+    "cues": 999,
+    "plot_reference": true,
+    "beats": 118,
+    "shots": 325,
+    "film_file": "archive.org/plan-9-from-outer-space_202009/Plan 9 from Outer Space.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "-m6CKXeUuTM",
+        "title": "He Walks Alone Into a Graveyard Where Two Men Were Torn Apart #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-22T19:33:23Z",
+        "act_index": 2
+      },
+      {
+        "video_id": "dBGYz-dd2Qo",
+        "title": "A Pilot Flies Away While the Dead Rise Toward His Wife #Shorts",
+        "seconds": 27,
+        "publish_at": "2026-11-23T19:33:23Z",
+        "act_index": 6
+      },
+      {
+        "video_id": "7ZCP--HnZzQ",
+        "title": "Armed Men Board a Hidden Saucer and Learn Why It Landed #Shorts",
+        "seconds": 29,
+        "publish_at": "2026-11-24T19:33:23Z",
+        "act_index": 11
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 3,
+        "after": 0,
+        "rewritten": 2
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45052881371"
   }
 ]
