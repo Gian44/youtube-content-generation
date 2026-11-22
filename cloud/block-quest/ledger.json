@@ -1012,5 +1012,72 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/44931093035"
+  },
+  {
+    "date": "2026-11-22",
+    "kind": "shorts",
+    "topic": "3 shorts: pick_one, lucky_hatch, would_you_rather",
+    "video_id": "BNPNBmKRsxA",
+    "stories": [
+      {
+        "video_id": "BNPNBmKRsxA",
+        "title": "Roblox Pick One: Doors and Potions #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick a door: one, two, or three.",
+        "words": 59,
+        "seconds": 28,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_023.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "lOOa6fl4Y90",
+        "title": "My Last Egg Became My Friend's Dragon #roblox #Shorts",
+        "format": "story",
+        "category": "lucky_hatch",
+        "persona": "excited",
+        "hook": "Please be a Cat, please be a Cat, I typed, because my last egg of the night was shaking on my screen.",
+        "words": 133,
+        "seconds": 40,
+        "publish_at": "2026-11-23T01:58:31Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_025.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "k8cUJig3Zm4",
+        "title": "Roblox Would You Rather: Lucky Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather hatch a rare pet from your very first egg, or find a secret hidden room in every obby?",
+        "words": 97,
+        "seconds": 40,
+        "publish_at": "2026-11-23T09:58:31Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_050.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45051953513"
   }
 ]
