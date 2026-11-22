@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 import httpx
+import pytest
+from sof import images
 from sof.images import collect_urls, download_all, verify_relevance, PEXELS_WIDTH
 
 
@@ -283,3 +285,42 @@ def test_confirm_thumbnail_reads_the_verdict_and_tolerates_errors(tmp_path):
     boom = httpx.MockTransport(lambda req: httpx.Response(500))
     assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="k", transport=boom) is None
     assert images.confirm_thumbnail(str(p), subject="Honey Bees", api_key="") is None
+
+
+def test_wikimedia_api_429_is_waited_out_and_the_call_repeated(monkeypatch):
+    slept = []
+    monkeypatch.setattr(images.time, "sleep", slept.append)
+    hits = []
+
+    def handler(req):
+        hits.append(str(req.url))
+        if len(hits) == 1:
+            return httpx.Response(429, headers={"retry-after": "7"}, text="Your bot is making too many requests")
+        return httpx.Response(200, json={"query": {"pages": []}})
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        assert images._api(c, images.ENWIKI_API, action="query", titles="Ganges") == {"query": {"pages": []}}
+    assert len(hits) == 2 and any(6.5 <= w <= 7.0 for w in slept)       # the second try waits for Retry-After
+
+
+def test_wikimedia_api_gives_up_after_three_429s(monkeypatch):
+    monkeypatch.setattr(images.time, "sleep", lambda s: None)
+    hits = []
+
+    def handler(req):
+        hits.append(1)
+        return httpx.Response(429)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(httpx.HTTPStatusError):
+            images._api(c, images.COMMONS_API, action="query")
+    assert len(hits) == images.WIKI_API_TRIES
+
+
+def test_wikimedia_api_calls_take_turns(monkeypatch):
+    monkeypatch.setattr(images, "WIKI_API_GAP", 0.25)
+    slept = []
+    monkeypatch.setattr(images.time, "sleep", slept.append)
+    with httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, json={}))) as c:
+        for _ in range(3):
+            images._api(c, images.ENWIKI_API, action="query")
+    # the first goes at once; the clock stands still here (sleep is a stub), so the third is two gaps away
+    assert len(slept) == 2 and 0.2 <= slept[0] <= 0.25 and 0.45 <= slept[1] <= 0.5

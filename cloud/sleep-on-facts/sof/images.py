@@ -20,6 +20,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -265,11 +266,48 @@ def collect_urls(queries: list[str], *, target: int, pexels_key: str, pixabay_ke
 
 # ------------------------------------------------------------------ Wikimedia Commons
 
+# 2026-11-22, from six daily runs: once the Wikimedia APIs answer 429 ("Your bot is making too many requests") every
+# later lookup failed at once, because nothing waited: 269 such answers left 14 of 80 named things with photos
+# (2026-11-21), 155 left 9 of 52, and the one run with none had 52 of 67. Every API call (en.wikipedia, Commons,
+# Wikidata) now takes a turn ``WIKI_API_GAP`` apart, shared by all threads, and a 429 is waited out (``Retry-After``,
+# else 11 s, at most 30 s) by everyone before the same call is tried again.
+WIKI_API_GAP = 0.25
+WIKI_API_TRIES = 3
+_api_lock = threading.Lock()
+_api_at = [0.0]
+_api_waits = [0]
+
+
+def _retry_after(headers) -> float:
+    wait = str(headers.get("retry-after") or "")
+    return min(30.0, float(wait)) if wait.isdigit() else 11.0
+
+
+def _wiki_get(c: httpx.Client, url: str, params: dict) -> httpx.Response:
+    """One paced GET to a Wikimedia API; raises ``httpx.HTTPStatusError`` when the last try still fails."""
+    for attempt in range(WIKI_API_TRIES):
+        with _api_lock:
+            now = time.monotonic()
+            start = max(now, _api_at[0])
+            _api_at[0] = start + WIKI_API_GAP
+        if start > now:
+            time.sleep(start - now)
+        r = c.get(url, params=params)
+        if r.status_code != 429 or attempt == WIKI_API_TRIES - 1:
+            break
+        wait = _retry_after(r.headers)
+        with _api_lock:
+            _api_at[0] = max(_api_at[0], time.monotonic() + wait)
+            _api_waits[0] += 1
+            n = _api_waits[0]
+        log.info("wikimedia api 429: everyone waits %.0f s (wait %d of this run)", wait, n)
+    r.raise_for_status()
+    return r
+
+
 def _api(c: httpx.Client, api: str, **params) -> dict:
     params.update(format="json", formatversion="2")
-    r = c.get(api, params=params)
-    r.raise_for_status()
-    return r.json()
+    return _wiki_get(c, api, params).json()
 
 
 def _meta(md: dict, key: str) -> str:
@@ -331,8 +369,7 @@ def commons_category(c: httpx.Client, wiki_title: str) -> str | None:
     qid = next(((p.get("pageprops") or {}).get("wikibase_item") for p in pages if (p.get("pageprops") or {}).get("wikibase_item")), None)
     if not qid:
         return None
-    r = c.get(WIKIDATA_API, params={"action": "wbgetclaims", "entity": qid, "property": "P373", "format": "json"})
-    r.raise_for_status()
+    r = _wiki_get(c, WIKIDATA_API, {"action": "wbgetclaims", "entity": qid, "property": "P373", "format": "json"})
     claims = (r.json().get("claims") or {}).get("P373") or []
     for cl in claims:
         v = ((cl.get("mainsnak") or {}).get("datavalue") or {}).get("value")
