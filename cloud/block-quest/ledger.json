@@ -1079,5 +1079,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45051953513"
+  },
+  {
+    "date": "2026-11-23",
+    "kind": "shorts",
+    "topic": "3 shorts: guess_the_game, helping_a_noob, would_you_rather",
+    "video_id": "pOPZ0Gc1tcs",
+    "stories": [
+      {
+        "video_id": "pOPZ0Gc1tcs",
+        "title": "Guess the Roblox Game Before the Timer #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Brookhaven RP",
+          "Jailbreak",
+          "Theme Park Tycoon 2"
+        ],
+        "words": 88,
+        "seconds": 39,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_004.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "SiU0mCgBXE4",
+        "title": "The Noob Stuck in the Bakery Fountain #roblox #Shorts",
+        "format": "story",
+        "category": "helping_a_noob",
+        "persona": "warm",
+        "hook": "\"Press space, you're stuck in the fountain,\" a player named CrumbleTaco typed, and I'd been stuck there for six minutes.",
+        "words": 140,
+        "seconds": 40,
+        "publish_at": "2026-11-24T06:15:58Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_028.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "FO1u3GPXmno",
+        "title": "Roblox Would You Rather: Impossible Choices Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather adopt a tiny dragon that sneezes sparkles, or adopt a giant bunny that you can ride?",
+        "words": 92,
+        "seconds": 40,
+        "publish_at": "2026-11-24T14:15:58Z",
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_019.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45276206836"
   }
 ]
