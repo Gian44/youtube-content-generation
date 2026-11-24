@@ -1151,5 +1151,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45276206836"
+  },
+  {
+    "date": "2026-11-24",
+    "kind": "shorts",
+    "topic": "3 shorts: guess_the_game, obby_fails, pick_one",
+    "video_id": "5SvYakaceAM",
+    "stories": [
+      {
+        "video_id": "5SvYakaceAM",
+        "title": "Guess the Roblox Game Before the Timer #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Epic Minigames",
+          "Dress to Impress",
+          "Grow a Garden"
+        ],
+        "words": 99,
+        "seconds": 44,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_005.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "FMR2rlzpZSw",
+        "title": "The Player Who Cheered at Checkpoint 90 #roblox #Shorts",
+        "format": "story",
+        "category": "obby_fails",
+        "persona": "funny",
+        "hook": "I sneezed on stage 99 of Sky Stairs Obby, and my avatar jumped right off the last cloud.",
+        "words": 133,
+        "seconds": 44,
+        "publish_at": "2026-11-25T04:47:13Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_021.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "1_8OjwOTpQ0",
+        "title": "Roblox Pick One: Doors and Portals Mix-Up #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick a door: one, two, or three.",
+        "words": 65,
+        "seconds": 30,
+        "publish_at": "2026-11-25T12:47:13Z",
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_000.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45483540261"
   }
 ]
