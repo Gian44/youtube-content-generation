@@ -858,5 +858,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45052881371"
+  },
+  {
+    "date": "2026-11-24",
+    "kind": "video",
+    "film": "The 39 Steps",
+    "year": 1935,
+    "theme": "Public domain classics",
+    "topic": "The 39 Steps (1935)",
+    "video_id": "bAeAUc-4EYo",
+    "title": "Man Is Framed for Murder After a Dying Spy Hides Britain's Biggest Secret in His Flat",
+    "privacy": "public",
+    "uploaded_at": "2026-11-24T12:12:14+00:00",
+    "duration_seconds": 768,
+    "words": 3028,
+    "acts": 13,
+    "transcript": "whisper",
+    "cues": 860,
+    "plot_reference": true,
+    "beats": 102,
+    "shots": 303,
+    "film_file": "archive.org/the-39-steps-1935/The 39 Steps (1935).mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "CEDieGcwmZY",
+        "title": "He Tells the Spy All About the Spy He Is Hunting #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-24T13:12:14Z",
+        "act_index": 3
+      },
+      {
+        "video_id": "sHLe-uqw_fk",
+        "title": "Two Fake Policemen Drive a Handcuffed Man and Woman Into the Night #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-25T13:12:14Z",
+        "act_index": 6
+      },
+      {
+        "video_id": "R1C4dlCPOtA",
+        "title": "A Dying Entertainer Recites Britain's Secret to the Man Hunted for Murder #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-26T13:12:14Z",
+        "act_index": 12
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 10,
+        "after": 2,
+        "rewritten": 8
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 6,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45385615364"
   }
 ]
