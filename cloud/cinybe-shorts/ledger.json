@@ -924,5 +924,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45385615364"
+  },
+  {
+    "date": "2026-11-25",
+    "kind": "video",
+    "film": "Meet John Doe",
+    "year": 1941,
+    "theme": "Public domain classics",
+    "topic": "Meet John Doe (1941)",
+    "video_id": "U2bOGeiOz0s",
+    "title": "Fired Reporter Invents a Man Who Will Jump on Christmas Eve Then a Real Tramp Plays Him",
+    "privacy": "public",
+    "uploaded_at": "2026-11-25T09:59:46+00:00",
+    "duration_seconds": 613,
+    "words": 2428,
+    "acts": 12,
+    "transcript": "archive-asr",
+    "cues": 1134,
+    "plot_reference": true,
+    "beats": 94,
+    "shots": 251,
+    "film_file": "archive.org/meet_john_doe/meet_john_doe.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "s-PHvnuhkzE",
+        "title": "Fired Reporter Invents a Man Who Will Jump on Christmas Eve #Shorts",
+        "seconds": 30,
+        "publish_at": "2026-11-25T10:59:46Z",
+        "act_index": 0
+      },
+      {
+        "video_id": "y0BZVRMmgCg",
+        "title": "The Crowd That Loved Him Turns When the Truth Comes Out #Shorts",
+        "seconds": 25,
+        "publish_at": "2026-11-26T10:59:46Z",
+        "act_index": 9
+      },
+      {
+        "video_id": "B9xYTe3cBIY",
+        "title": "He Climbs to the Roof on Christmas Eve to Die for a Lie #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-27T10:59:46Z",
+        "act_index": 11
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45586963561"
   }
 ]
