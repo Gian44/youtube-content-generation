@@ -81,3 +81,12 @@ def test_writer_font_is_replaced():
     kids = scenes.parse_body("<text x='1' y='1' font-family='Arial'>hi</text>")
     out = scenes.compose(kids, width=10, height=10, upto=1, variant=0, seed=0)
     assert "Arial" not in out and scenes.FONT in out
+
+
+def test_recent_run_is_a_time_window():
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 25, 21, 30, tzinfo=timezone.utc)
+    assert not pipeline.recent_run([{"kind": "short", "date": "2026-11-25", "at": "2026-11-25T13:00:00Z"}], "short", now=now)
+    assert pipeline.recent_run([{"kind": "short", "date": "2026-11-25", "at": "2026-11-25T14:00:00Z"}], "short", now=now)
+    assert not pipeline.recent_run([{"kind": "long", "date": "2026-11-25", "at": "2026-11-25T21:00:00Z"}], "short", now=now)
+    assert pipeline.recent_run([{"kind": "short", "date": "2026-11-25"}], "short", now=now)

@@ -34,6 +34,27 @@ def _run_url() -> str:
     return f"{srv}/{repo}/actions/runs/{rid}" if rid else ""
 
 
+RECENT_HOURS = 8
+
+
+def recent_run(rows: list[dict], kind: str, *, now: datetime) -> bool:
+    """True when a row of ``kind`` was written less than RECENT_HOURS ago (rows without a time: same UTC date).
+    A time window, not the date: a hand-started run in the evening must not cancel the next morning's slot."""
+    for r in rows:
+        if r.get("kind") != kind:
+            continue
+        at = r.get("at")
+        if at:
+            try:
+                if now - datetime.fromisoformat(str(at).replace("Z", "+00:00")) < timedelta(hours=RECENT_HOURS):
+                    return True
+            except ValueError:
+                pass
+        elif str(r.get("date")) == str(now.date()):
+            return True
+    return False
+
+
 def is_long_day(day: date, every: int) -> bool:
     return (day - START).days % max(1, every) == 0
 
@@ -153,8 +174,8 @@ def run(cfg: Config) -> int:
         if kind == "long" and not is_long_day(today, cfg.long_every_days):
             _say(f"{today}: not a long-video day (every {cfg.long_every_days} days from {START}); nothing to do")
             return EXIT_OK
-        if any(str(r.get("date")) == str(today) and r.get("kind") == kind for r in rows):
-            _say(f"already published today's {kind} ({today} UTC); nothing to do")
+        if recent_run(rows, kind, now=now):
+            _say(f"a {kind} run already published in the last {RECENT_HOURS} h; nothing to do")
             return EXIT_OK
 
     yt = None
@@ -232,7 +253,7 @@ def run(cfg: Config) -> int:
         _say(f"{kind} {k + 1} uploaded https://youtu.be/{vid}" + (f" · live at {at}" if at else f" · {cfg.privacy}"))
     if not entries:
         return EXIT_FAIL
-    entry = {"date": str(today), "kind": kind, "topic": " / ".join(e["title"] for e in entries),
+    entry = {"date": str(today), "at": now.strftime("%Y-%m-%dT%H:%M:%SZ"), "kind": kind, "topic": " / ".join(e["title"] for e in entries),
              "video_id": entries[0]["video_id"], "videos": entries, "voice": tts.voice_label(cfg.sof),
              "llm_calls": dict(getattr(llm, "stats", {}) or {}), "run_url": _run_url()}
     if cfg.smoke:
