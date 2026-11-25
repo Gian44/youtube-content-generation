@@ -30,9 +30,13 @@ class Config:
     short_words: tuple = (105, 140)     # ≈ 40-50 s
     batch_long: int = 7                 # scenes per drawing request
     batch_short: int = 9
-    voice: str = "af_bella"             # Kokoro, graded A- by its makers; Block Quest Daily already uses af_heart
+    # Gian 2026-11-25: "use a different voice ... more suited for this kind of content". Claude's pick: an even
+    # blend of Kokoro's two best-graded American men, am_michael (steady, ~115 Hz) and am_puck (lively, ~107 Hz):
+    # a warm, curious male narrator like the genre's leaders, ~4.9 semitones of pitch movement on the test lines
+    # (af_bella 2.7, am_michael alone 3.2), ~178 wpm. af_bella sounded like Block Quest Daily's kid narrator.
+    voice: str = "am_michael:0.5,am_puck:0.5"
     speed_long: float = 1.0
-    speed_short: float = 1.08
+    speed_short: float = 1.05
     gap_long: float = 0.35              # breath after each scene
     gap_short: float = 0.12
     upload_check_seconds: int = 240
