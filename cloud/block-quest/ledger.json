@@ -1223,5 +1223,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45483540261"
+  },
+  {
+    "date": "2026-11-25",
+    "kind": "shorts",
+    "topic": "3 shorts: would_you_rather, sibling_shenanigans, guess_the_game",
+    "video_id": "1s5vs3bRrJU",
+    "stories": [
+      {
+        "video_id": "1s5vs3bRrJU",
+        "title": "Roblox Would You Rather: Roleplay Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather run a busy pizza shop in Work at a Pizza Place, or live in a giant treehouse in Brookhaven?",
+        "words": 94,
+        "seconds": 40,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_045.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "MR3W5lYoNTg",
+        "title": "My Little Brother Took Over My Pizza Shift #roblox #Shorts",
+        "format": "story",
+        "category": "sibling_shenanigans",
+        "persona": "confession",
+        "hook": "My little brother Theo made my avatar dance on the pizza counter for forty minutes before I noticed.",
+        "words": 137,
+        "seconds": 42,
+        "publish_at": "2026-11-26T04:02:24Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_034.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "kk_seGQA2GM",
+        "title": "Name the Roblox Game From 3 Clues #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Adopt Me!",
+          "Natural Disaster Survival",
+          "Bee Swarm Simulator"
+        ],
+        "words": 88,
+        "seconds": 39,
+        "publish_at": "2026-11-26T12:02:24Z",
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_018.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45690367184"
   }
 ]
