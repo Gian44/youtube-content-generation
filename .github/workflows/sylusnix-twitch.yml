@@ -6,10 +6,12 @@ on:
   # sylusnix lane (Claude's pick at Gian's request, 2026-11-19): Twitch streamer rankings only, 3 a day.
   # 15:07 = one GTA 6 ranking (GAME/SINCE defaults below); 03:07 and 09:07 = a general ranking of the verified
   # streamer ranked least recently. Any slot makes nothing on a day with fewer than 5 usable clips.
-  schedule:
-    - cron: "7 15 * * *"
-    - cron: "7 3 * * *"
-    - cron: "7 9 * * *"
+  # Schedule off since 2026-11-25: sylusnix re-launched as stick-figure explainers (sylusnix-explainers.yml); the
+  # clip lane got ~18 views on 22 Shorts under YouTube's 2026-10-01 originality change. Kept for manual runs only.
+  # schedule:
+  #   - cron: "7 15 * * *"
+  #   - cron: "7 3 * * *"
+  #   - cron: "7 9 * * *"
   workflow_dispatch:
     inputs:
       game:

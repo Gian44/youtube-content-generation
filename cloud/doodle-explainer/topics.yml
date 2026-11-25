@@ -1,0 +1,15 @@
+# Categories the question picker draws 3 from each run (seeded by the date). Questions themselves are picked by the
+# writer, never repeated (ledger.json).
+categories:
+  - your body's weird habits (yawning, hiccups, goosebumps, sleep, senses)
+  - myths and old beliefs that turned out true (or famously false)
+  - engineering projects and inventions that almost happened
+  - what would happen if... (physics and survival thought experiments)
+  - animals that break the rules
+  - everyday things with surprising histories (forks, money, calendars, toilets)
+  - psychology of everyday life (why we procrastinate, deja vu, cringe)
+  - space and planets in human terms
+  - ancient people and how they actually lived
+  - food and cooking science
+  - weird laws of nature (why the sky is blue, why ice floats)
+  - the ocean and its extremes
