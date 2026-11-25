@@ -435,7 +435,11 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
         if not text.strip():
             errors.append("long_form section has empty text")
         elif _names_film(text, film):
-            errors.append(f"section {sidx} names the film; the narration never says the film's name")
+            # Logged, not rejected. Many titles are the story's own words or a person's name (The 39 Steps, The
+            # Hitch-Hiker, Royal Wedding, Cyrano de Bergerac, Suddenly): a 3,000-word recap cannot avoid them, and on
+            # 2026-11-23 three runs lost the day to this. The prompt still tells the writer never to say the title;
+            # titles (long form and Shorts) are still checked hard below.
+            log.warning("section %s says the film's title words (%s); kept", sidx, film)
     shorts = data.get("shorts") or []
     if len(shorts) != shorts_per_film:
         errors.append(f"expected exactly {shorts_per_film} shorts, got {len(shorts)}")

@@ -92,8 +92,7 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
         planner.validate_scripts(_scripts(acts, words_per=10), acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
     named = _scripts(acts)
     named["long_form"]["sections"][2]["beats"][0]["text"] = "Inception begins when Cobb " + "word " * 15
-    with pytest.raises(planner.PlanError, match="never says the film's name"):
-        planner.validate_scripts(named, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)
+    planner.validate_scripts(named, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80)  # logged, kept
     dup = _scripts(acts)
     dup["shorts"][1]["act_index"] = 0
     with pytest.raises(planner.PlanError, match="reuses act_index"):
@@ -251,3 +250,14 @@ def test_act_dialogue_from_cues_stamps_every_line():
     out = planner.act_dialogue_cues(cues, [{"index": 0, "start_seconds": 0, "end_seconds": 70},
                                            {"index": 1, "start_seconds": 3700, "end_seconds": 3800}])
     assert "[00:12] Hello." in out and "[01:05] Who are you?" in out and "[1:02:05] Late line." in out
+
+
+def test_narration_may_say_title_words_but_titles_may_not():
+    # The 39 Steps (2026-11-23): the title is the story's own words, so narration saying them is kept, not rejected
+    acts, _ = planner.validate_acts({"acts": _acts(5)}, acts_min=4, acts_max=6, duration=4000)
+    sc = _scripts(acts)
+    sc["long_form"]["sections"][0]["beats"][0]["text"] = "He learns that the 39 Steps is a ring of spies. " + sc["long_form"]["sections"][0]["beats"][0]["text"]
+    planner.validate_scripts(sc, acts, film="The 39 Steps", target_words=300, shorts_per_film=3, short_max_words=80)
+    bad = _scripts(acts, title="The 39 Steps: A Man Runs From the Police Across Scotland")
+    with pytest.raises(planner.PlanError, match="must not name the film"):
+        planner.validate_scripts(bad, acts, film="The 39 Steps", target_words=300, shorts_per_film=3, short_max_words=80)
