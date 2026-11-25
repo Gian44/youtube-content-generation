@@ -81,8 +81,8 @@ def _serialize(el: ET.Element, jitter: float, seed) -> str:
         return _fig(el, jitter, seed)
     attrs = "".join(f' {_local(k)}="{_esc(v)}"' for k, v in el.attrib.items() if _local(k) != "data-at")
     name = _local(el.tag)
-    if name == "text" and "font-family" not in el.attrib:
-        attrs += f' font-family="{FONT}"'
+    if name in ("text", "tspan"):          # one channel font whatever the writer asked for
+        attrs = re.sub(r' font-family="[^"]*"', "", attrs) + (f' font-family="{FONT}"' if name == "text" else "")
     inner = _esc(el.text or "") + "".join(_serialize(c, jitter, seed) + _esc(c.tail or "") for c in el)
     return f"<{name}{attrs}>{inner}</{name}>"
 
@@ -102,7 +102,8 @@ def reveal_times(kids: list[ET.Element]) -> list[float]:
     return sorted(ts)
 
 
-def compose(kids: list[ET.Element], *, width: int, height: int, upto: float, variant: int, seed) -> str:
+def compose(kids: list[ET.Element], *, width: int, height: int, upto: float, variant: int, seed,
+            view: tuple[float, float, float, float] | None = None) -> str:
     """Full SVG document of the elements visible at fraction ``upto``, boil variant ``variant``."""
     rng = random.Random(f"{seed}|{variant}")
     jit = 2.2 if variant else 0.0
@@ -116,8 +117,41 @@ def compose(kids: list[ET.Element], *, width: int, height: int, upto: float, var
             continue
         dx, dy = (rng.uniform(-jit, jit), rng.uniform(-jit, jit)) if jit else (0.0, 0.0)
         out.append(f'<g transform="translate({dx:.2f},{dy:.2f})">{_serialize(el, 2.0 if variant else 0.8, f"{seed}|{variant}|{i}")}</g>')
-    return (f'<svg xmlns="{SVG_NS}" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
-            f'<rect width="{width}" height="{height}" fill="{PAPER}"/>' + "".join(out) + "</svg>")
+    vx, vy, vw, vh = view or (0, 0, width, height)
+    return (f'<svg xmlns="{SVG_NS}" width="{width}" height="{height}" viewBox="{vx:.1f} {vy:.1f} {vw:.1f} {vh:.1f}">'
+            f'<rect x="{vx - 50:.1f}" y="{vy - 50:.1f}" width="{vw + 100:.1f}" height="{vh + 100:.1f}" fill="{PAPER}"/>'
+            + "".join(out) + "</svg>")
+
+
+def auto_view(kids: list[ET.Element], *, width: int, height: int, max_zoom: float = 2.0,
+              margin: float = 0.07) -> tuple[float, float, float, float] | None:
+    """Felix 2026-11 (no empty space): a view box that frames everything the scene ever shows, at the canvas's
+    aspect ratio, so a drawing that only fills the middle of the frame is scaled up to fill it. None = keep."""
+    import numpy as np
+    from PIL import Image
+
+    k = 6
+    tmp = Path("/tmp") / f"dx_view_{random.random():.9f}.png"
+    try:
+        render_png(compose(kids, width=width, height=height, upto=1.0, variant=0, seed=0), str(tmp),
+                   width=width // k, height=height // k)
+        a = np.asarray(Image.open(tmp).convert("RGB")).astype(int)
+    finally:
+        tmp.unlink(missing_ok=True)
+    paper = np.array([int(PAPER[i:i + 2], 16) for i in (1, 3, 5)])
+    ys, xs = np.nonzero(np.abs(a - paper).sum(axis=2) > 40)
+    if len(xs) == 0:
+        return None
+    x0, x1, y0, y1 = xs.min() * k, (xs.max() + 1) * k, ys.min() * k, (ys.max() + 1) * k
+    bw, bh = x1 - x0, y1 - y0
+    vw = max(bw * (1 + 2 * margin), bh * (1 + 2 * margin) * width / height, width / max_zoom)
+    if vw > width * 0.93:
+        return None
+    vh = vw * height / width
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    vx = min(max(cx - vw / 2, 0), width - vw)
+    vy = min(max(cy - vh / 2, 0), height - vh)
+    return (vx, vy, vw, vh)
 
 
 def render_png(svg: str, out: str, *, width: int, height: int) -> str:
@@ -132,13 +166,15 @@ def render_scene(body: str, out_dir: str | Path, *, width: int, height: int, see
     kids = parse_body(body)
     d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
+    view = auto_view(kids, width=width, height=height)
     states = []
     for si, at in enumerate(reveal_times(kids)):
         pngs = []
         for v in range(BOIL_VARIANTS):
             p = d / f"st{si}_v{v}.png"
             if not p.exists():
-                render_png(compose(kids, width=width, height=height, upto=at, variant=v, seed=seed), str(p), width=width, height=height)
+                render_png(compose(kids, width=width, height=height, upto=at, variant=v, seed=seed, view=view), str(p),
+                           width=width, height=height)
             pngs.append(str(p))
         states.append((at, pngs))
     return states

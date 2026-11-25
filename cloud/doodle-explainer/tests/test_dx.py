@@ -67,3 +67,17 @@ def test_build_needs_scenes():
     assert len(s.scenes) == 5 and s.words == 10
     back = writer.Script.from_dict(s.to_dict())
     assert back.scenes[2].say == "line 2"
+
+
+def test_auto_view_zooms_small_drawings_and_keeps_full_ones():
+    small = scenes.parse_body("<circle cx='540' cy='960' r='150' fill='#f6c343'/>")
+    v = scenes.auto_view(small, width=1080, height=1920)
+    assert v and abs(v[2] - 540) < 1 and abs(v[3] / v[2] - 1920 / 1080) < 1e-6      # capped at 2x
+    full = scenes.parse_body("<rect x='20' y='20' width='1040' height='1880' fill='#58a65c'/>")
+    assert scenes.auto_view(full, width=1080, height=1920) is None
+
+
+def test_writer_font_is_replaced():
+    kids = scenes.parse_body("<text x='1' y='1' font-family='Arial'>hi</text>")
+    out = scenes.compose(kids, width=10, height=10, upto=1, variant=0, seed=0)
+    assert "Arial" not in out and scenes.FONT in out

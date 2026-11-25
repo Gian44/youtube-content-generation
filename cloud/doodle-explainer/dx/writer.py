@@ -98,8 +98,9 @@ def style_guide(kind: str) -> str:
     from dx import figures
 
     w, h = _canvas(kind)
-    vertical = ("\n- VERTICAL phone frame: keep the action between y=300 and y=1500 (the top has the phone's status bar,"
-                " the bottom 400 has YouTube's buttons and title). Stack things vertically, not side by side.") if kind == "short" else ""
+    vertical = ("\n- VERTICAL phone frame, and use ALL of it: content spans y=220 to y=1560 (the bottom 360 has YouTube's"
+                " buttons). Stack 2-3 big things vertically (an object on top, the figure below, a label between), never"
+                " a small landscape picture in the middle with empty paper above and below. Objects at least 500 wide.") if kind == "short" else ""
     return STYLE_GUIDE.format(w=w, h=h, fig_scale="1.6 to 2.6" if kind == "long" else "2.2 to 3.4",
                               poses=", ".join(figures.POSES), faces=", ".join(figures.FACES), vertical=vertical,
                               min_font=48 if kind == "long" else 64)
