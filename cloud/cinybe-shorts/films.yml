@@ -65,22 +65,24 @@ themes:
       - {title: Plan 9 from Outer Space, year: 1959, archive: plan-9-from-outer-space_202009}
       - {title: The 39 Steps, year: 1935, archive: the-39-steps-1935}
       - {title: Meet John Doe, year: 1941, archive: meet_john_doe}
-      - {title: My Man Godfrey, year: 1936, archive: my-man-godfrey-1936-criterion-bluray.-1080p.-dts}
       - {title: Dementia 13, year: 1963, archive: dementia.-13.1963}
       - {title: The Terror, year: 1963, archive: TheTerror}
       - {title: Beat the Devil, year: 1953, archive: beat-the-devil-1953_202406}
       - {title: Suddenly, year: 1954, archive: suddenly}
       - {title: The Hitch-Hiker, year: 1953, archive: Hitch_Hiker}
       - {title: Kansas City Confidential, year: 1952, archive: kansascityconfidencial}
-      - {title: A Star Is Born, year: 1937, archive: a-star-is-born-1937-720p-blu-rayx-64}
       - {title: Nothing Sacred, year: 1937, archive: nothing-sacred-1937_202405}
       - {title: "McLintock!", year: 1963, archive: mclintok_widescreen}
       - {title: Royal Wedding, year: 1951, archive: royal_wedding}
       - {title: Penny Serenade, year: 1941, archive: penny_serenade}
       - {title: Of Human Bondage, year: 1934, archive: humanbondage}
-      - {title: The Man with the Golden Arm, year: 1955, archive: the-man-with-the-golden-arm-1955-1080p-bluray-x265}
       - {title: Dressed to Kill, year: 1946, archive: dressed_to_kill}
       - {title: Terror by Night, year: 1946, archive: TerrorByNight1946}
+      # Taken out 2026-11-25: prints ripped from a commercial Blu-ray (Criterion, x264/x265 Blu-ray rips). A restored
+      # Blu-ray is exactly what a rights holder registers with Content ID (His Girl Friday drew a Sony Pictures claim),
+      # and the Archive item is the disc itself. Bring one back only with an older broadcast/DVD-era print.
+      #   My Man Godfrey (1936, my-man-godfrey-1936-criterion-bluray.-1080p.-dts) · A Star Is Born (1937,
+      #   a-star-is-born-1937-720p-blu-rayx-64) · The Man with the Golden Arm (1955, the-man-with-the-golden-arm-1955-1080p-bluray-x265)
       # Taken out 2026-11-25: Hitchcock's British films are NOT public domain in the US (copyright restored in 1996
       # under the URAA). The 39 Steps recap was claimed and blocked in some territories the day it went up and was
       # set private with its Shorts. British and other non-US films stay out of this list.
