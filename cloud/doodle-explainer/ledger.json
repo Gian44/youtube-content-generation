@@ -34,5 +34,31 @@
       "gemini": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45595901893"
+  },
+  {
+    "date": "2026-11-25",
+    "at": "2026-11-25T10:33:52Z",
+    "kind": "long",
+    "topic": "Why Do We Get Goosebumps? A Fur Coat We Lost",
+    "video_id": "R6u-3lAUEG0",
+    "videos": [
+      {
+        "video_id": "R6u-3lAUEG0",
+        "title": "Why Do We Get Goosebumps? A Fur Coat We Lost",
+        "question": "Why do we get goosebumps?",
+        "category": "animals that break the rules",
+        "words": 1279,
+        "scenes": 43,
+        "seconds": 476,
+        "publish_at": null
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 12,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45595911554"
   }
 ]
