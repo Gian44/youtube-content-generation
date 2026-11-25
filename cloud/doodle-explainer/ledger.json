@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "date": "2026-11-25",
+    "at": "2026-11-25T10:33:40Z",
+    "kind": "short",
+    "topic": "Why Do We Get Goosebumps? The Fur You Lost / Why the Moon never shows us its other face",
+    "video_id": "gggpM1AraIM",
+    "videos": [
+      {
+        "video_id": "gggpM1AraIM",
+        "title": "Why Do We Get Goosebumps? The Fur You Lost",
+        "question": "Why do we get goosebumps?",
+        "category": "your body's weird habits (yawning, hiccups, goosebumps, sleep, senses)",
+        "words": 110,
+        "scenes": 8,
+        "seconds": 37,
+        "publish_at": null
+      },
+      {
+        "video_id": "F0O-l2JEXBU",
+        "title": "Why the Moon never shows us its other face",
+        "question": "Why does the Moon always show us the same face?",
+        "category": "space and planets in human terms",
+        "words": 123,
+        "scenes": 9,
+        "seconds": 43,
+        "publish_at": "2026-11-25T18:33:40Z"
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 10,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45595901893"
+  }
+]
