@@ -67,14 +67,10 @@ themes:
       - {title: Meet John Doe, year: 1941, archive: meet_john_doe}
       - {title: Dementia 13, year: 1963, archive: dementia.-13.1963}
       - {title: The Terror, year: 1963, archive: TheTerror}
-      - {title: Beat the Devil, year: 1953, archive: beat-the-devil-1953_202406}
       - {title: Suddenly, year: 1954, archive: suddenly}
       - {title: The Hitch-Hiker, year: 1953, archive: Hitch_Hiker}
       - {title: Kansas City Confidential, year: 1952, archive: kansascityconfidencial}
       - {title: Nothing Sacred, year: 1937, archive: nothing-sacred-1937_202405}
-      - {title: "McLintock!", year: 1963, archive: mclintok_widescreen}
-      - {title: Royal Wedding, year: 1951, archive: royal_wedding}
-      - {title: Penny Serenade, year: 1941, archive: penny_serenade}
       - {title: Of Human Bondage, year: 1934, archive: humanbondage}
       - {title: Dressed to Kill, year: 1946, archive: dressed_to_kill}
       - {title: Terror by Night, year: 1946, archive: TerrorByNight1946}
@@ -88,13 +84,20 @@ themes:
       # set private with its Shorts. British and other non-US films stay out of this list.
       #   Jamaica Inn (1939, archive: Jamaica_Inn) · Sabotage (1936, archive: Sabotage_1936)
       - {title: Cyrano de Bergerac, year: 1950, archive: Cyrano_DeBergerac}
-      - {title: Life with Father, year: 1947, archive: LifeWithFather}
-      - {title: The Inspector General, year: 1949, archive: the_inspector_general}
       - {title: Made for Each Other, year: 1939, archive: made_for_each_other_film}
-      - {title: Angel and the Badman, year: 1947, archive: angel_and_the_badman}
       - {title: Santa Claus Conquers the Martians, year: 1964, archive: SantaClausConquerstheMartians1964}
       - {title: Teenagers from Outer Space, year: 1959, archive: teenagers_from_outerspace}
       - {title: Reefer Madness, year: 1936, archive: reefer-madness-1936-by-louis-j.-gasnier}
       - {title: "Gulliver's Travels", year: 1939, archive: gullivers_travels1939}
       - {title: "The Brain That Wouldn't Die", year: 1962, archive: the_brain_that_wouldnt_die}
       - {title: The Big Combo, year: 1955, archive: The_Big_Combo_1955}
+      # Higher claim risk, run last (2026-11-25): studios that still own these outside the US and claim on YouTube
+      # (Columbia/Sony, Warner incl. the MGM library, Batjac) or a non-US co-production. His Girl Friday (Columbia) drew
+      # a Sony Pictures claim; the 11 unclaimed recaps so far were independents or small/defunct distributors.
+      - {title: Beat the Devil, year: 1953, archive: beat-the-devil-1953_202406}
+      - {title: "McLintock!", year: 1963, archive: mclintok_widescreen}
+      - {title: Royal Wedding, year: 1951, archive: royal_wedding}
+      - {title: Penny Serenade, year: 1941, archive: penny_serenade}
+      - {title: Life with Father, year: 1947, archive: LifeWithFather}
+      - {title: The Inspector General, year: 1949, archive: the_inspector_general}
+      - {title: Angel and the Badman, year: 1947, archive: angel_and_the_badman}
