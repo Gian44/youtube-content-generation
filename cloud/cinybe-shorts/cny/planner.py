@@ -298,14 +298,30 @@ def _names_film(text: str, film: str) -> bool:
     return any(t[i:i + n] == words for i in range(len(t) - n + 1))
 
 
-def _names_person(text: str, people: list[dict]) -> str | None:
-    """The first person's name (any word of it, 3+ letters) found as a whole word in ``text``."""
+# Words that say who someone is, not what they are called. The acts call lists people as "Professor Jordan" or
+# "Sheriff Watson", and a title that says "the Professor" is what the title rule asks for ("say who they are
+# instead"). Three runs on 2026-11-23 (The 39 Steps) lost the day to titles rejected without naming the word.
+_ROLE_WORDS = frozenset((
+    "the", "man", "woman", "boy", "girl", "old", "young", "mrs", "miss", "mister", "madam", "madame", "sir", "lord",
+    "lady", "doctor", "professor", "nurse", "sheriff", "inspector", "detective", "sergeant", "lieutenant", "captain",
+    "major", "colonel", "general", "officer", "judge", "mayor", "governor", "senator", "president", "reverend",
+    "father", "mother", "sister", "brother", "uncle", "aunt", "king", "queen", "prince", "princess"))
+
+
+def _person_word(text: str, people: list[dict]) -> tuple[str, str] | None:
+    """(name, word) for the first person whose name (any word of it, 3+ letters, role words apart) is in ``text``."""
     words = set(re.findall(r"[a-z][a-z'-]+", text.lower()))
     for p in people or []:
         for part in re.findall(r"[a-z][a-z'-]+", str(p.get("name") or "").lower()):
-            if len(part) >= 3 and part in words and part not in ("the", "man", "mrs", "miss", "mister", "doctor"):
-                return str(p.get("name"))
+            if len(part) >= 3 and part in words and part not in _ROLE_WORDS:
+                return str(p.get("name")), part
     return None
+
+
+def _names_person(text: str, people: list[dict]) -> str | None:
+    """The first person's name (any word of it, 3+ letters) found as a whole word in ``text``."""
+    hit = _person_word(text, people)
+    return hit[0] if hit else None
 
 
 BEAT_MAX_WORDS = 80
@@ -447,8 +463,9 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
             errors.append(f"short {i} has an empty title")
         elif _names_film(st, film):
             errors.append(f"short {i} title must not name the film")
-        elif _names_person(st, people or []):
-            errors.append(f"short {i} title must not use a person's name")
+        elif _person_word(st, people or []):
+            name, word = _person_word(st, people or [])
+            errors.append(f'short {i} title must not use a person\'s name ("{word}", from {name}); say who they are instead')
     if errors:
         raise PlanError("; ".join(errors))
     lf["title"] = title

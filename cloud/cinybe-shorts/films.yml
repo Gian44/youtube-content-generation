@@ -81,8 +81,10 @@ themes:
       - {title: The Man with the Golden Arm, year: 1955, archive: the-man-with-the-golden-arm-1955-1080p-bluray-x265}
       - {title: Dressed to Kill, year: 1946, archive: dressed_to_kill}
       - {title: Terror by Night, year: 1946, archive: TerrorByNight1946}
-      - {title: Jamaica Inn, year: 1939, archive: Jamaica_Inn}
-      - {title: Sabotage, year: 1936, archive: Sabotage_1936}
+      # Taken out 2026-11-25: Hitchcock's British films are NOT public domain in the US (copyright restored in 1996
+      # under the URAA). The 39 Steps recap was claimed and blocked in some territories the day it went up and was
+      # set private with its Shorts. British and other non-US films stay out of this list.
+      #   Jamaica Inn (1939, archive: Jamaica_Inn) · Sabotage (1936, archive: Sabotage_1936)
       - {title: Cyrano de Bergerac, year: 1950, archive: Cyrano_DeBergerac}
       - {title: Life with Father, year: 1947, archive: LifeWithFather}
       - {title: The Inspector General, year: 1949, archive: the_inspector_general}

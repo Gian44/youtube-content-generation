@@ -106,6 +106,13 @@ def test_validate_scripts_hook_title_word_band_and_shorts():
                                   film=FILM, target_words=300, shorts_per_film=3, short_max_words=80, people=_people())
     assert ok["long_form"]["title"] == "A Thief Steals Secrets From Inside People's Dreams"
     assert planner._names_person("the man who knew too much", [{"name": "The Man"}]) is None
+    # a role word is not a name: "the Professor" in a title is who he is (three runs lost on 2026-11-23)
+    assert planner._names_person("A Professor With a Missing Finger Runs the Spy Ring", [{"name": "Professor Jordan"}]) is None
+    assert planner._person_word("Jordan Shoots the Man He Sheltered", [{"name": "Professor Jordan"}]) == ("Professor Jordan", "jordan")
+    bad = _scripts(acts)
+    bad["shorts"][1]["title"] = "Cobb Walks Into the Wrong Dream"
+    with pytest.raises(planner.PlanError, match=r'short 1 title must not use a person\'s name \("cobb", from .*Cobb\)'):
+        planner.validate_scripts(bad, acts, film=FILM, target_words=300, shorts_per_film=3, short_max_words=80, people=_people())
     # a two-word film name counts only when both words appear
     assert planner._names_film("the dark knight rises again", "The Dark Knight") and not planner._names_film("a dark night", "The Dark Knight")
     assert planner._names_film("In Dark Knight, a man", "The Dark Knight")                       # the leading article is optional
