@@ -96,5 +96,31 @@
       "gemini": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45750346442"
+  },
+  {
+    "date": "2026-11-26",
+    "at": "2026-11-26T22:16:44Z",
+    "kind": "long",
+    "topic": "Why You Yawn, and Why Everyone Else Does Too",
+    "video_id": "MB9XNAwQG7o",
+    "videos": [
+      {
+        "video_id": "MB9XNAwQG7o",
+        "title": "Why You Yawn, and Why Everyone Else Does Too",
+        "question": "Why do we yawn, and why is it contagious?",
+        "category": "your body's weird habits (yawning, hiccups, goosebumps, sleep, senses)",
+        "words": 1424,
+        "scenes": 47,
+        "seconds": 535,
+        "publish_at": null
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 12,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45903595510"
   }
 ]
