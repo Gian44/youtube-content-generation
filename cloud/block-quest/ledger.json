@@ -1295,5 +1295,72 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45690367184"
+  },
+  {
+    "date": "2026-11-26",
+    "kind": "shorts",
+    "topic": "3 shorts: pick_one, would_you_rather, epic_comeback",
+    "video_id": "2haoPSie1bA",
+    "stories": [
+      {
+        "video_id": "2haoPSie1bA",
+        "title": "Roblox Pick One: Gifts and Potions #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick a gift box: one, two, or three.",
+        "words": 65,
+        "seconds": 30,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_031.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "y-GmEevC-eI",
+        "title": "Roblox Would You Rather: Obby Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather jump across an obby made of giant bouncy marshmallows, or slide down an obby made of rainbow water slides?",
+        "words": 100,
+        "seconds": 42,
+        "publish_at": "2026-11-27T03:46:44Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_002.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "0ITfIzdBYGY",
+        "title": "The Smallest Noob Wins the Disaster Round #roblox #Shorts",
+        "format": "story",
+        "category": "epic_comeback",
+        "persona": "dramatic",
+        "hook": "\"You're down to one heart, so just stay on the roof,\" BiscuitKnight typed.",
+        "words": 141,
+        "seconds": 43,
+        "publish_at": "2026-11-27T11:46:44Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_019.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45885559955"
   }
 ]
