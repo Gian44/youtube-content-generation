@@ -60,5 +60,41 @@
       "gemini": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45595911554"
+  },
+  {
+    "date": "2026-11-26",
+    "at": "2026-11-26T03:41:45Z",
+    "kind": "short",
+    "topic": "Why you can't tickle yourself / Why Cutting an Onion Makes You Cry",
+    "video_id": "tXoEY9YlvHs",
+    "videos": [
+      {
+        "video_id": "tXoEY9YlvHs",
+        "title": "Why you can't tickle yourself",
+        "question": "Why can't we tickle ourselves?",
+        "category": "your body's weird habits (yawning, hiccups, goosebumps, sleep, senses)",
+        "words": 116,
+        "scenes": 9,
+        "seconds": 41,
+        "publish_at": null
+      },
+      {
+        "video_id": "3whtE7WTthc",
+        "title": "Why Cutting an Onion Makes You Cry",
+        "question": "Why does cutting an onion make you cry?",
+        "category": "food and cooking science",
+        "words": 134,
+        "scenes": 9,
+        "seconds": 52,
+        "publish_at": "2026-11-26T11:41:45Z"
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 10,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45750346442"
   }
 ]
