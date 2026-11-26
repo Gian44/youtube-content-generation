@@ -990,5 +990,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45586963561"
+  },
+  {
+    "date": "2026-11-26",
+    "kind": "video",
+    "film": "Dementia 13",
+    "year": 1963,
+    "theme": "Public domain classics",
+    "topic": "Dementia 13 (1963)",
+    "video_id": "v_ZjelnRZW8",
+    "title": "Wife Hides Her Husband's Death to Keep His Fortune But a Castle Full of Secrets Closes In",
+    "privacy": "public",
+    "uploaded_at": "2026-11-26T10:48:12+00:00",
+    "duration_seconds": 747,
+    "words": 2882,
+    "acts": 12,
+    "transcript": "whisper",
+    "cues": 503,
+    "plot_reference": true,
+    "beats": 101,
+    "shots": 298,
+    "film_file": "archive.org/dementia.-13.1963/Dementia 13 (1963)/mp4/Dementia.13.1963.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "ex1zwFiFA_s",
+        "title": "He Warns His Wife She Gets Nothing, Then His Heart Stops #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-26T11:48:12Z",
+        "act_index": 0
+      },
+      {
+        "video_id": "oHFaIDPdDDA",
+        "title": "A Boy's Recurring Nightmare Points at His Own Brother #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-27T11:48:12Z",
+        "act_index": 7
+      },
+      {
+        "video_id": "vD1m1bQ7clA",
+        "title": "A Doctor Warns a Bride Her New Husband May Be a Killer #Shorts",
+        "seconds": 21,
+        "publish_at": "2026-11-28T11:48:12Z",
+        "act_index": 10
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 7,
+        "after": 3,
+        "rewritten": 4
+      },
+      "shorts": {
+        "before": 1,
+        "after": 0,
+        "rewritten": 1
+      }
+    },
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45797431233"
   }
 ]
