@@ -1362,5 +1362,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45885559955"
+  },
+  {
+    "date": "2026-11-27",
+    "kind": "shorts",
+    "topic": "3 shorts: guess_the_game, pick_one, helping_a_noob",
+    "video_id": "B8jDVCVP5rQ",
+    "stories": [
+      {
+        "video_id": "B8jDVCVP5rQ",
+        "title": "Guess the Roblox Game in 3 Clues #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Work at a Pizza Place",
+          "Royale High",
+          "Build A Boat For Treasure"
+        ],
+        "words": 97,
+        "seconds": 43,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "oeT-HdpkHYM_026.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      },
+      {
+        "video_id": "ijcrNikvxVA",
+        "title": "Roblox Pick One: Sky Party Surprise #roblox #Shorts",
+        "format": "pick_one",
+        "category": "pick_one",
+        "persona": "",
+        "hook": "Pick a gift box: one, two, or three.",
+        "words": 63,
+        "seconds": 29,
+        "publish_at": "2026-11-28T03:36:47Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_033.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "zDsgXSakX7s",
+        "title": "Teaching WobblyPancake to Jump the Lava #roblox #Shorts",
+        "format": "story",
+        "category": "helping_a_noob",
+        "persona": "warm",
+        "hook": "\"Hold the jump button a little longer,\" I typed to a player named WobblyPancake, who had just walked into the lava for the ninth time.",
+        "words": 143,
+        "seconds": 43,
+        "publish_at": "2026-11-28T11:36:47Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "wQ7WgNBpufo_021.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/46057278477"
   }
 ]
