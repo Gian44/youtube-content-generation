@@ -1056,5 +1056,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45797431233"
+  },
+  {
+    "date": "2026-11-27",
+    "kind": "video",
+    "film": "The Terror",
+    "year": 1963,
+    "theme": "Public domain classics",
+    "topic": "The Terror (1963)",
+    "video_id": "1EYvoca-s3I",
+    "title": "Lost Soldier Follows a Mysterious Girl to a Castle Where She Died Twenty Years Ago",
+    "privacy": "public",
+    "uploaded_at": "2026-11-27T11:02:21+00:00",
+    "duration_seconds": 672,
+    "words": 2593,
+    "acts": 13,
+    "transcript": "archive-asr",
+    "cues": 439,
+    "plot_reference": true,
+    "beats": 114,
+    "shots": 279,
+    "film_file": "archive.org/TheTerror/TheTerror.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "fwLYPHi24yQ",
+        "title": "Soldier Is Shown a Portrait of the Girl He Met, Dead 20 Years #Shorts",
+        "seconds": 28,
+        "publish_at": "2026-11-27T12:02:21Z",
+        "act_index": 2
+      },
+      {
+        "video_id": "-y4b5zkMB64",
+        "title": "Witch Admits She Is Using a Girl as a Puppet to Damn a Baron #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-28T12:02:21Z",
+        "act_index": 9
+      },
+      {
+        "video_id": "8NuHYb12gBM",
+        "title": "Castle Collapses and Only One Girl Is Saved, Then She Rots Away #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-29T12:02:21Z",
+        "act_index": 12
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 7,
+        "after": 3,
+        "rewritten": 4
+      },
+      "shorts": {
+        "before": 0,
+        "after": 0,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 5,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45982847521"
   }
 ]
