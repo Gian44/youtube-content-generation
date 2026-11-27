@@ -208,7 +208,7 @@ def test_long_video_leaves_a_flash_request_for_the_shorts(monkeypatch, tmp_path)
     monkeypatch.setattr(sp, "_post", post)
     monkeypatch.setattr(tts, "gemini_speaker", lambda cfg: sp)
     monkeypatch.setattr(tts, "_run", lambda cmd, timeout: (cmds.append(cmd), Path(cmd[-1]).write_bytes(b"x")))
-    cfg = Config(tts_backend="gemini", gemini_long_limits=(("flash", 2),),
+    cfg = Config(tts_backend="gemini", gemini_long_limits=(("flash", 2),), gemini_pack_chars=0,
                  gemini_tuning=(("flash", (1.0, 1.0, 1.0)), ("lite", (1.0, 0.9, 0.91))))
     tts.speak(["One.", "Two.", "Three."], str(tmp_path / "long"), cfg)
     assert seen == ["flash", "flash", "lite"] and sp.limits == {}
@@ -218,3 +218,87 @@ def test_long_video_leaves_a_flash_request_for_the_shorts(monkeypatch, tmp_path)
     seen.clear()
     tts.speak(["Teaser."], str(tmp_path / "short"), cfg, short=True)
     assert seen == ["flash"]                                     # the kept request voices the Shorts
+
+
+def test_pack_chunks_fills_each_request_and_cuts_a_movement_only_at_a_sentence_end():
+    sent = "The wall runs from the river to the sea and takes ten years to build. "       # 70 characters
+    movement = (sent * 78).strip()                                                           # about 5,460 characters
+    chunks = [movement] * 21                                                                 # a 2026-11-26 video
+    packs = tts.pack_chunks(chunks, 9000)
+    assert 12 <= len(packs) <= 14                                                            # not 21 requests
+    assert all(sum(len(t) for _, t in p) + 2 * (len(p) - 1) <= 9000 for p in packs)
+    order = [i for p in packs for i, _ in p]
+    assert order == sorted(order) and set(order) == set(range(21))                           # in order, none lost
+    for i in range(21):                                                                      # each chunk whole again
+        pieces = [t for p in packs for j, t in p if j == i]
+        assert " ".join(pieces) == movement and all(t.endswith(".") and len(t) >= 1500 for t in pieces)
+    # nothing to gain: chunks that fill a request stay one request each; an empty chunk asks for nothing
+    assert [[i for i, _ in p] for p in tts.pack_chunks(["a" * 8000, "b" * 8000, " ", "c" * 900], 9000)] == [[0], [1, 3]]
+    assert tts.pack_chunks(["One.", "Two."], 9000) == [[(0, "One."), (1, "Two.")]]
+
+
+def test_cut_at_pauses_always_returns_every_piece_and_loses_no_speech():
+    import numpy as np
+    speech = lambda sec: (np.sin(np.arange(int(24000 * sec)) / 3.0) * 12000).astype(np.int16)
+    quiet = lambda sec: np.zeros(int(24000 * sec), dtype=np.int16)
+    loud = lambda b: int((np.abs(np.frombuffer(b, dtype=np.int16)) > 1000).sum())
+    # three passages (60, 90, 45 s) with 2 s between them and 0.3 s sentence pauses inside
+    body = lambda sec: np.concatenate([np.concatenate([speech(14.7), quiet(0.3)]) for _ in range(int(sec / 15))])
+    pcm = np.concatenate([body(60), quiet(2.0), body(90), quiet(2.0), body(45)]).tobytes()
+    pieces = tts.cut_at_pauses(pcm, [800, 1300, 600])                  # the lengths are off by up to 10 %
+    secs = [len(p) / 2 / 24000 for p in pieces]
+    assert len(pieces) == 3 and abs(secs[0] - 60.15) < 0.2 and abs(secs[1] - 90.6) < 0.2 and abs(secs[2] - 45.45) < 0.2
+    assert sum(loud(p) for p in pieces) == loud(pcm)                   # only silence was trimmed
+    # the model made no long pause: the cut falls in a sentence pause, still every piece and every sample of speech
+    flat = np.concatenate([body(60), body(90), body(45)]).tobytes()
+    pieces = tts.cut_at_pauses(flat, [800, 1300, 600])
+    assert len(pieces) == 3 and all(pieces) and sum(loud(p) for p in pieces) == loud(flat)
+    # no pause at all: cut where the lengths say, nothing lost
+    solid = speech(30).tobytes()
+    pieces = tts.cut_at_pauses(solid, [1, 2])
+    assert len(pieces) == 2 and b"".join(pieces) == solid and abs(len(pieces[0]) / 2 / 24000 - 10) < 0.1
+    assert tts.cut_at_pauses(solid, [5]) == [solid]
+
+
+def test_long_video_is_narrated_in_fewer_requests_than_chunks(monkeypatch, tmp_path):
+    import numpy as np
+    sp = tts.GeminiSpeaker(api_key="k", models=["flash", "lite"], voice="Charon", style="Read softly.", sleep=lambda s: None,
+                           clock=lambda: 0.0)
+    seen, cmds = [], []
+
+    def post(model, text):
+        seen.append((model, sp.style, text))
+        import base64
+        n = text.count("\n\n") + 1                                    # 4 s of tone per passage, 2 s pauses between
+        tone = (np.sin(np.arange(24000 * 4) / 3.0) * 12000).astype(np.int16)
+        pcm = np.concatenate([np.concatenate([tone, np.zeros(48000, dtype=np.int16)]) for _ in range(n)])[: -48000]
+        return _Resp(200, {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"inlineData": {
+            "data": base64.b64encode(pcm.tobytes()).decode()}}]}}]})
+
+    def run(cmd, timeout):
+        cmds.append(cmd)
+        Path(cmd[-1]).write_bytes(b"x")
+    monkeypatch.setattr(sp, "_post", post)
+    monkeypatch.setattr(tts, "gemini_speaker", lambda cfg: sp)
+    monkeypatch.setattr(tts, "_run", run)
+    sent = "The wall runs from the river to the sea and takes ten years to build. "
+    chunks = [(sent * 78).strip()] * 6
+    cfg = Config(tts_backend="gemini", gemini_long_limits=(("flash", 2),), gemini_pack_chars=9000,
+                 gemini_tuning=(("flash", (1.0, 1.0, 1.0)), ("lite", (1.0, 0.9, 0.91))))
+    paths = tts.speak(chunks, str(tmp_path / "long"), cfg)
+    assert [m for m, _, _ in seen] == ["flash", "flash", "lite", "lite"]            # 4 requests for 6 movements
+    assert len(tts.pack_chunks(chunks, 9000)) == 4
+    assert "Structure: 2 consecutive passages" in seen[0][1] and sp.style == cfg.gemini_tts_style and sp.limits == {}
+    assert len(paths) == 6 and all(Path(p).exists() for p in paths)
+    assert sorted(f.name for f in (tmp_path / "long").iterdir()) == [f"{i:04d}.mp3" for i in range(6)]   # no leftovers
+    assert sum(1 for c in cmds if "concat" in c) >= 1                                # a movement spoken across two requests
+    # Shorts keep one request each and the kept Flash request
+    seen.clear()
+    tts.speak(["Teaser one.", "Teaser two."], str(tmp_path / "short"), cfg, short=True)
+    assert [m for m, _, _ in seen] == ["flash", "flash"] and all("Structure" not in s for _, s, _ in seen)
+    # a fault in the packing costs nothing: the old path narrates the video (one request per chunk)
+    sp2 = tts.GeminiSpeaker(api_key="k", models=["flash"], voice="Charon", style="", sleep=lambda s: None, clock=lambda: 0.0)
+    monkeypatch.setattr(sp2, "_post", lambda model, text: _audio(4800))
+    monkeypatch.setattr(tts, "cut_at_pauses", lambda *a, **k: (_ for _ in ()).throw(ValueError("boom")))
+    out = tts.synthesize_gemini(["One.", "Two."], str(tmp_path / "old"), speaker=sp2, pack_chars=9000)
+    assert len(out) == 2 and sp2.calls["flash"] == 3 and all(Path(p).exists() for p in out)

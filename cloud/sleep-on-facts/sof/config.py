@@ -60,6 +60,10 @@ class Config:
     gemini_max_minutes: int = 130            # 16 movements + closing + Shorts = 18 of 20 requests (2 spare)
     # Flash speaks the long video until 9 requests, then Flash-Lite; the 10th Flash request is kept for the Shorts.
     gemini_long_limits: tuple = (("gemini-3.8-flash-tts", 9),)
+    # Neighbouring movements share a request up to this many characters (tts.pack_chunks; 0 = one request per
+    # chunk). 2026-11-26: 911 words a movement took 328 s, so 9,000 characters (≈ 1,500 words) is about 540 s of
+    # speech, ≈ 13,500 of the 16,384 audio tokens; a 19,000-word video then needs about 13 requests, not 21.
+    gemini_pack_chars: int = 9000
     gemini_paid: bool = False                # True once billing is on (cost estimates only)
     # Per-model (pause factor, tempo, pitch). Gian, 2026-10-26: the untouched 3.8 Flash Charon ("R") is the
     # best — so Flash is left as is, and Flash-Lite is tuned to sound like it ("R2"; same 104 words:

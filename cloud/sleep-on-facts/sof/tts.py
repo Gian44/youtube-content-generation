@@ -566,15 +566,170 @@ def tune_filter(tempo: float, pitch: float) -> str:
     return f"atempo={tempo}" if abs(tempo - 1.0) >= 1e-3 else ""
 
 
+def pack_chunks(chunks: list[str], limit: int, min_piece: int = 1500) -> list[list[tuple[int, str]]]:
+    """Group the chunks, in order, into as few requests as fit ``limit`` characters each.
+
+    A pack is [(chunk index, text)]. A chunk that does not fit in what is left of a pack is cut at a sentence
+    end: its head fills the pack and its tail opens the next (never a piece under ``min_piece`` characters), so
+    a request is rarely left half empty. 2026-11-27: one request per movement made a 21-movement video need 21
+    requests against a free day of about 18, and every video since 11-23 was narrated by the fallback voice.
+    """
+    packs: list[list[tuple[int, str]]] = []
+    cur: list[tuple[int, str]] = []
+    room = limit
+
+    def close():
+        nonlocal cur, room
+        if cur:
+            packs.append(cur)
+        cur, room = [], limit
+
+    for i, text in enumerate(chunks):
+        text = " ".join(str(text).split())
+        if not text:
+            continue
+        need = len(text) + (2 if cur else 0)
+        if need <= room:
+            cur.append((i, text))
+            room -= need
+            continue
+        head = ""
+        if cur and room - 2 >= min_piece:
+            for sent in _SENT.split(text):
+                grown = f"{head} {sent}".strip()
+                if len(grown) > room - 2 or len(text) - len(grown) < min_piece:   # the tail must be worth a piece too
+                    break
+                head = grown
+        tail = text[len(head):].strip()
+        if len(head) >= min_piece and len(tail) >= min_piece:
+            cur.append((i, head))
+            close()
+            cur.append((i, tail))
+            room -= len(tail)
+        else:
+            close()
+            cur.append((i, text))
+            room -= len(text)
+    close()
+    return packs
+
+
+def cut_at_pauses(pcm: bytes, weights: list[float], *, rate: int = 24000, frame: float = 0.02, floor_db: float = -40.0,
+                  window: float = 45.0, keep: float = 0.45) -> list[bytes]:
+    """One recording of several texts cut into one piece per text, always ``len(weights)`` pieces.
+
+    Each cut falls in the longest pause within ``window`` seconds of where the text lengths say the boundary is
+    (a nearer pause wins a tie), in the middle of it, and each side keeps at most ``keep`` seconds of that
+    silence. With no pause in reach the cut is made at the expected place. The pieces joined in order are the
+    whole recording less the trimmed silence, so a cut that lands a sentence off moves a chapter mark by a few
+    seconds and loses no speech.
+    """
+    import numpy as np
+
+    x = np.frombuffer(pcm, dtype=np.int16)
+    if len(weights) < 2:
+        return [pcm]
+    n = max(1, int(frame * rate))
+    usable = x.size // n
+    if usable < 10:
+        return [pcm] + [b""] * (len(weights) - 1)
+    frames = x[: usable * n].astype(np.float32).reshape(-1, n)
+    rms = np.sqrt((frames ** 2).mean(axis=1)) + 1e-9
+    quiet = 20 * np.log10(rms / (rms.max() or 1.0)) < floor_db
+    runs, start = [], None
+    for i, q in enumerate(list(quiet) + [False]):
+        if q and start is None:
+            start = i
+        elif not q and start is not None:
+            if (i - start) * frame >= 0.12:
+                runs.append((start, i))
+            start = None
+    win, keep_f = window / frame, int(keep / frame)
+    pieces, prev, left = [], 0, float(sum(weights))
+    for w in weights[:-1]:
+        target = prev + (usable - prev) * (w / left if left > 0 else 0.5)
+        left -= w
+        near = [r for r in runs if r[0] > prev and r[1] < usable and abs((r[0] + r[1]) / 2 - target) <= win]
+        if near:
+            a, b = max(near, key=lambda r: (r[1] - r[0]) - 0.004 * abs((r[0] + r[1]) / 2 - target))
+            mid = (a + b) // 2
+            end, nxt = min(mid, a + keep_f), max(mid, b - keep_f)
+        else:
+            end = nxt = int(min(max(target, prev + 1), usable - 1))
+        pieces.append(x[prev * n: end * n])
+        prev = nxt
+    pieces.append(x[prev * n:])
+    return [p.astype(np.int16).tobytes() for p in pieces]
+
+
+PACK_STYLE = "\nStructure: {n} consecutive passages of one narration; leave a clear two-second pause between passages."
+
+
+def _speak_packed(chunks: list[str], out: Path, paths: list[str], *, speaker: GeminiSpeaker, pack_chars: int,
+                  tune, enc) -> None:
+    """Every chunk's mp3 from as few requests as fit ``pack_chars`` (``pack_chunks``, ``cut_at_pauses``)."""
+    packs = pack_chunks(chunks, pack_chars)
+    log.info("tts: %d chunks in %d Gemini requests (up to %d characters each)", len(chunks), len(packs), pack_chars)
+    parts: dict[int, list[str]] = {}
+    t0, spoken, base = time.monotonic(), 0.0, speaker.style
+    for k, pack in enumerate(packs):
+        speaker.style = base + (PACK_STYLE.format(n=len(pack)) if len(pack) > 1 and base else "")
+        try:
+            raw = speaker.say("\n\n".join(t for _, t in pack))
+        finally:
+            speaker.style = base
+        pf, tp, pt = tune(speaker.last_model)
+        for j, ((ci, text), piece) in enumerate(zip(pack, cut_at_pauses(raw, [len(t) for _, t in pack]))):
+            pcm = stretch_pauses(piece, factor=pf)
+            wav, mp3 = out / f"p{k:03d}_{j:02d}.wav", out / f"p{k:03d}_{j:02d}.mp3"
+            write_pcm_wav(str(wav), pcm)
+            enc(str(wav), str(mp3), tune_filter(tp, pt))
+            wav.unlink(missing_ok=True)
+            parts.setdefault(ci, []).append(str(mp3))
+            spoken += len(pcm) / 48000.0
+        log.info("tts request %d/%d (gemini %s, %d chunks) · %.0f s audio so far in %.0f s", k + 1, len(packs),
+                 speaker.voice, len(pack), spoken, time.monotonic() - t0)
+    for i, path in enumerate(paths):
+        got = parts.get(i) or []
+        if not got:                                   # an empty chunk: a moment of silence keeps the numbering
+            wav = out / f"{i:04d}.wav"
+            write_pcm_wav(str(wav), b"\x00\x00" * 2400)
+            enc(str(wav), path, "")
+            wav.unlink(missing_ok=True)
+        elif len(got) == 1:
+            os.replace(got[0], path)
+        else:                                         # a movement spoken across two requests
+            lst = out / f"{i:04d}.txt"
+            lst.write_text("".join(f"file '{os.path.abspath(g)}'\n" for g in got), encoding="utf-8")
+            _run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy",
+                  "-f", "mp3", path], 600)
+            lst.unlink(missing_ok=True)
+            for g in got:
+                Path(g).unlink(missing_ok=True)
+
+
 def synthesize_gemini(chunks: list[str], out_dir: str, *, speaker: GeminiSpeaker, encode=None,
                       pause_factor: float = 1.0, tempo: float = 1.0, pitch: float = 1.0,
-                      tuning: dict | None = None) -> list[str]:
+                      tuning: dict | None = None, pack_chars: int = 0) -> list[str]:
     """``tuning`` = {model: (pause_factor, tempo, pitch)} — each chunk is tuned for the model that spoke it,
-    so a video that runs from one free model into the next still sounds like one Charon."""
+    so a video that runs from one free model into the next still sounds like one Charon.
+    ``pack_chars`` > 0: neighbouring chunks share a request up to that many characters (``_speak_packed``)."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     enc = encode or (lambda wav, mp3, af: _run(encode_mp3_cmd(wav, mp3, af), 600))
     paths = [str(out / f"{i:04d}.mp3") for i in range(len(chunks))]
+    if pack_chars > 0 and len(chunks) > 1 and not any(Path(p).exists() for p in paths):
+        try:
+            _speak_packed(chunks, out, paths, speaker=speaker, pack_chars=pack_chars,
+                          tune=lambda m: (tuning or {}).get(m, (pause_factor, tempo, pitch)),
+                          enc=enc if encode is None else (lambda wav, mp3, af: encode(wav, mp3)))
+            return paths
+        except GeminiTTSUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001  (a fault in the packing must not cost the video its voice)
+            log.warning("packed narration failed (%r); one request per chunk instead", exc)
+            for f in list(out.glob("*.wav")) + list(out.glob("*.mp3")):
+                f.unlink(missing_ok=True)
     t0, spoken = time.monotonic(), 0.0
     for i, text in enumerate(chunks):
         if Path(paths[i]).exists() and Path(paths[i]).stat().st_size > 0:
@@ -711,7 +866,8 @@ def speak(chunks: list[str], out_dir: str, cfg, *, short: bool = False) -> list[
                 if short:                                                    # Shorts: brighter, natural pace
                     tuning = {m: (1.0, 1.0, v[2]) for m, v in tuning.items()}
                 return synthesize_gemini(chunks, out_dir, speaker=sp, pause_factor=1.0 if short else cfg.gemini_pause_factor,
-                                         tempo=1.0 if short else cfg.gemini_tempo, pitch=cfg.gemini_pitch, tuning=tuning)
+                                         tempo=1.0 if short else cfg.gemini_tempo, pitch=cfg.gemini_pitch, tuning=tuning,
+                                         pack_chars=0 if short else int(getattr(cfg, "gemini_pack_chars", 0) or 0))
             finally:
                 sp.style, sp.limits = cfg.gemini_tts_style, {}
         except GeminiTTSUnavailable as exc:
