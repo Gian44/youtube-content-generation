@@ -261,3 +261,42 @@ def test_narration_may_say_title_words_but_titles_may_not():
     bad = _scripts(acts, title="The 39 Steps: A Man Runs From the Police Across Scotland")
     with pytest.raises(planner.PlanError, match="must not name the film"):
         planner.validate_scripts(bad, acts, film="The 39 Steps", target_words=300, shorts_per_film=3, short_max_words=80)
+
+
+def test_wrong_titles_alone_are_rewritten_and_the_draft_is_kept():
+    # The Terror (2026-11-27): the third draft was lost to "baron", from Baron von Leppe, and to his name in the title
+    people = [{"name": "Baron von Leppe", "role": "an old nobleman"}, {"name": "Andre", "role": "a French officer"}]
+    assert planner._person_word("An Old Baron Hides His Dead Wife in the Crypt", people) is None
+    assert planner._person_word("Von Leppe Hides His Dead Wife", people) == ("Baron von Leppe", "leppe")
+    acts, _ = planner.validate_acts({"acts": _acts(5), "people": people}, acts_min=4, acts_max=6, duration=4000)
+    bad = _scripts(acts, title="Baron von Leppe Hides a Terrible Secret Inside His Crumbling Castle")
+    bad["shorts"][1]["title"] = "Andre Follows the Ghost Into the Sea"
+    with pytest.raises(planner.PlanError) as err:
+        planner.validate_scripts(bad, acts, film="The Terror", target_words=300, shorts_per_film=3, short_max_words=80, people=people)
+    assert err.value.data is bad and '"leppe", from Baron von Leppe' in str(err.value) and "short 1 title" in str(err.value)
+    # anything else wrong as well: no draft kept, the whole plan is written again
+    worse = _scripts(acts, words_per=5, title="Baron von Leppe Hides a Terrible Secret Inside His Crumbling Castle")
+    with pytest.raises(planner.PlanError) as err:
+        planner.validate_scripts(worse, acts, film="The Terror", target_words=300, shorts_per_film=3, short_max_words=80, people=people)
+    assert err.value.data is None
+    # plan_film: one writer call, one small titles call (the second answer is needed for the long title), no rewrite
+    draft = _scripts(_acts(5), title="Baron von Leppe Hides a Terrible Secret Inside His Crumbling Castle")
+    draft["shorts"][1]["title"] = "Andre Follows the Ghost Into the Sea"
+    body = draft["long_form"]["sections"][0]["beats"][0]["text"]
+    llm = FakeLLM([{"acts": _acts(5), "people": people}, draft,
+                   {"long_form_title": "Leppe Hides a Terrible Secret Inside His Crumbling Castle", "short_titles": {"1": "A Soldier Follows the Ghost Into the Sea"}},
+                   {"long_form_title": "An Old Baron Hides a Terrible Secret Inside His Crumbling Castle", "short_titles": {}}])
+    plan = planner.plan_film(llm, title="The Terror", year=1963, transcript="t", duration=4000, target_words=300,
+                             acts_range=(4, 6), shorts_per_film=3, short_max_words=80, noslop_rounds=0)
+    assert plan.long_form["title"] == "An Old Baron Hides a Terrible Secret Inside His Crumbling Castle"
+    assert plan.shorts[1]["title"] == "A Soldier Follows the Ghost Into the Sea" and plan.shorts[0]["title"] == draft["shorts"][0]["title"]
+    assert len(llm.prompts) == 4 and "Rewrite ONLY the rejected titles" in llm.prompts[2][0]
+    assert 'short 1: "Andre Follows' in llm.prompts[2][0] and "short 1" not in llm.prompts[3][0].split("Why:")[0]
+    assert plan.sections[0]["beats"][0]["text"] == body and len(plan.sections) == 5
+    # titles that stay wrong after two rewrites fall back to a whole new draft, as before
+    draft2 = _scripts(_acts(5), title="Baron von Leppe Hides a Terrible Secret Inside His Crumbling Castle")
+    same = {"long_form_title": "Leppe Hides a Terrible Secret Inside His Crumbling Castle"}
+    llm = FakeLLM([{"acts": _acts(5), "people": people}, draft2, same, same, _scripts(_acts(5))])
+    plan = planner.plan_film(llm, title="The Terror", year=1963, transcript="t", duration=4000, target_words=300,
+                             acts_range=(4, 6), shorts_per_film=3, short_max_words=80, noslop_rounds=0)
+    assert len(llm.prompts) == 5 and "Validation errors" in llm.prompts[4][0] and len(plan.sections) == 5

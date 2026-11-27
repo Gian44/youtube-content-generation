@@ -32,6 +32,8 @@ ACT_MIN_SECONDS = 20.0
 class PlanError(RuntimeError):
     """Planner output failed validation (after one retry) or the model errored."""
 
+    data: dict | None = None    # set when titles are the only thing wrong: the draft, kept for a titles-only rewrite
+
 
 @dataclass
 class FilmPlan:
@@ -305,7 +307,12 @@ _ROLE_WORDS = frozenset((
     "the", "man", "woman", "boy", "girl", "old", "young", "mrs", "miss", "mister", "madam", "madame", "sir", "lord",
     "lady", "doctor", "professor", "nurse", "sheriff", "inspector", "detective", "sergeant", "lieutenant", "captain",
     "major", "colonel", "general", "officer", "judge", "mayor", "governor", "senator", "president", "reverend",
-    "father", "mother", "sister", "brother", "uncle", "aunt", "king", "queen", "prince", "princess"))
+    "father", "mother", "sister", "brother", "uncle", "aunt", "king", "queen", "prince", "princess",
+    # 2026-11-27 (The Terror): "baron", from Baron von Leppe, cost the third try. Ranks, offices and name particles.
+    "baron", "baroness", "count", "countess", "duke", "duchess", "earl", "emperor", "empress", "tsar", "sultan",
+    "knight", "bishop", "priest", "pastor", "monk", "nun", "admiral", "commander", "corporal", "marshal", "deputy",
+    "constable", "chief", "agent", "master", "mistress", "widow", "butler", "maid", "servant", "witch", "ghost",
+    "stranger", "soldier", "von", "van", "der", "den", "del", "della", "las", "los", "dos", "the", "and"))
 
 
 def _person_word(text: str, people: list[dict]) -> tuple[str, str] | None:
@@ -387,14 +394,16 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
             _beatify(s, act, f"short {i}", errors)
     title = re.sub(r"\s*\|\s*movie recap\s*$", "", str(lf.get("title", "")).strip(), flags=re.I)
     named = _names_person(title, people or [])
+    title_errors: list[str] = []                      # wrong titles alone are rewritten, the draft is kept
     if not title:
-        errors.append("long_form.title is empty")
+        title_errors.append("long_form.title is empty")
     elif _names_film(title, film):
-        errors.append("long_form.title must not name the film")
+        title_errors.append("long_form.title must not name the film")
     elif named:
-        errors.append(f"long_form.title must not use a person's name ({named}); say who they are instead")
+        name, word = _person_word(title, people or [])
+        title_errors.append(f'long_form.title must not use a person\'s name ("{word}", from {name}); say who they are instead')
     elif not (40 <= len(title) <= 110):
-        errors.append(f"long_form.title is {len(title)} characters; aim for 60-100")
+        title_errors.append(f"long_form.title is {len(title)} characters; aim for 60-100")
     if len(sections) != len(acts):
         errors.append(f"long_form.sections must have {len(acts)} entries (one per act), got {len(sections)}")
     total = sum(len(str(s.get("text", "")).split()) for s in sections if isinstance(s, dict))
@@ -464,14 +473,17 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
             errors.append(f"short {i} has an empty hook")
         st = str(s.get("title", "")).strip()
         if not st:
-            errors.append(f"short {i} has an empty title")
+            title_errors.append(f"short {i} has an empty title")
         elif _names_film(st, film):
-            errors.append(f"short {i} title must not name the film")
+            title_errors.append(f"short {i} title must not name the film")
         elif _person_word(st, people or []):
             name, word = _person_word(st, people or [])
-            errors.append(f'short {i} title must not use a person\'s name ("{word}", from {name}); say who they are instead')
-    if errors:
-        raise PlanError("; ".join(errors))
+            title_errors.append(f'short {i} title must not use a person\'s name ("{word}", from {name}); say who they are instead')
+    if errors or title_errors:
+        exc = PlanError("; ".join(title_errors + errors))
+        if not errors:
+            exc.data = data
+        raise exc
     lf["title"] = title
     for s in shorts:                                  # a few words over: trimmed at a sentence end, never a rejection
         _cap_short(s, short_max_words)
@@ -486,8 +498,13 @@ def validate_scripts(data, acts: list[dict], *, film: str, target_words: int, sh
 ATTEMPTS = 3                 # a daily channel: one bad draft must not cost the day
 
 
-def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, max_tokens: int, attempts: int = ATTEMPTS) -> object:
-    """One writer call; on PlanError the errors go back with the same prompt, up to ``attempts`` tries in all."""
+def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, max_tokens: int, attempts: int = ATTEMPTS,
+          repair=None) -> object:
+    """One writer call; on PlanError the errors go back with the same prompt, up to ``attempts`` tries in all.
+
+    ``repair(exc)`` is tried first when titles are the only thing wrong (``exc.data``): it returns the validated
+    result or None. A full rewrite for a title is how a good draft was lost on 2026-11-23 and 2026-11-27.
+    """
     errors: PlanError | None = None
     for k in range(max(1, attempts)):
         ask = prompt if errors is None else (f"{prompt}\n\nYour previous answer was rejected. Validation errors:\n{errors}\n"
@@ -497,7 +514,71 @@ def _call(llm: LLM, prompt: str, system: str, validate, *, temperature: float, m
         except PlanError as exc:
             errors = exc
             log.warning("plan rejected (try %d of %d): %s", k + 1, attempts, str(exc)[:300])
+            if repair is not None and exc.data is not None:
+                fixed = repair(exc)
+                if fixed is not None:
+                    return fixed
     raise errors
+
+
+TITLES_SYSTEM = "You write YouTube titles for film recaps. You answer with JSON only."
+
+TITLES_PROMPT = """These titles for a recap of a film were rejected:
+{rejected}
+
+Why: {errors}
+
+The people in the film (never use any part of their names in a title): {names}
+The film's own name must not appear either.
+
+Rewrite ONLY the rejected titles. Say who the person is instead of the name ("a French officer", "an old baron",
+"the widow"). Keep the premise-and-twist hook. Long-form title: 60-100 characters, Title Case, no question, no colon.
+Short titles: at most 70 characters, no hashtags.
+
+Return JSON: {{"long_form_title": "..." or null, "short_titles": {{"<short number>": "..."}}}}"""
+
+TITLE_REPAIRS = 2
+
+
+def _repair_titles(llm: LLM, exc: PlanError, validate, people: list[dict]) -> object | None:
+    """Ask for new titles only and validate the same draft again; None when that did not settle it."""
+    data = exc.data
+    for k in range(TITLE_REPAIRS):
+        if data is None:                              # something other than a title is wrong now
+            return None
+        lf, shorts = data.get("long_form") or {}, data.get("shorts") or []
+        rejected = []
+        if "long_form.title" in str(exc):
+            rejected.append(f'long_form: "{lf.get("title", "")}"')
+        for i, s in enumerate(shorts):
+            if re.search(rf"\bshort {i} (title|has an empty title)", str(exc)):
+                rejected.append(f'short {i}: "{s.get("title", "")}"')
+        prompt = TITLES_PROMPT.format(rejected="\n".join(rejected), errors=str(exc),
+                                      names=", ".join(str(p.get("name")) for p in people or [] if p.get("name")))
+        try:
+            got = llm.generate_json(prompt, system=TITLES_SYSTEM, temperature=0.5, max_tokens=600)
+        except LLMError as err:
+            log.warning("title rewrite failed: %s", err)
+            return None
+        if not isinstance(got, dict):
+            return None
+        if str(got.get("long_form_title") or "").strip() and "long_form.title" in str(exc):
+            lf["title"] = str(got["long_form_title"]).strip()
+        for key, val in (got.get("short_titles") or {}).items() if isinstance(got.get("short_titles"), dict) else []:
+            try:
+                i = int(key)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= i < len(shorts) and str(val or "").strip() and re.search(rf"\bshort {i} ", str(exc)):
+                shorts[i]["title"] = str(val).strip()
+        try:
+            fixed = validate(data)
+            log.info("titles rewritten (try %d of %d), draft kept", k + 1, TITLE_REPAIRS)
+            return fixed
+        except PlanError as again:
+            log.warning("title rewrite rejected (try %d of %d): %s", k + 1, TITLE_REPAIRS, str(again)[:300])
+            exc, data = again, again.data
+    return None
 
 
 def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, duration: float, plot_text: str = "",
@@ -523,11 +604,14 @@ def plan_film(llm: LLM, *, title: str, year: int | None, transcript: str, durati
         target_words=target_words, per_section_words=max(40, target_words // max(1, len(acts))),
         shorts_per_film=shorts_per_film, short_max_words=short_max_words, short_min_words=max(20, short_max_words * 2 // 3))
     scripts_prompt = noslop.inject(scripts_prompt, STYLE_BLOCK, before="Return JSON")
+    def check(d):
+        return validate_scripts(d, acts, film=title, target_words=target_words, shorts_per_film=shorts_per_film,
+                                short_max_words=short_max_words, people=people, max_words=max_words)
+
     try:
-        scripts = _call(llm, scripts_prompt, SCRIPTS_SYSTEM,
-                        lambda d: validate_scripts(d, acts, film=title, target_words=target_words, shorts_per_film=shorts_per_film,
-                                                   short_max_words=short_max_words, people=people, max_words=max_words),
-                        temperature=0.5, max_tokens=max(8000, int(target_words * 2.5)))
+        scripts = _call(llm, scripts_prompt, SCRIPTS_SYSTEM, check,
+                        temperature=0.5, max_tokens=max(8000, int(target_words * 2.5)),
+                        repair=lambda exc: _repair_titles(llm, exc, check, people))
     except LLMError as exc:
         raise PlanError(f"scripts call failed: {exc}") from exc
     slop = despop(llm, scripts, title=title, rounds=noslop_rounds, short_max_words=short_max_words, fast_model=fast_model)
