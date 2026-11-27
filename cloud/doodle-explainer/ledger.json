@@ -122,5 +122,41 @@
       "gemini": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45903595510"
+  },
+  {
+    "date": "2026-11-27",
+    "at": "2026-11-27T03:42:24Z",
+    "kind": "short",
+    "topic": "Why Lakes Freeze From the Top, Not the Bottom / Why Cold Ice Cream Hurts Your Forehead",
+    "video_id": "lxZxD_0euL4",
+    "videos": [
+      {
+        "video_id": "lxZxD_0euL4",
+        "title": "Why Lakes Freeze From the Top, Not the Bottom",
+        "question": "Why do lakes freeze from the top down instead of the bottom up?",
+        "category": "weird laws of nature (why the sky is blue, why ice floats)",
+        "words": 141,
+        "scenes": 9,
+        "seconds": 52,
+        "publish_at": null
+      },
+      {
+        "video_id": "bxOihN8y2S4",
+        "title": "Why Cold Ice Cream Hurts Your Forehead",
+        "question": "Why does cold ice cream give you a headache in your forehead?",
+        "category": "your body's weird habits (yawning, hiccups, goosebumps, sleep, senses)",
+        "words": 136,
+        "scenes": 9,
+        "seconds": 48,
+        "publish_at": "2026-11-27T11:42:24Z"
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 10,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45935619457"
   }
 ]
