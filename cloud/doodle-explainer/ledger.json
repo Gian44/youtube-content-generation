@@ -158,5 +158,41 @@
       "gemini": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45935619457"
+  },
+  {
+    "date": "2026-11-28",
+    "at": "2026-11-28T03:23:31Z",
+    "kind": "short",
+    "topic": "Why 1900 had no leap day but 2000 did / Did Romans really rinse their mouths with urine?",
+    "video_id": "oh5I4Y9ZyR8",
+    "videos": [
+      {
+        "video_id": "oh5I4Y9ZyR8",
+        "title": "Why 1900 had no leap day but 2000 did",
+        "question": "Why do we skip leap years every 100 years, but not every 400?",
+        "category": "everyday things with surprising histories (forks, money, calendars, toilets)",
+        "words": 117,
+        "scenes": 9,
+        "seconds": 58,
+        "publish_at": null
+      },
+      {
+        "video_id": "xEHFr6rEC4c",
+        "title": "Did Romans really rinse their mouths with urine?",
+        "question": "Did ancient Romans really use urine as mouthwash?",
+        "category": "ancient people and how they actually lived",
+        "words": 134,
+        "scenes": 8,
+        "seconds": 51,
+        "publish_at": "2026-11-28T11:23:31Z"
+      }
+    ],
+    "voice": "kokoro am_michael:0.5,am_puck:0.5",
+    "llm_calls": {
+      "claude": 11,
+      "openai": 0,
+      "gemini": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/46102514246"
   }
 ]
