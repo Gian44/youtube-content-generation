@@ -1434,5 +1434,77 @@
       "unanswered": 0
     },
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/46057278477"
+  },
+  {
+    "date": "2026-11-28",
+    "kind": "shorts",
+    "topic": "3 shorts: would_you_rather, guess_the_game, best_friend_duo",
+    "video_id": "eV43RhmC9YY",
+    "stories": [
+      {
+        "video_id": "eV43RhmC9YY",
+        "title": "Roblox Would You Rather: Pets Edition #roblox #Shorts",
+        "format": "would_you_rather",
+        "category": "would_you_rather",
+        "persona": "",
+        "hook": "Would you rather hatch a pet that glows in the dark, or hatch a pet that changes color every minute?",
+        "words": 92,
+        "seconds": 38,
+        "publish_at": null,
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_025.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "8XULEKvomGM",
+        "title": "Guess the Roblox Game in 3 Clues #roblox #Shorts",
+        "format": "guess_the_game",
+        "category": "guess_the_game",
+        "persona": "",
+        "hook": "Guess the Roblox game.",
+        "games": [
+          "Lumber Tycoon 2",
+          "Welcome to Bloxburg",
+          "Blox Fruits"
+        ],
+        "words": 90,
+        "seconds": 38,
+        "publish_at": "2026-11-29T02:21:12Z",
+        "slop": null,
+        "gameplay": "wQ7WgNBpufo_011.mp4",
+        "gameplay_credit": "Gameplay: OrbitalNCG + (CC BY) https://www.youtube.com/watch?v=wQ7WgNBpufo"
+      },
+      {
+        "video_id": "fmgEzWNe_hI",
+        "title": "We Promised Not to Log Off Until We Won #roblox #Shorts",
+        "format": "story",
+        "category": "best_friend_duo",
+        "persona": "warm",
+        "hook": "Juniper and I promised in the lobby that neither of us would log off until we beat Marshmallow Climb, a two-player obby.",
+        "words": 133,
+        "seconds": 42,
+        "publish_at": "2026-11-29T10:21:12Z",
+        "slop": {
+          "before": 0,
+          "after": 0,
+          "rewritten": 0
+        },
+        "gameplay": "oeT-HdpkHYM_010.mp4",
+        "gameplay_credit": "Gameplay: Dope Gameplays (CC BY) https://www.youtube.com/watch?v=oeT-HdpkHYM"
+      }
+    ],
+    "voice": "kokoro af_heart",
+    "llm_calls": {
+      "claude": 3,
+      "openai": 0,
+      "gemini": 0
+    },
+    "vision_calls": {
+      "codex": 0,
+      "claude": 0,
+      "openai": 0,
+      "unanswered": 0
+    },
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/46175034123"
   }
 ]
