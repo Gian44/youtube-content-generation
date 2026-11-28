@@ -1122,5 +1122,71 @@
     "voice_tempo": 1.15,
     "film_sound": false,
     "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/45982847521"
+  },
+  {
+    "date": "2026-11-28",
+    "kind": "video",
+    "film": "Suddenly",
+    "year": 1954,
+    "theme": "Public domain classics",
+    "topic": "Suddenly (1954)",
+    "video_id": "KkHCMXSUsNU",
+    "title": "Hired Assassin Takes a Family Hostage to Shoot the President From Their Window",
+    "privacy": "public",
+    "uploaded_at": "2026-11-28T09:46:32+00:00",
+    "duration_seconds": 638,
+    "words": 2478,
+    "acts": 13,
+    "transcript": "archive-asr",
+    "cues": 731,
+    "plot_reference": true,
+    "beats": 96,
+    "shots": 260,
+    "film_file": "archive.org/suddenly/suddenly.mp4",
+    "source": "archive",
+    "shorts": [
+      {
+        "video_id": "rGoAWidXcEY",
+        "title": "Hired Killer Takes a Boy Hostage Above the Station #Shorts",
+        "seconds": 26,
+        "publish_at": "2026-11-28T10:46:32Z",
+        "act_index": 4
+      },
+      {
+        "video_id": "oCkyrW3yAIk",
+        "title": "Why a Paid Assassin Believes a Gun Makes Him a God #Shorts",
+        "seconds": 23,
+        "publish_at": "2026-11-29T10:46:32Z",
+        "act_index": 10
+      },
+      {
+        "video_id": "5Kwqqaay8hM",
+        "title": "Family Springs a Deadly Trap on the Man Aiming at the President #Shorts",
+        "seconds": 24,
+        "publish_at": "2026-11-30T10:46:32Z",
+        "act_index": 11
+      }
+    ],
+    "slop": {
+      "long_form": {
+        "before": 1,
+        "after": 1,
+        "rewritten": 0
+      },
+      "shorts": {
+        "before": 1,
+        "after": 1,
+        "rewritten": 0
+      }
+    },
+    "llm_calls": {
+      "claude": 4,
+      "openai": 0,
+      "gemini": 0
+    },
+    "voice": "pocket narrator.wav",
+    "voice_tempo": 1.15,
+    "film_sound": false,
+    "run_url": "https://github.com/Gian44/youtube-content-generation/actions/runs/46130403923"
   }
 ]
